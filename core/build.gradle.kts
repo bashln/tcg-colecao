@@ -9,11 +9,11 @@ kotlin {
 
 dependencies {
     implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.kotlinx.serialization.json)
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.content.negotiation)
-    implementation(libs.ktor.serialization.kotlinx.json)
-    implementation(libs.ktor.client.okhttp)
+    api(libs.kotlinx.serialization.json)
+    api(libs.ktor.client.core)
+    api(libs.ktor.client.content.negotiation)
+    api(libs.ktor.serialization.kotlinx.json)
+    api(libs.ktor.client.okhttp)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)

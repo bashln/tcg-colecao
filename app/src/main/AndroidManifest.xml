@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.CAMERA" />
 
     <application
+        android:name=".TcgApplication"
         android:allowBackup="true"
         android:label="TCG Pokémon Collection"
         android:supportsRtl="true">
