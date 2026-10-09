@@ -65,7 +65,7 @@ fun ScanScreen(
         if (bitmap != null) {
             recognizeText(
                 recognizer = recognizer,
-                bitmap = bitmap,
+                bitmap = bitmap.cropToCard(),
                 rotationDegrees = 0,
                 onTextRecognized = { lines -> scope.launch { viewModel.onTextRecognized(lines) } },
                 onError = viewModel::onCaptureError,

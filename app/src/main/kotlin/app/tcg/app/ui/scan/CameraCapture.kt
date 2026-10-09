@@ -3,6 +3,8 @@ package app.tcg.app.ui.scan
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Matrix
+import android.graphics.Rect
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -14,10 +16,10 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -119,13 +121,15 @@ fun CameraCapture(
         }
     }
 
-    Box(modifier = modifier) {
+    BoxWithConstraints(modifier = modifier) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+        // Portrait card frame: 5:7 width:height, 70% of preview width, clamped to fit the height.
+        val frameWidth = minOf(maxWidth * 0.7f, maxHeight * CARD_ASPECT)
+        val frameHeight = frameWidth / CARD_ASPECT
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
-                .fillMaxWidth(0.8f)
-                .fillMaxHeight(0.55f)
+                .size(frameWidth, frameHeight)
                 .border(2.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(12.dp)),
         )
         if (!hasPermission) {
@@ -136,6 +140,35 @@ fun CameraCapture(
             )
         }
     }
+}
+
+private const val CARD_ASPECT = 5f / 7f
+
+/**
+ * Centered rectangle with a 5:7 (width:height) card aspect that fits inside [width] x [height].
+ * The camera preview reads only this region so cards beside the framed one are ignored.
+ */
+internal fun cardCropRect(width: Int, height: Int): Rect {
+    if (width <= 0 || height <= 0) return Rect(0, 0, 0, 0)
+    if (width * 7 > height * 5) {
+        val cropWidth = height * 5 / 7
+        val left = (width - cropWidth) / 2
+        return Rect(left, 0, left + cropWidth, height)
+    }
+    val cropHeight = width * 7 / 5
+    val top = (height - cropHeight) / 2
+    return Rect(0, top, width, top + cropHeight)
+}
+
+internal fun Bitmap.cropToCard(): Bitmap {
+    val rect = cardCropRect(width, height)
+    return Bitmap.createBitmap(this, rect.left, rect.top, rect.width(), rect.height())
+}
+
+private fun Bitmap.rotated(degrees: Int): Bitmap {
+    if (degrees == 0) return this
+    val matrix = Matrix().apply { postRotate(degrees.toFloat()) }
+    return Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
 }
 
 private fun capture(
@@ -149,8 +182,9 @@ private fun capture(
         executor,
         object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
-                val rotation = image.imageInfo.rotationDegrees
+                var rotation = 0
                 val bitmap = try {
+                    rotation = image.imageInfo.rotationDegrees
                     image.toBitmap()
                 } catch (_: Exception) {
                     onError("Falha ao processar a imagem. Tente novamente.")
@@ -158,7 +192,7 @@ private fun capture(
                 } finally {
                     image.close()
                 }
-                recognizeText(recognizer, bitmap, rotation, onTextRecognized, onError)
+                recognizeText(recognizer, bitmap.rotated(rotation).cropToCard(), 0, onTextRecognized, onError)
             }
 
             override fun onError(exception: ImageCaptureException) {

@@ -46,4 +46,23 @@ class CameraCaptureTest {
     fun empty_recognition_maps_to_empty_line_list() {
         assertTrue(Text("", emptyList<Text.TextBlock>()).toOcrLines().isEmpty())
     }
+
+    @Test
+    fun card_crop_rect_is_width_limited_for_a_portrait_frame() {
+        // 600x1000 is narrower than 5:7, so the width fills and height is trimmed, centered.
+        assertEquals(Rect(0, 80, 600, 920), cardCropRect(600, 1000))
+    }
+
+    @Test
+    fun card_crop_rect_is_height_limited_for_a_landscape_frame() {
+        // 1000x600 is wider than 5:7, so the height fills and width is trimmed, centered.
+        assertEquals(Rect(286, 0, 714, 600), cardCropRect(1000, 600))
+    }
+
+    @Test
+    fun card_crop_rect_stays_inside_bounds_for_a_tiny_frame() {
+        val rect = cardCropRect(3, 3)
+        assertEquals(Rect(0, 0, 2, 3), rect)
+        assertTrue(rect.left >= 0 && rect.top >= 0 && rect.right <= 3 && rect.bottom <= 3)
+    }
 }
