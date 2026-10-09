@@ -19,9 +19,29 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val path = System.getenv("TCG_KEYSTORE_PATH")
+            if (!path.isNullOrBlank() && file(path).exists()) {
+                storeFile = file(path)
+                storePassword = System.getenv("TCG_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("TCG_KEY_ALIAS")
+                keyPassword = System.getenv("TCG_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Sem keystore no ambiente, cai para a assinatura de debug para o build local funcionar.
+            val path = System.getenv("TCG_KEYSTORE_PATH")
+            val hasKey = !path.isNullOrBlank() && file(path).exists()
+            signingConfig = if (hasKey) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
