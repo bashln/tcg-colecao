@@ -128,6 +128,7 @@ fun ScanScreen(
         cameraPreview = {
             CameraCapture(
                 captureRequest = captureRequest,
+                recognizer = recognizer,
                 onTextRecognized = { lines -> scope.launch { viewModel.onTextRecognized(lines) } },
                 onError = viewModel::onCaptureError,
                 modifier = Modifier.fillMaxSize(),

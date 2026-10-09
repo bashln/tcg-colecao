@@ -61,12 +61,14 @@ internal fun rememberTextRecognizer(): TextRecognizer {
 }
 
 /**
- * CameraX preview with the guide frame and the ML Kit capture pipeline. The recognizer lives
- * here, not in the ViewModel, so [ScanViewModel] stays testable on the JVM.
+ * CameraX preview with the guide frame and the ML Kit capture pipeline. The caller owns the
+ * [recognizer] (shared with the gallery path) so one instance serves the whole screen, and
+ * [ScanViewModel] stays testable on the JVM.
  */
 @Composable
 fun CameraCapture(
     captureRequest: Int,
+    recognizer: TextRecognizer,
     onTextRecognized: (List<OcrLine>) -> Unit,
     onError: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -91,7 +93,6 @@ fun CameraCapture(
         }
     }
     val imageCapture = remember { ImageCapture.Builder().build() }
-    val recognizer = rememberTextRecognizer()
     val executor = remember(context) { ContextCompat.getMainExecutor(context) }
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
 
