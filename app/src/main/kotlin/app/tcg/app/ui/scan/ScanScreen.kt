@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,11 +24,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,6 +40,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -44,6 +50,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,13 +63,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tcg.app.R
+import app.tcg.app.ui.components.EmptyState
 import app.tcg.app.ui.components.ErrorBanner
 import app.tcg.app.ui.components.SectionHeader
 import app.tcg.app.ui.components.formatMoney
+import app.tcg.app.ui.components.joinNonBlank
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.PriceSource
 import app.tcg.core.domain.valuation.Valuation
@@ -70,7 +81,6 @@ import coil.compose.AsyncImage
 import java.io.IOException
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScanScreen(
     viewModel: ScanViewModel,
@@ -99,27 +109,78 @@ fun ScanScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(stringResource(R.string.scan_title)) },
-            windowInsets = WindowInsets(0, 0, 0, 0),
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                titleContentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-        )
-        Box(Modifier.fillMaxWidth().weight(1f)) {
+    ScanContent(
+        state = state,
+        manualQuery = manualQuery,
+        onManualQueryChange = { manualQuery = it },
+        onManualSearch = {
+            val query = manualQuery.trim()
+            if (query.isNotEmpty()) scope.launch { viewModel.onManualSearch(query) }
+        },
+        onCapture = { captureRequest++ },
+        onGallery = {
+            galleryLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+            )
+        },
+        onCardSelected = onCardSelected,
+        modifier = modifier,
+        cameraPreview = {
             CameraCapture(
                 captureRequest = captureRequest,
                 onTextRecognized = { lines -> scope.launch { viewModel.onTextRecognized(lines) } },
                 onError = viewModel::onCaptureError,
                 modifier = Modifier.fillMaxSize(),
             )
+        },
+    )
+}
+
+/**
+ * Stateless scan UI so the manual-search entry point and result states stay testable without a
+ * camera. [ScanScreen] supplies the live [CameraCapture] preview through [cameraPreview].
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScanContent(
+    state: ScanUiState,
+    manualQuery: String,
+    onManualQueryChange: (String) -> Unit,
+    onManualSearch: () -> Unit,
+    onCapture: () -> Unit,
+    onGallery: () -> Unit,
+    onCardSelected: (Card) -> Unit,
+    modifier: Modifier = Modifier,
+    cameraPreview: @Composable () -> Unit = {},
+) {
+    var manualRevealed by remember { mutableStateOf(false) }
+    // A failed scan must always surface the manual field; a manual reveal can be dismissed.
+    val showManual = manualRevealed || state.manualSearch
+    val dismiss: (() -> Unit)? = if (state.manualSearch) null else { { manualRevealed = false } }
+
+    // Once a search succeeds, collapse the panel so the candidates own the screen.
+    LaunchedEffect(state.candidates.isNotEmpty()) {
+        if (state.candidates.isNotEmpty()) manualRevealed = false
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text(stringResource(R.string.scan_title)) },
+            windowInsets = WindowInsets(0, 0, 0, 0),
+            // The camera interop view draws above Compose siblings by default; lift the bar back.
+            modifier = Modifier.zIndex(1f),
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                titleContentColor = MaterialTheme.colorScheme.onSurface,
+            ),
+        )
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            cameraPreview()
             if (state.loading) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.45f)),
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.55f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(
@@ -137,12 +198,9 @@ fun ScanScreen(
             }
         }
         CaptureControls(
-            onCapture = { captureRequest++ },
-            onGallery = {
-                galleryLauncher.launch(
-                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                )
-            },
+            onCapture = onCapture,
+            onGallery = onGallery,
+            onManualSearch = { manualRevealed = true },
         )
         if (state.loading) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -153,50 +211,64 @@ fun ScanScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
-        if (state.manualSearch) {
-            ManualSearchCard(
-                query = manualQuery,
-                onQueryChange = { manualQuery = it },
-                onSearch = {
-                    val query = manualQuery.trim()
-                    if (query.isNotEmpty()) scope.launch { viewModel.onManualSearch(query) }
-                },
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
-        if (state.candidates.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                SectionHeader(
-                    title = stringResource(R.string.scan_candidates_title),
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = stringResource(R.string.scan_candidates, state.candidates.size),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            ) {
-                items(state.candidates, key = { it.value.id }) { scored ->
-                    CandidateCard(card = scored.value, onClick = { onCardSelected(scored.value) })
+        when {
+            state.candidates.isNotEmpty() -> {
+                if (showManual) {
+                    ManualSearchPanel(
+                        query = manualQuery,
+                        onQueryChange = onManualQueryChange,
+                        onSearch = onManualSearch,
+                        notFound = false,
+                        onDismiss = dismiss,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SectionHeader(
+                        title = stringResource(R.string.scan_candidates_title),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = stringResource(R.string.scan_candidates, state.candidates.size),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                ) {
+                    items(state.candidates, key = { it.value.id }) { scored ->
+                        CandidateCard(card = scored.value, onClick = { onCardSelected(scored.value) })
+                    }
                 }
             }
-        } else {
-            Box(
+            showManual -> ManualSearchPanel(
+                query = manualQuery,
+                onQueryChange = onManualQueryChange,
+                onSearch = onManualSearch,
+                notFound = state.manualSearch,
+                onDismiss = dismiss,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            else -> Box(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = stringResource(R.string.scan_candidates_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(32.dp),
+                EmptyState(
+                    icon = Icons.Outlined.Search,
+                    title = stringResource(R.string.scan_empty_title),
+                    body = stringResource(R.string.scan_candidates_empty),
+                    action = {
+                        TextButton(onClick = { manualRevealed = true }) {
+                            Icon(Icons.Outlined.Search, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.scan_manual_entry))
+                        }
+                    },
                 )
             }
         }
@@ -207,6 +279,7 @@ fun ScanScreen(
 private fun CaptureControls(
     onCapture: () -> Unit,
     onGallery: () -> Unit,
+    onManualSearch: () -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -238,38 +311,69 @@ private fun CaptureControls(
                     modifier = Modifier.size(30.dp),
                 )
             }
-            Spacer(Modifier.size(56.dp))
+            FilledTonalIconButton(
+                onClick = onManualSearch,
+                modifier = Modifier.size(56.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Search,
+                    contentDescription = stringResource(R.string.scan_manual_entry),
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun ManualSearchCard(
+private fun ManualSearchPanel(
     query: String,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
+    notFound: Boolean,
+    onDismiss: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
+    val container = if (notFound) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        MaterialTheme.colorScheme.secondaryContainer
+    }
+    val content = if (notFound) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    }
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-        ),
+        colors = CardDefaults.cardColors(containerColor = container, contentColor = content),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(
+                        if (notFound) R.string.scan_feedback_title else R.string.scan_manual_entry,
+                    ),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                onDismiss?.let {
+                    IconButton(onClick = it) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = stringResource(R.string.cd_close_search),
+                        )
+                    }
+                }
+            }
             Text(
-                text = stringResource(R.string.scan_feedback_title),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Text(
-                text = stringResource(R.string.scan_feedback_body),
+                text = stringResource(
+                    if (notFound) R.string.scan_feedback_body else R.string.scan_search_help,
+                ),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -281,11 +385,23 @@ private fun ManualSearchCard(
                     onValueChange = onQueryChange,
                     label = { Text(stringResource(R.string.scan_search_label)) },
                     leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { onQueryChange("") }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Close,
+                                    contentDescription = stringResource(R.string.cd_clear_search),
+                                )
+                            }
+                        }
+                    },
                     singleLine = true,
                     shape = MaterialTheme.shapes.medium,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { onSearch() }),
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onSearch) {
+                Button(onClick = onSearch, enabled = query.isNotBlank()) {
                     Text(stringResource(R.string.scan_search_action))
                 }
             }
@@ -302,7 +418,7 @@ private fun CandidateCard(card: Card, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 5.dp)
-            .clickable(onClick = onClick),
+            .clickable(onClickLabel = stringResource(R.string.cd_open_card), onClick = onClick),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
@@ -334,8 +450,7 @@ private fun CandidateCard(card: Card, onClick: () -> Unit) {
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    text = "${card.setName} · ${card.collectorNumber}" +
-                        (card.hp?.let { " · HP $it" } ?: ""),
+                    text = joinNonBlank(card.setName, card.collectorNumber, card.hp?.let { "HP $it" }),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,

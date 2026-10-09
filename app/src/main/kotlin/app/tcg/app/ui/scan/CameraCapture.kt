@@ -83,7 +83,13 @@ fun CameraCapture(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> hasPermission = granted }
 
-    val previewView = remember { PreviewView(context) }
+    val previewView = remember {
+        PreviewView(context).apply {
+            // TextureView mode keeps the preview inside its Compose bounds; the default
+            // SurfaceView layer draws over sibling UI such as the top app bar.
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
+    }
     val imageCapture = remember { ImageCapture.Builder().build() }
     val recognizer = rememberTextRecognizer()
     val executor = remember(context) { ContextCompat.getMainExecutor(context) }
@@ -210,7 +216,7 @@ private fun capture(
                     rotation = image.imageInfo.rotationDegrees
                     image.toBitmap()
                 } catch (_: Exception) {
-                    onError("Falha ao processar a imagem. Tente novamente.")
+                    onError("Não foi possível ler a foto. Tente novamente.")
                     return
                 } finally {
                     image.close()
@@ -219,7 +225,7 @@ private fun capture(
             }
 
             override fun onError(exception: ImageCaptureException) {
-                onError("Falha ao capturar. Tente novamente.")
+                onError("Não foi possível capturar a carta. Tente novamente.")
             }
         },
     )
@@ -235,9 +241,9 @@ internal fun recognizeText(
     try {
         recognizer.process(InputImage.fromBitmap(bitmap, rotationDegrees))
             .addOnSuccessListener { text -> onTextRecognized(text.toOcrLines()) }
-            .addOnFailureListener { onError("Falha ao reconhecer o texto. Tente a busca manual.") }
+            .addOnFailureListener { onError("Não foi possível reconhecer o texto. Busque pelo nome.") }
     } catch (_: Exception) {
-        onError("Falha ao reconhecer o texto. Tente a busca manual.")
+        onError("Não foi possível reconhecer o texto. Busque pelo nome.")
     }
 }
 

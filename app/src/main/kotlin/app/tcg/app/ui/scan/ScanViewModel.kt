@@ -54,7 +54,7 @@ class ScanViewModel(
             _state.update {
                 it.copy(
                     loading = false,
-                    error = "Falha na busca. Tente a busca manual.",
+                    error = "Não foi possível buscar agora. Verifique sua conexão e tente de novo.",
                     manualSearch = true,
                 )
             }
