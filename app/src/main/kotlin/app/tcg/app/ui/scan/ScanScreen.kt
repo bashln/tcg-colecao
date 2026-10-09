@@ -63,9 +63,13 @@ fun ScanScreen(
     ) { uri: Uri? ->
         val bitmap = uri?.let { loadBitmap(context, it) }
         if (bitmap != null) {
-            recognizeText(recognizer, bitmap, 0) { lines ->
-                scope.launch { viewModel.onTextRecognized(lines) }
-            }
+            recognizeText(
+                recognizer = recognizer,
+                bitmap = bitmap,
+                rotationDegrees = 0,
+                onTextRecognized = { lines -> scope.launch { viewModel.onTextRecognized(lines) } },
+                onError = viewModel::onCaptureError,
+            )
         }
     }
 
@@ -74,6 +78,7 @@ fun ScanScreen(
             CameraCapture(
                 captureRequest = captureRequest,
                 onTextRecognized = { lines -> scope.launch { viewModel.onTextRecognized(lines) } },
+                onError = viewModel::onCaptureError,
                 modifier = Modifier.fillMaxSize(),
             )
         }

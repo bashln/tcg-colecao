@@ -59,6 +59,7 @@ internal fun rememberTextRecognizer(): TextRecognizer {
 fun CameraCapture(
     captureRequest: Int,
     onTextRecognized: (List<OcrLine>) -> Unit,
+    onError: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -114,7 +115,7 @@ fun CameraCapture(
 
     LaunchedEffect(captureRequest) {
         if (captureRequest > 0 && hasPermission) {
-            capture(imageCapture, executor, recognizer, onTextRecognized)
+            capture(imageCapture, executor, recognizer, onTextRecognized, onError)
         }
     }
 
@@ -142,18 +143,27 @@ private fun capture(
     executor: Executor,
     recognizer: TextRecognizer,
     onTextRecognized: (List<OcrLine>) -> Unit,
+    onError: (String) -> Unit,
 ) {
     imageCapture.takePicture(
         executor,
         object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
-                val bitmap = image.toBitmap()
                 val rotation = image.imageInfo.rotationDegrees
-                image.close()
-                recognizeText(recognizer, bitmap, rotation, onTextRecognized)
+                val bitmap = try {
+                    image.toBitmap()
+                } catch (_: Exception) {
+                    onError("Falha ao processar a imagem. Tente novamente.")
+                    return
+                } finally {
+                    image.close()
+                }
+                recognizeText(recognizer, bitmap, rotation, onTextRecognized, onError)
             }
 
-            override fun onError(exception: ImageCaptureException) = Unit
+            override fun onError(exception: ImageCaptureException) {
+                onError("Falha ao capturar. Tente novamente.")
+            }
         },
     )
 }
@@ -163,9 +173,15 @@ internal fun recognizeText(
     bitmap: Bitmap,
     rotationDegrees: Int,
     onTextRecognized: (List<OcrLine>) -> Unit,
+    onError: (String) -> Unit,
 ) {
-    recognizer.process(InputImage.fromBitmap(bitmap, rotationDegrees))
-        .addOnSuccessListener { text -> onTextRecognized(text.toOcrLines()) }
+    try {
+        recognizer.process(InputImage.fromBitmap(bitmap, rotationDegrees))
+            .addOnSuccessListener { text -> onTextRecognized(text.toOcrLines()) }
+            .addOnFailureListener { onError("Falha ao reconhecer o texto. Tente a busca manual.") }
+    } catch (_: Exception) {
+        onError("Falha ao reconhecer o texto. Tente a busca manual.")
+    }
 }
 
 internal fun com.google.mlkit.vision.text.Text.toOcrLines(): List<OcrLine> =

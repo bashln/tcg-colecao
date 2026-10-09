@@ -4,10 +4,13 @@ import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.OcrLine
 import java.io.IOException
+import kotlin.test.assertFailsWith
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -29,6 +32,14 @@ class ScanViewModelTest {
     }
 
     @Test
+    fun empty_ocr_text_sets_manual_search_flag() = runTest {
+        val vm = ScanViewModel(FakeCardRepository(listOf(card("b", "Furret", "136", 110))))
+        vm.onTextRecognized(emptyList())
+        assertTrue(vm.state.value.candidates.isEmpty())
+        assertTrue(vm.state.value.manualSearch)
+    }
+
+    @Test
     fun network_failure_sets_error_and_manual_search_without_crashing() = runTest {
         val vm = ScanViewModel(FakeCardRepository(failing = true))
         vm.onTextRecognized(listOf(OcrLine("Furret", 0f, 40f), OcrLine("136/189", 100f, 40f)))
@@ -36,6 +47,33 @@ class ScanViewModelTest {
         assertTrue(vm.state.value.manualSearch)
         assertTrue(vm.state.value.candidates.isEmpty())
         assertFalse(vm.state.value.loading)
+    }
+
+    @Test
+    fun manual_search_failure_sets_error_and_manual_search() = runTest {
+        val vm = ScanViewModel(FakeCardRepository(failing = true))
+        vm.onManualSearch("Furret")
+        assertNotNull(vm.state.value.error)
+        assertTrue(vm.state.value.manualSearch)
+        assertFalse(vm.state.value.loading)
+    }
+
+    @Test
+    fun capture_error_sets_error_and_manual_search() = runTest {
+        val vm = ScanViewModel(FakeCardRepository())
+        vm.onCaptureError("Falha ao capturar. Tente novamente.")
+        assertEquals("Falha ao capturar. Tente novamente.", vm.state.value.error)
+        assertTrue(vm.state.value.manualSearch)
+        assertFalse(vm.state.value.loading)
+    }
+
+    @Test
+    fun cancellation_from_repository_is_rethrown_not_swallowed() = runTest {
+        val vm = ScanViewModel(FakeCardRepository(cancellation = true))
+        assertFailsWith<CancellationException> {
+            vm.onTextRecognized(listOf(OcrLine("Furret", 0f, 40f)))
+        }
+        assertNull(vm.state.value.error)
     }
 
     @Test
@@ -50,18 +88,19 @@ class ScanViewModelTest {
     private class FakeCardRepository(
         private val result: List<Card> = emptyList(),
         private val failing: Boolean = false,
+        private val cancellation: Boolean = false,
     ) : CardRepository {
-        override suspend fun searchByName(name: String): List<Card> {
-            if (failing) throw IOException("offline")
-            return result
-        }
+        override suspend fun searchByName(name: String): List<Card> = respond()
 
-        override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> {
-            if (failing) throw IOException("offline")
-            return result
-        }
+        override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> = respond()
 
         override suspend fun getCard(id: String): Card? = result.firstOrNull { it.id == id }
+
+        private fun respond(): List<Card> = when {
+            cancellation -> throw CancellationException("cancelled")
+            failing -> throw IOException("offline")
+            else -> result
+        }
     }
 
     private companion object {
