@@ -193,6 +193,67 @@ A ordem pode mudar. O usuário pediu a web como requisito. Ela depende do
 backend e da conta opcional, então entra depois de o loop essencial estar de
 pé, a não ser que o usuário a priorize.
 
+## Inventário de paridade com o Collectr
+
+Meta. Reproduzir todas as funções do Collectr, aberto e grátis. Cada item vira
+spec na sua fatia. Nada aqui é opcional no destino final.
+
+Scan e captura.
+
+- Foto da carta, identificação, confirmação de candidato.
+- Scan em lote, várias cartas seguidas sem parar.
+- Leitura de código de barras de produtos selados.
+- Busca manual quando o scan falha.
+- Identificação por imagem como reforço do OCR.
+
+Coleção e portfólio.
+
+- Grade e lista, filtros e ordenação, busca.
+- Quantidade, condição, variante (normal, holo, reverse, primeira edição, promo).
+- Preço pago, data, notas, etiquetas e pastas.
+- Cartas seladas, produtos selados e cartas graduadas com nota.
+- Lista de desejos.
+- Valor total, valor por item e por linha.
+- Moeda de exibição USD e EUR, câmbio.
+
+Preço e mercado.
+
+- Preços de TCGplayer e Cardmarket por variante.
+- Histórico e gráfico em 1D, 7D, 1M, 3M, 6M, ano e máximo.
+- Maiores altas e maiores baixas.
+- Alertas de preço.
+- Fonte de preço secundária opcional.
+
+Home e perfil.
+
+- Home com total, variação, gráfico e mais valiosas.
+- Perfil com totais de cartas, seladas, graduadas e valor.
+- Estatísticas e conquistas.
+- Histórico de transações e de scans.
+
+Ferramentas.
+
+- Analisador de troca, soma dos dois lados.
+- Ações em lote, edição e remoção em massa.
+- Exportar CSV e JSON e backup.
+- Compartilhar coleção.
+
+Conta e nuvem.
+
+- Conta opcional, sincronização entre web e Android.
+- Versão web com scan por câmera e coleção compartilhada.
+- Perfil público e social, se e quando fizer sentido.
+
+Distribuição.
+
+- Build e release de APK pelo GitHub Actions, gerando releases no GitHub.
+- Assinatura de release.
+
+Fora de escopo por decisão de produto.
+
+- Loja própria e intermediação de venda.
+- Compra de cartas dentro do app.
+
 ## Riscos
 
 1. **Precisão do scan.** Nenhuma API reconhece carta. O OCR pode errar nome ou
