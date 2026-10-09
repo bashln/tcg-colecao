@@ -14,3 +14,16 @@ local.properties
 *.keystore
 /app/build/
 /core/build/
+
+## Nada de config de agente ou IA entra no repo.
+.opencode/
+.claude/
+.agents/
+.cursor/
+.gemini/
+.codex/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.aider*
+
