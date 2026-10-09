@@ -25,8 +25,15 @@ class RoomCardRepository(
     }
 
     override suspend fun getCard(id: String): Card? {
-        cardDao.getById(id)?.let { return it.toCard(cardDao.pricesFor(id)) }
-        val remote = source.getCard(id) ?: return null
+        val cached = cardDao.getById(id)?.toCard(cardDao.pricesFor(id))
+        // Search results cache a brief (no attacks, no prices), so always refresh from the full
+        // endpoint and replace the cache; fall back to the cached copy only if the network fails.
+        val remote = try {
+            source.getCard(id)
+        } catch (e: Exception) {
+            null
+        }
+        if (remote == null) return cached
         persist(remote)
         return remote
     }
