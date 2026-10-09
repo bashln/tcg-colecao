@@ -10,20 +10,26 @@ Capturas de referência do Collectr ficam em `docs/reference/collectr/`.
 
 ## Resumo
 
-App Android gratuito e local-first, alternativa ao Collectr. O usuário
-escaneia uma carta física com a câmera, o app identifica a carta via API,
-mostra os dados dela e os preços de TCGplayer (USD) e Cardmarket (EUR), e
-guarda tudo numa coleção com valor total.
+App gratuito, alternativa ao Collectr, com duas frentes. Um app Android e
+uma versão web. O usuário escaneia uma carta física com a câmera, o app
+identifica a carta via API, mostra os dados dela e os preços de TCGplayer
+(USD) e Cardmarket (EUR), e guarda tudo numa coleção com valor total. As duas
+frentes compartilham a mesma coleção, então quem não tem Android usa a web e
+quem tem vê a própria coleção nos dois lugares. Ver a seção "Versão web e
+coleção compartilhada".
 
 ## Princípios inegociáveis
 
 1. **Grátis.** Sem paywall, sem scan limitado, sem anúncio.
-2. **Sem conta.** Nada de login. A coleção vive no device.
+2. **Conta opcional.** O uso local não exige login. A conta entra só para
+   compartilhar a coleção entre web e Android.
 3. **Local-first.** O app funciona offline para a coleção já baixada. A rede
-   só serve para identificar carta e puxar preço.
+   serve para identificar carta, puxar preço e sincronizar quando há conta.
 4. **Sem lock-in.** Export e backup da coleção em formato aberto.
 5. **Documentado e testado.** Toda fatia tem spec e testes. TDD no domínio.
 6. **Português primeiro.** UI em pt-BR e dados de carta em pt-BR via TCGdex.
+7. **Uma coleção, duas frentes.** Web e Android leem e escrevem a mesma
+   coleção. Nada de coleção ilhada por plataforma.
 
 ## Destino final, paridade funcional com o Collectr
 
@@ -42,12 +48,45 @@ Derivado das 5 capturas de tela mais o pedido do usuário.
 - **Trade Analyzer.** Compara os dois lados de uma troca somando valores.
 - **Bulk Actions.** Seleção múltipla e edição em lote.
 - **Export.** CSV e JSON, mais backup manual da coleção.
+- **Versão web.** Scan por câmera no navegador, coleção compartilhada com o
+  Android, e visualização da própria coleção de qualquer navegador.
 
 Fora de escopo por decisão de produto.
 
 - Social e feed.
 - Loja e venda de selados.
-- Contas, sincronização e nuvem.
+
+## Versão web e coleção compartilhada
+
+Requisito do usuário. Sem iPhone, e sem pagar a App Store, a web é a via para
+quem não tem Android. Quem usa a web escaneia a carta pela câmera do
+navegador e guarda no mesmo acervo do Android. Quem usa Android abre a web e
+vê a própria coleção. Tudo compartilhado.
+
+O que isso obriga.
+
+- Um backend com banco de dados de servidor e autenticação. Sem isso não há
+  como duas plataformas verem o mesmo acervo. Isto reverte a decisão D2
+  original, que era de coleção só no device.
+- O Android continua local-first. O Room passa a ser cache local e a
+  sincronização acontece quando há conta e rede. A coleção sem conta segue
+  funcionando local.
+- O scan da web precisa do mesmo cérebro do Android, parser, ranqueamento e
+  valoração. O caminho natural, dado que já escolhemos Kotlin, é Kotlin
+  Multiplatform no `:core`, com a UI web em Compose Multiplatform e OCR no
+  navegador.
+- Isto impõe uma regra sobre a S1. `:core` guarda só lógica pura e
+  multiplataforma. O que é específico de plataforma, Room e o engine HTTP do
+  JVM, fica atrás das interfaces de repositório, para depois trocar por um
+  banco e um engine de navegador sem reescrever o domínio.
+
+Decisões ainda em aberto, a confirmar com o usuário.
+
+- Backend gerenciado, por exemplo Supabase no plano grátis, contra backend
+  próprio. Supabase reduz custo e já traz autenticação.
+- Kotlin Multiplatform desde já, ou manter Android primeiro e extrair o
+  `:core` para KMP na fatia da web. Recomendação, manter a S1 focada no
+  Android e só então extrair, porque o `:core` já nasce sem Android.
 
 ## Fontes de dados
 
@@ -117,6 +156,11 @@ Cada fatia tem spec, plano e termina num app que roda.
 | S4 | Profile e stats, selados e graduadas | Backlog |
 | S5 | Bulk actions e export, backup | Backlog |
 | S6 | Market movers e trade analyzer | Backlog |
+| S7 | Versão web e sincronização compartilhada, backend e conta opcional | Requisito novo, a especificar |
+
+A ordem pode mudar. O usuário pediu a web como requisito. Ela depende do
+backend e da conta opcional, então entra depois de o loop essencial estar de
+pé, a não ser que o usuário a priorize.
 
 ## Riscos
 
@@ -129,16 +173,30 @@ Cada fatia tem spec, plano e termina num app que roda.
    crítica.
 4. **Consistência de variante.** Preço depende da variante (normal, holo,
    reverse). Mitigação, o usuário escolhe a variante ao salvar.
+5. **Sincronização e conflitos.** Web e Android escrevem na mesma coleção.
+   Mitigação, o backend terá que tratar escrita concorrente e o app manter a
+   coleção local como cache reconciliável.
+6. **Custo do backend.** A web compartilhada exige servidor e autenticação.
+   Mitigação, começar por um backend gerenciado no plano grátis e manter o
+   uso local sem conta como caminho sem custo.
 
 ## Registro de decisões
 
 - **D1.** Android nativo com Kotlin e Jetpack Compose. Motivo, melhor
   integração de câmera, ML Kit e vida útil.
-- **D2.** Local-first sem conta e sem backend. Motivo, custo zero e
-  simplicidade. Coleção em Room.
+- **D2.** **Superada por D7.** Local-first sem conta e sem backend. Motivo
+  original, custo zero e simplicidade. A coleção local em Room permanece como
+  cache; a conta opcional e o backend entram para compartilhar entre web e
+  Android.
 - **D3.** TCGdex como fonte primária. Motivo, pt-BR e os dois preços embutidos.
 - **D4.** pokemontcg.io fica como fallback opcional, desligado por padrão.
   Motivo, deprecação.
 - **D5.** Motor de scan inicial é OCR mais busca textual. Motivo, barato,
   on-device e sem infraestrutura. Matching de imagem fica para depois.
 - **D6.** Módulo `:core` puro e testável em JVM. Motivo, TDD rápido no domínio.
+- **D7.** Versão web com backend e conta opcional, coleção compartilhada com o
+  Android. Motivo, requisito do usuário para quem não tem iPhone. A coleção
+  local continua sendo a fonte quando não há conta. O `:core` é escrito sem
+  APIs de plataforma para virar Kotlin Multiplatform na fatia da web. Decisão
+  pendente de confirmação, o backend gerenciado contra próprio, e o momento
+  da extração para KMP.
