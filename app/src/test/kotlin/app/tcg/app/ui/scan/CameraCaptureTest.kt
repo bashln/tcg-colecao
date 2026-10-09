@@ -40,6 +40,8 @@ class CameraCaptureTest {
         assertEquals("Furret", lines.single().text)
         assertEquals(100f, lines.single().top)
         assertEquals(40f, lines.single().height)
+        assertEquals(0f, lines.single().left)
+        assertEquals(200f, lines.single().width)
     }
 
     @Test

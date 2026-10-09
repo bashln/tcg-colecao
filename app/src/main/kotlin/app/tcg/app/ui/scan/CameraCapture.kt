@@ -226,6 +226,8 @@ internal fun com.google.mlkit.vision.text.Text.toOcrLines(): List<OcrLine> =
                 text = line.text,
                 top = box?.top?.toFloat() ?: 0f,
                 height = box?.height()?.toFloat() ?: 0f,
+                left = box?.left?.toFloat() ?: 0f,
+                width = box?.width()?.toFloat() ?: 0f,
             )
         }
     }

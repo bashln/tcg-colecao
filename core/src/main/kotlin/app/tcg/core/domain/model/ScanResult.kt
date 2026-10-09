@@ -1,6 +1,12 @@
 package app.tcg.core.domain.model
 
-data class OcrLine(val text: String, val top: Float, val height: Float)
+data class OcrLine(
+    val text: String,
+    val top: Float,
+    val height: Float,
+    val left: Float = 0f,
+    val width: Float = 0f,
+)
 
 data class ParsedCardText(
     val name: String?, val collectorNumber: String?, val promoCode: String?,
