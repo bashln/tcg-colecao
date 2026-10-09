@@ -14,6 +14,32 @@ class OcrParserTest {
         assertEquals("136", r.collectorNumber)
     }
 
+    @Test fun extracts_collector_number_with_letter_o_as_zero() {
+        assertEquals("019", OcrParser.parse(lines("Charizard V", "D o19/189")).collectorNumber)
+        assertEquals("001", OcrParser.parse(lines("Bulbasaur", "GMEW o01/165O")).collectorNumber)
+        assertEquals("028", OcrParser.parse(lines("Darmanitan", "1 Do28/189")).collectorNumber)
+        assertEquals("024", OcrParser.parse(lines("Arbok ex", "GNEWP O24/165")).collectorNumber)
+        assertEquals("001", OcrParser.parse(lines("Butterfree V", "D oo1/189")).collectorNumber)
+    }
+
+    @Test fun extracts_collector_number_with_trailing_symbols_or_digits() {
+        assertEquals("029", OcrParser.parse(lines("Nidoran", "GMEW P 029/165O")).collectorNumber)
+        assertEquals("44", OcrParser.parse(lines("Voltorb", "llust. Atsuko Nishida 44/1460")).collectorNumber)
+    }
+
+    @Test fun extracts_isolated_collector_number_in_card_footer() {
+        val cardLines = listOf(
+            OcrLine("Furret", 30f, 40f),
+            OcrLine("HP 110", 30f, 40f, left = 450f),
+            OcrLine("Pancada", 500f, 30f),
+            OcrLine("Fraqueza x2", 710f, 20f),
+            OcrLine("Resistência -30", 710f, 20f),
+            OcrLine("136", 780f, 20f),
+            OcrLine("©2020 Pokémon", 808f, 10f),
+        )
+        assertEquals("136", OcrParser.parse(cardLines).collectorNumber)
+    }
+
     @Test fun trims_leading_zeros_from_number() {
         assertEquals("006", OcrParser.parse(lines("Charizard ex", "006/131")).collectorNumber)
         assertEquals("6", OcrParser.parse(lines("Charizard", "06/131")).collectorNumber)
