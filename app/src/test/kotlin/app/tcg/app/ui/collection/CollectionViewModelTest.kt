@@ -10,19 +10,48 @@ import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
 import app.tcg.core.domain.model.PriceSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestWatcher
+import org.junit.runner.Description
 
+@OptIn(ExperimentalCoroutinesApi::class)
+class MainDispatcherRule(
+    private val dispatcher: TestDispatcher = StandardTestDispatcher(),
+) : TestWatcher() {
+    override fun starting(description: Description) {
+        Dispatchers.setMain(dispatcher)
+    }
+
+    override fun finished(description: Description) {
+        Dispatchers.resetMain()
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class CollectionViewModelTest {
+
+    @get:Rule
+    val mainDispatcherRule = MainDispatcherRule()
 
     @Test fun total_is_zero_for_empty_collection() = runTest {
         val vm = CollectionViewModel(FakeCollectionRepository(emptyList()))
+        advanceUntilIdle()
         assertEquals(Money(0.0, Currency.USD), vm.state.value.total)
     }
 
     @Test fun total_sums_priced_entries_and_list_renders_card() = runTest {
         val vm = CollectionViewModel(FakeCollectionRepository(listOf(entryPricedAt(2.0, qty = 3))))
+        advanceUntilIdle()
         assertEquals(Money(6.0, Currency.USD), vm.state.value.total)
         assertEquals("Furret", vm.state.value.entries.first().card.name)
     }
@@ -30,6 +59,7 @@ class CollectionViewModelTest {
     @Test fun query_filters_by_name() = runTest {
         val vm = CollectionViewModel(FakeCollectionRepository(listOf(entryNamed("Furret"), entryNamed("Charizard"))))
         vm.onQuery("fur")
+        advanceUntilIdle()
         assertEquals(listOf("Furret"), vm.state.value.entries.map { it.card.name })
     }
 

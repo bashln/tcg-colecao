@@ -8,11 +8,11 @@ import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
 import app.tcg.core.domain.model.PriceSource
 import app.tcg.core.domain.valuation.Valuation
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 data class CollectionUiState(
@@ -25,27 +25,32 @@ class CollectionViewModel(
     private val repository: CollectionRepository,
 ) : ViewModel() {
 
-    private var allEntries: List<CollectionEntry> = emptyList()
+    private val allEntries = MutableStateFlow<List<CollectionEntry>>(emptyList())
+    private val query = MutableStateFlow("")
 
-    private val _state = MutableStateFlow(CollectionUiState())
-    val state: StateFlow<CollectionUiState> = _state.asStateFlow()
+    val state: StateFlow<CollectionUiState> =
+        combine(allEntries, query) { entries, text -> stateFor(entries, text) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = stateFor(emptyList(), ""),
+            )
 
     init {
-        // Unconfined keeps an already-available list resolved by the time the
-        // constructor returns; a real IO-backed repository still resumes later.
-        viewModelScope.launch(Dispatchers.Unconfined) {
-            allEntries = repository.list()
-            _state.update { stateFor(allEntries, it.query) }
+        viewModelScope.launch {
+            allEntries.value = repository.list()
         }
     }
 
     fun onQuery(text: String) {
-        _state.update { stateFor(allEntries, text) }
+        query.value = text
     }
 
-    private fun stateFor(entries: List<CollectionEntry>, query: String) = CollectionUiState(
-        entries = entries.filter { it.card.name.contains(query, ignoreCase = true) },
-        query = query,
-        total = Valuation.portfolioTotal(entries, PriceSource.TCGPLAYER),
-    )
+    private companion object {
+        fun stateFor(entries: List<CollectionEntry>, query: String) = CollectionUiState(
+            entries = entries.filter { it.card.name.contains(query, ignoreCase = true) },
+            query = query,
+            total = Valuation.portfolioTotal(entries, PriceSource.TCGPLAYER),
+        )
+    }
 }
