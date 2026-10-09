@@ -12,6 +12,8 @@ import app.tcg.core.domain.model.Money
 import app.tcg.core.domain.model.PriceSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -63,9 +65,26 @@ class CollectionViewModelTest {
         assertEquals(listOf("Furret"), vm.state.value.entries.map { it.card.name })
     }
 
+    @Test fun emitting_new_list_after_construction_updates_entries_and_total() = runTest {
+        val repository = FakeCollectionRepository(emptyList())
+        val vm = CollectionViewModel(repository)
+        advanceUntilIdle()
+        assertEquals(Money(0.0, Currency.USD), vm.state.value.total)
+
+        repository.entries.value = listOf(entryPricedAt(2.0, qty = 3))
+        advanceUntilIdle()
+
+        assertEquals("Furret", vm.state.value.entries.first().card.name)
+        assertEquals(Money(6.0, Currency.USD), vm.state.value.total)
+    }
+
     private class FakeCollectionRepository(
-        private val entries: List<CollectionEntry>,
+        initial: List<CollectionEntry>,
     ) : CollectionRepository {
+        val entries = MutableStateFlow(initial)
+
+        override fun observe(): Flow<List<CollectionEntry>> = entries
+
         override suspend fun add(
             card: Card,
             variant: CardVariant,
@@ -74,7 +93,7 @@ class CollectionViewModelTest {
             pricePaid: Money?,
         ): CollectionItem = error("not used")
 
-        override suspend fun list(): List<CollectionEntry> = entries
+        override suspend fun list(): List<CollectionEntry> = entries.value
 
         override suspend fun remove(itemId: String) = Unit
     }

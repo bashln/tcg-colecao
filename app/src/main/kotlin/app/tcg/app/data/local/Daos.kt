@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Condition
+import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
 @Dao
@@ -43,6 +44,10 @@ abstract class CollectionDao {
 
     @Query("SELECT * FROM collection_items ORDER BY addedAt DESC, id")
     abstract suspend fun listItems(): List<CollectionItemEntity>
+
+    @Transaction
+    @Query("SELECT * FROM collection_items ORDER BY addedAt DESC, id")
+    abstract fun observeItemsWithCard(): Flow<List<CollectionItemWithCard>>
 
     @Query("SELECT * FROM collection_items WHERE cardId = :cardId AND variant = :variant AND condition = :condition")
     abstract suspend fun getByKey(cardId: String, variant: CardVariant, condition: Condition): CollectionItemEntity?

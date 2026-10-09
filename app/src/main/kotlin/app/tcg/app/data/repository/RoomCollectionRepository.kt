@@ -13,6 +13,8 @@ import app.tcg.core.domain.model.CollectionEntry
 import app.tcg.core.domain.model.CollectionItem
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Money
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 class RoomCollectionRepository(
     private val collectionDao: CollectionDao,
@@ -46,6 +48,16 @@ class RoomCollectionRepository(
             CollectionEntry(item.toItem(), card.toCard(cardDao.pricesFor(item.cardId)))
         }
     }
+
+    override fun observe(): Flow<List<CollectionEntry>> =
+        collectionDao.observeItemsWithCard().map { rows ->
+            rows.map { row ->
+                CollectionEntry(
+                    row.item.toItem(),
+                    row.card.toCard(cardDao.pricesFor(row.card.id)),
+                )
+            }
+        }
 
     override suspend fun remove(itemId: String) {
         collectionDao.deleteById(itemId)

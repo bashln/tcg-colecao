@@ -10,6 +10,8 @@ import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
 import app.tcg.core.domain.model.PriceSource
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -57,6 +59,8 @@ class CardDetailViewModelTest {
         }
 
         override suspend fun list(): List<CollectionEntry> = emptyList()
+
+        override fun observe(): Flow<List<CollectionEntry>> = flowOf(emptyList())
 
         override suspend fun remove(itemId: String) = Unit
     }

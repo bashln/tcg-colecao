@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 data class CollectionUiState(
     val entries: List<CollectionEntry> = emptyList(),
@@ -25,22 +24,15 @@ class CollectionViewModel(
     private val repository: CollectionRepository,
 ) : ViewModel() {
 
-    private val allEntries = MutableStateFlow<List<CollectionEntry>>(emptyList())
     private val query = MutableStateFlow("")
 
     val state: StateFlow<CollectionUiState> =
-        combine(allEntries, query) { entries, text -> stateFor(entries, text) }
+        combine(repository.observe(), query) { entries, text -> stateFor(entries, text) }
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.Eagerly,
                 initialValue = stateFor(emptyList(), ""),
             )
-
-    init {
-        viewModelScope.launch {
-            allEntries.value = repository.list()
-        }
-    }
 
     fun onQuery(text: String) {
         query.value = text

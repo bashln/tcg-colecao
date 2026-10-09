@@ -3,6 +3,8 @@ package app.tcg.app.data.local
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.Embedded
+import androidx.room.Relation
 import app.tcg.core.domain.model.Attack
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Condition
@@ -55,4 +57,10 @@ data class CardPriceEntity(
     val avg7: Double?,
     val avg30: Double?,
     val updatedAt: String?,
+)
+
+/** Reactive row: a collection item joined to its mirrored card. */
+data class CollectionItemWithCard(
+    @Embedded val item: CollectionItemEntity,
+    @Relation(parentColumn = "cardId", entityColumn = "id") val card: CardEntity,
 )

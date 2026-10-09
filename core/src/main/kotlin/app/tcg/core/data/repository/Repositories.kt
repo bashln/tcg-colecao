@@ -6,6 +6,7 @@ import app.tcg.core.domain.model.CollectionEntry
 import app.tcg.core.domain.model.CollectionItem
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Money
+import kotlinx.coroutines.flow.Flow
 
 interface CardRepository {
     suspend fun searchByName(name: String): List<Card>
@@ -23,5 +24,9 @@ interface CollectionRepository {
     ): CollectionItem
 
     suspend fun list(): List<CollectionEntry>
+
+    /** Emits the current collection and re-emits whenever it changes. */
+    fun observe(): Flow<List<CollectionEntry>>
+
     suspend fun remove(itemId: String)
 }
