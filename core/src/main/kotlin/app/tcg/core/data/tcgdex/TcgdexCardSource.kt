@@ -23,11 +23,28 @@ class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSourc
     override suspend fun searchByName(name: String, language: String): List<Card> =
         search("$language/cards") { parameter("name", name) }
 
-    override suspend fun searchByNumber(setId: String?, collectorNumber: String, language: String): List<Card> =
-        search("$language/cards") {
-            setId?.let { parameter("set", it) }
-            parameter("localId", collectorNumber)
+    override suspend fun searchByNumber(setId: String?, collectorNumber: String, language: String): List<Card> {
+        // Printed collector numbers and the stored localId disagree on zero padding across sets,
+        // so an empty first query is retried with the number normalized.
+        for (number in localIdCandidates(collectorNumber)) {
+            val cards = search("$language/cards") {
+                setId?.let { parameter("set", it) }
+                parameter("localId", number)
+            }
+            if (cards.isNotEmpty()) return cards
         }
+        return emptyList()
+    }
+
+    private fun localIdCandidates(collectorNumber: String): List<String> {
+        val stripped = collectorNumber.trimStart('0').ifEmpty { "0" }
+        val candidates = mutableListOf(collectorNumber, stripped)
+        if (!collectorNumber.startsWith("0")) {
+            val padded = collectorNumber.padStart(3, '0')
+            if (padded != collectorNumber) candidates += padded
+        }
+        return candidates.distinct()
+    }
 
     override suspend fun getCard(id: String, language: String): Card? {
         val response = httpClient.get("$BASE_URL/$language/cards/$id")

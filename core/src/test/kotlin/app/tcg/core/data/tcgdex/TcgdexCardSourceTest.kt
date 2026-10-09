@@ -53,6 +53,29 @@ class TcgdexCardSourceTest {
     }
 
     @Test
+    fun search_by_number_retries_stripped_leading_zeros_after_empty_result() = runTest {
+        val requested = mutableListOf<String>()
+        val fixture = readFixture("furret.json")
+        val engine = MockEngine { request ->
+            val url = request.url.toString()
+            requested += url
+            val body = if (url.contains("localId=049")) "[]" else fixture
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val source = KtorTcgdexCardSource(
+            HttpClient(engine) {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            },
+        )
+
+        val cards = source.searchByNumber(null, "049")
+
+        assertEquals("Furret", cards.single().name)
+        assertTrue(requested[0].contains("localId=049"), "first query should be the given number")
+        assertTrue(requested[1].contains("localId=49"), "second query should strip leading zeros")
+    }
+
+    @Test
     fun card_without_pricing_maps_to_empty_price_list() = runTest {
         assertTrue(source("card_without_pricing.json").getCard("x")!!.prices.isEmpty())
     }
