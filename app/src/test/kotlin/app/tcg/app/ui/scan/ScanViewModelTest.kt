@@ -94,6 +94,18 @@ class ScanViewModelTest {
     }
 
     @Test
+    fun name_and_number_merge_dedupes_same_card_and_ranks_it_first() = runTest {
+        val target = card("sv03.5-001", "Bulbasaur", "1", 70)
+        val other = card("sv04-001", "Charmander", "001", 70)
+        val repo = SplitCardRepository(byName = listOf(target), byNumber = listOf(other, target))
+        val vm = ScanViewModel(repo)
+        vm.onTextRecognized(listOf(OcrLine("Bulbasaur", 0f, 40f), OcrLine("001/198", 100f, 40f)))
+        val ids = vm.state.value.candidates.map { it.value.id }
+        assertEquals(1, ids.count { it == "sv03.5-001" })
+        assertEquals("sv03.5-001", ids.first())
+    }
+
+    @Test
     fun name_only_searches_by_name() = runTest {
         val repo = RecordingCardRepository(listOf(card("z", "Zubat", "049", 40)))
         val vm = ScanViewModel(repo)
@@ -125,6 +137,18 @@ class ScanViewModelTest {
         }
 
         override suspend fun getCard(id: String): Card? = result.firstOrNull { it.id == id }
+    }
+
+    private class SplitCardRepository(
+        private val byName: List<Card>,
+        private val byNumber: List<Card>,
+    ) : CardRepository {
+        override suspend fun searchByName(name: String): List<Card> = byName
+
+        override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> = byNumber
+
+        override suspend fun getCard(id: String): Card? =
+            (byName + byNumber).firstOrNull { it.id == id }
     }
 
     private class FakeCardRepository(

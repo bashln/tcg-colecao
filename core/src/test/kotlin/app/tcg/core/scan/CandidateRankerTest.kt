@@ -29,4 +29,24 @@ class CandidateRankerTest {
         val result = CandidateRanker.rank(parsed, listOf(card("a", "Furret", "1", 110)))
         assertTrue(result.first().score > 0)
     }
+
+    @Test fun zero_padded_parsed_number_exactly_matches_unpadded_card_number() {
+        val parsed = ParsedCardText("Charmander", "001", null, null, "")
+        val result = CandidateRanker.rank(parsed, listOf(card("a", "Squirtle", "1", null)))
+        assertEquals(4, result.first().score)
+    }
+
+    @Test fun unpadded_parsed_number_exactly_matches_zero_padded_card_number() {
+        val parsed = ParsedCardText("Charmander", "1", null, null, "")
+        val result = CandidateRanker.rank(parsed, listOf(card("a", "Squirtle", "001", null)))
+        assertEquals(4, result.first().score)
+    }
+
+    @Test fun padded_parsed_number_ranks_unpadded_card_over_same_number_other_set() {
+        val parsed = ParsedCardText("Bulbasaur", "001", null, 70, "")
+        val result = CandidateRanker.rank(parsed, listOf(
+            card("other", "Charmander", "001", 70),
+            card("target", "Bulbasaur", "1", 70)))
+        assertEquals("target", result.first().value.id)
+    }
 }

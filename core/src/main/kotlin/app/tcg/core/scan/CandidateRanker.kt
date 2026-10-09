@@ -10,7 +10,7 @@ object CandidateRanker {
 
     private fun score(parsed: ParsedCardText, card: Card): Int {
         var score = 0
-        if (parsed.collectorNumber != null && parsed.collectorNumber.equals(card.collectorNumber, ignoreCase = true)) {
+        if (parsed.collectorNumber != null && sameCollectorNumber(parsed.collectorNumber, card.collectorNumber)) {
             score += 4
         }
         if (parsed.hp != null && parsed.hp == card.hp) {
@@ -24,4 +24,12 @@ object CandidateRanker {
         }
         return score
     }
+
+    // TCGdex localIds disagree on zero padding across sets ("1" vs the printed "001"), so a
+    // collector-number match must compare the numeric value, not the literal string.
+    private fun sameCollectorNumber(parsed: String, stored: String): Boolean =
+        parsed.equals(stored, ignoreCase = true) || normalizeNumber(parsed) == normalizeNumber(stored)
+
+    private fun normalizeNumber(value: String): String =
+        value.trimStart('0').ifEmpty { "0" }
 }
