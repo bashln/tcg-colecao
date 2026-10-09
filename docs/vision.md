@@ -181,7 +181,7 @@ Cada fatia tem spec, plano e termina num app que roda.
 
 | Fatia | Entrega | Estado |
 | --- | --- | --- |
-| S1 | Loop essencial, scan, API, preço, salvar e listar | Spec em andamento |
+| S1 | Loop essencial, scan, API, preço, salvar e listar | Implementado e revisado. Pendente verificação em aparelho |
 | S2 | Valoração multi-mercado, USD/EUR, câmbio, variante | Backlog |
 | S3 | Snapshots de preço, Home, gráfico, Most Valuable | Backlog |
 | S4 | Profile e stats, selados e graduadas | Backlog |
