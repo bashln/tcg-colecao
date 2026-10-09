@@ -45,11 +45,9 @@ class ScanViewModel(
         val collectorNumber = parsed.collectorNumber
         val name = parsed.name
         val candidates = try {
-            when {
-                name != null -> repository.searchByName(name)
-                collectorNumber != null -> repository.searchByNumber(null, collectorNumber)
-                else -> emptyList()
-            }
+            val byName = if (name != null) repository.searchByName(name) else emptyList()
+            val byNumber = if (collectorNumber != null) repository.searchByNumber(null, collectorNumber) else emptyList()
+            (byName + byNumber).distinctBy { it.id }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {

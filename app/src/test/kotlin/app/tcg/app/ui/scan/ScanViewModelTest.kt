@@ -86,11 +86,11 @@ class ScanViewModelTest {
     }
 
     @Test
-    fun name_and_number_search_by_name() = runTest {
+    fun name_and_number_searches_both_and_combines() = runTest {
         val repo = RecordingCardRepository(listOf(card("z", "Zubat", "049", 40)))
         val vm = ScanViewModel(repo)
         vm.onTextRecognized(listOf(OcrLine("Zubat", 0f, 40f), OcrLine("049/086", 100f, 40f)))
-        assertEquals(listOf("name"), repo.calls)
+        assertEquals(listOf("name", "number"), repo.calls)
     }
 
     @Test
