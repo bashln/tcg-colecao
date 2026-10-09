@@ -12,11 +12,13 @@ import app.tcg.core.domain.model.CardPrice
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.PriceSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -85,6 +87,18 @@ class CardRepositoryTest {
     fun get_card_returns_null_when_local_and_network_miss() = runTest {
         source.getResult = null
         assertNull(repo.getCard("missing"))
+    }
+
+    @Test
+    fun get_card_rethrows_cancellation_instead_of_swallowing_it() = runTest {
+        source.getError = CancellationException("cancelled")
+
+        try {
+            repo.getCard("swsh3-136")
+            fail("CancellationException should propagate so the caller can stop")
+        } catch (_: CancellationException) {
+            // expected: cancellation is not an offline fallback
+        }
     }
 
     @Test

@@ -6,6 +6,7 @@ import app.tcg.app.data.local.toEntity
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.tcgdex.TcgdexCardSource
 import app.tcg.core.domain.model.Card
+import kotlinx.coroutines.CancellationException
 
 class RoomCardRepository(
     private val cardDao: CardDao,
@@ -30,6 +31,8 @@ class RoomCardRepository(
         // endpoint and replace the cache; fall back to the cached copy only if the network fails.
         val remote = try {
             source.getCard(id)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             null
         }
