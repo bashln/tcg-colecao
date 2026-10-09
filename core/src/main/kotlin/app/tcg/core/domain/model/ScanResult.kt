@@ -14,11 +14,3 @@ data class ParsedCardText(
 )
 
 data class Scored<T>(val value: T, val score: Int)
-
-data class ScanResult(
-    val rawText: String,
-    val collectorNumber: String?,
-    val name: String?,
-    val card: Card?,
-    val confidence: Double,
-)
