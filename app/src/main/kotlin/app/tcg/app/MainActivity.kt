@@ -3,8 +3,9 @@ package app.tcg.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
+import androidx.activity.enableEdgeToEdge
 import app.tcg.app.ui.nav.AppNav
+import app.tcg.app.ui.theme.TcgTheme
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import dagger.hilt.android.AndroidEntryPoint
@@ -20,9 +21,10 @@ class MainActivity : ComponentActivity() {
     lateinit var collectionRepository: CollectionRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            TcgTheme {
                 AppNav(
                     cardRepository = cardRepository,
                     collectionRepository = collectionRepository,
