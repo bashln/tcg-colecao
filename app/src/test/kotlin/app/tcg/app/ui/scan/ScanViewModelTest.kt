@@ -106,6 +106,47 @@ class ScanViewModelTest {
     }
 
     @Test
+    fun name_and_number_keeps_only_matching_number_results_and_caps_at_ten() = runTest {
+        val nameResult = card("name-1", "Frogadier", "001", 120)
+        val matchingNumbers = (2..12).map { card("num-$it", "Frogadier", "001", 120) }
+        val unrelatedNumbers = (1..5).map { card("other-$it", "Charmander", "001", 60) }
+        val repo = SplitCardRepository(
+            byName = listOf(nameResult),
+            byNumber = matchingNumbers + unrelatedNumbers,
+        )
+        val vm = ScanViewModel(repo)
+        vm.onTextRecognized(listOf(OcrLine("Frogadier", 0f, 40f), OcrLine("001/198", 100f, 40f)))
+        assertEquals(10, vm.state.value.candidates.size)
+        assertEquals(setOf("Frogadier"), vm.state.value.candidates.map { it.value.name }.toSet())
+    }
+
+    @Test
+    fun name_and_number_falls_back_to_full_merge_when_nothing_name_matches() = runTest {
+        val unrelated = listOf(card("a", "Charmander", "001", 60), card("b", "Bulbasaur", "001", 70))
+        val repo = SplitCardRepository(byName = emptyList(), byNumber = unrelated)
+        val vm = ScanViewModel(repo)
+        vm.onTextRecognized(listOf(OcrLine("Frogadier", 0f, 40f), OcrLine("001/198", 100f, 40f)))
+        assertEquals(unrelated.map { it.id }.toSet(), vm.state.value.candidates.map { it.value.id }.toSet())
+    }
+
+    @Test
+    fun name_only_keeps_candidates() = runTest {
+        val repo = SplitCardRepository(byName = listOf(card("z", "Zubat", "049", 40)), byNumber = emptyList())
+        val vm = ScanViewModel(repo)
+        vm.onManualSearch("Zubat")
+        assertEquals(listOf("Zubat"), vm.state.value.candidates.map { it.value.name })
+    }
+
+    @Test
+    fun number_only_keeps_all_number_results_even_without_name_match() = runTest {
+        val results = listOf(card("a", "Charmander", "049", 60), card("b", "Squirtle", "049", 60))
+        val repo = SplitCardRepository(byName = emptyList(), byNumber = results)
+        val vm = ScanViewModel(repo)
+        vm.onTextRecognized(listOf(OcrLine("049/086", 100f, 40f)))
+        assertEquals(results.map { it.id }.toSet(), vm.state.value.candidates.map { it.value.id }.toSet())
+    }
+
+    @Test
     fun name_only_searches_by_name() = runTest {
         val repo = RecordingCardRepository(listOf(card("z", "Zubat", "049", 40)))
         val vm = ScanViewModel(repo)

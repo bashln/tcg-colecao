@@ -44,10 +44,12 @@ class ScanViewModel(
         _state.update { it.copy(loading = true, error = null) }
         val collectorNumber = parsed.collectorNumber
         val name = parsed.name
-        val candidates = try {
+        val ranked = try {
             val byName = if (name != null) repository.searchByName(name) else emptyList()
             val byNumber = if (collectorNumber != null) repository.searchByNumber(null, collectorNumber) else emptyList()
-            (byName + byNumber).distinctBy { it.id }
+            val filtered = byName + byNumber.filter { CandidateRanker.nameMatches(name, it.name) }
+            val merged = if (filtered.isEmpty()) byName + byNumber else filtered
+            CandidateRanker.rank(parsed, merged.distinctBy { it.id }).take(CANDIDATE_LIMIT)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -60,7 +62,6 @@ class ScanViewModel(
             }
             return
         }
-        val ranked = CandidateRanker.rank(parsed, candidates)
         _state.update {
             it.copy(
                 candidates = ranked,
@@ -69,5 +70,9 @@ class ScanViewModel(
                 manualSearch = ranked.isEmpty(),
             )
         }
+    }
+
+    private companion object {
+        const val CANDIDATE_LIMIT = 10
     }
 }

@@ -24,10 +24,21 @@ object CandidateRanker {
         val name = parsed.name ?: return score
         if (name.equals(card.name, ignoreCase = true)) {
             score += 3
-        } else if (name.contains(card.name, ignoreCase = true) || card.name.contains(name, ignoreCase = true)) {
+        } else if (nameMatches(name, card.name)) {
             score += 1
         }
         return score
+    }
+
+    /**
+     * Whether a parsed name and a card name refer to the same card. Shared with the scan
+     * candidate filter so relevance and ranking never disagree on what a name match means.
+     */
+    fun nameMatches(parsedName: String?, cardName: String): Boolean {
+        val name = parsedName ?: return false
+        return name.equals(cardName, ignoreCase = true) ||
+            name.contains(cardName, ignoreCase = true) ||
+            cardName.contains(name, ignoreCase = true)
     }
 
     // TCGdex localIds disagree on zero padding across sets ("1" vs the printed "001"), so a

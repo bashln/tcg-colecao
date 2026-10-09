@@ -456,11 +456,13 @@ private fun CandidateCard(card: Card, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(
-                    text = formatMoney(price) ?: stringResource(R.string.common_no_price),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                formatMoney(price)?.let { formatted ->
+                    Text(
+                        text = formatted,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             Icon(
                 imageVector = Icons.Outlined.ChevronRight,
