@@ -169,4 +169,70 @@ class OcrParserTest {
         assertEquals("Zubat", r.name)
         assertEquals("049", r.collectorNumber)
     }
+
+    @Test fun removes_stage_prefix_variations_with_ocr_noise() {
+        assertEquals("Celebi V", OcrParser.parse(lines("eASICO Celebi V", "HP 180")).name)
+        assertEquals("Victini V", OcrParser.parse(lines("eAsICo) Victini V", "HP 190")).name)
+        assertEquals("Banette", OcrParser.parse(lines("eSTAGIOD Banette", "HP 100")).name)
+        assertEquals("Banette", OcrParser.parse(lines("D Banette", "HP 100")).name)
+    }
+
+    @Test fun recovers_vmax_suffix_from_rule_or_stage() {
+        val kyurem = listOf(
+            OcrLine("VMAX", 30f, 25f),
+            OcrLine("KyuremVx", 30f, 50f),
+            OcrLine("Evolui de Kyurem V", 80f, 15f),
+            OcrLine("Regra VMAX Quando seu Pokémon VMAX é Nocauteado", 750f, 20f),
+        )
+        assertEquals("Kyurem VMAX", OcrParser.parse(kyurem).name)
+    }
+
+    @Test fun recovers_gx_suffix_from_tag_team_or_attack() {
+        val celebiVenusaur = listOf(
+            OcrLine("BÁSICO", 40f, 15f),
+            OcrLine("Celebi e Venusaur", 35f, 40f),
+            OcrLine("ALIADOS", 90f, 17f),
+            OcrLine("Perene GX", 570f, 25f),
+            OcrLine("Quando seus ALIADOS são Nocauteados, seu oponente pega 3 cartas de Prêmio.", 750f, 15f),
+        )
+        assertEquals("Celebi e Venusaur GX", OcrParser.parse(celebiVenusaur).name)
+    }
+
+    @Test fun recovers_ex_suffix_from_ek_typo() {
+        val banette = listOf(
+            OcrLine("Banetteek", 30f, 40f),
+            OcrLine("Regra dos Pokémon ex", 740f, 15f),
+        )
+        assertEquals("Banette ex", OcrParser.parse(banette).name)
+    }
+
+    @Test fun recovers_collector_number_when_one_fuses_with_slash() {
+        val lines = listOf(
+            OcrLine("Oddish", 35f, 30f),
+            OcrLine("o0/196", 776f, 20f),
+        )
+        assertEquals("001", OcrParser.parse(lines).collectorNumber)
+    }
+
+    @Test fun recovers_fused_collector_number_without_slash_in_footer() {
+        val lines = listOf(
+            OcrLine("Aspirador Perdido", 60f, 40f),
+            OcrLine("217196 *", 776f, 22f),
+            OcrLine("©2022 Pokémon", 808f, 10f),
+        )
+        assertEquals("217", OcrParser.parse(lines).collectorNumber)
+    }
+
+    @Test fun ignores_mid_card_attack_damage_for_footer_number() {
+        val lines = listOf(
+            OcrLine("Oddish", 35f, 30f),
+            OcrLine("Aríete", 533f, 24f),
+            OcrLine("30", 534f, 24f, left = 520f),
+            OcrLine("Fraqueza x2", 713f, 15f),
+            OcrLine("Recuo", 716f, 10f),
+            OcrLine("©2022 Pokémon", 808f, 10f),
+        )
+        assertNull(OcrParser.parse(lines).collectorNumber)
+    }
 }
+

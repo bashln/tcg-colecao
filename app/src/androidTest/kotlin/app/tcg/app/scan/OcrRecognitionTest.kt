@@ -77,15 +77,15 @@ class OcrRecognitionTest {
             val bitmap = context.assets.open("${dataset.dir}/${card.file}").use {
                 BitmapFactory.decodeStream(it)
             }
-            val parsed = try {
-                val text = Tasks.await(recognizer.process(InputImage.fromBitmap(bitmap, 0)))
-                OcrParser.parse(text.toOcrLines())
+            val text = try {
+                Tasks.await(recognizer.process(InputImage.fromBitmap(bitmap, 0)))
             } catch (e: Exception) {
                 println("${dataset.cardTag} ${card.file} -> ERROR ${e.message}")
                 failures += "${card.file}: OCR error ${e.message} | expected=${card.name}/${card.localId}"
                 continue
             }
-
+            val ocrLines = text.toOcrLines()
+            val parsed = OcrParser.parse(ocrLines)
             val nameOK = parsed.name?.trim()?.equals(card.name.trim(), ignoreCase = true) == true
             val numberOK = normalizeNumber(parsed.collectorNumber) == normalizeNumber(card.localId)
             if (nameOK) nameHits++
@@ -97,6 +97,8 @@ class OcrRecognitionTest {
                     "| expected=${card.name}/${card.localId} | nameOK=$nameOK numOK=$numberOK"
             )
             if (!nameOK || !numberOK) {
+                println("DEBUG_LINES ${card.file}:")
+                ocrLines.forEach { println("   [top=${it.top}, left=${it.left}, h=${it.height}] '${it.text}'") }
                 failures += "${card.file}: extracted name='${parsed.name}' num='${parsed.collectorNumber}' " +
                     "| expected name='${card.name}' num='${card.localId}'"
             }

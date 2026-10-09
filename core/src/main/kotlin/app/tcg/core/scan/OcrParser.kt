@@ -4,7 +4,8 @@ import app.tcg.core.domain.model.OcrLine
 import app.tcg.core.domain.model.ParsedCardText
 
 object OcrParser {
-    private val SLASH_NUMBER = Regex("""(?i)(?:^|[^\d/])([0-9oO]{1,3})\s*/\s*([0-9oO]{1,4})""")
+    private val SLASH_NUMBER = Regex("""(?i)(?:^|[^\d/])([0-9oO]{1,3})\s*[/|]\s*([0-9oO]{1,4})""")
+    private val CONCAT_COLLECTOR_NUMBER = Regex("""(?i)\b([0-9]{2,3})([0-9]{3})\b""")
     private val ISOLATED_NUMBER = Regex("""(?i)(?:^|[\sA-Z])([0-9]{1,3})(?:[\s*★◆●▲]|\b|$)""")
     private val DAMAGE_OR_MODIFIER = Regex("""[+xX-]\s*\d+|\d+\s*[+xX-]""")
     private val YEAR = Regex("""\b(19\d{2}|20\d{2})\b""")
@@ -17,7 +18,8 @@ object OcrParser {
         "BÁSICO", "BASICO", "ESTÁGIO 1", "ESTAGIO 1", "ESTÁGIO 2", "ESTAGIO 2",
         "ESTÁGIO1", "ESTAGIO1", "ESTÁGIO2", "ESTAGIO2", "E5TÁGIO1", "STÁGIO", "GASICO", "ASICO", "BASILD",
     )
-    private val STAGE_PREFIX = Regex("""(?i)^([BG]?ASIC[OAD]|E[5S]T[ÁA]GIO[L12]?|STAGE\s*[12]?)\s*""")
+    private val STAGE_PREFIX = Regex("""(?i)^([BEG80]?ASIC[OAD0-9]?|E?[5S]T[ÁA]GIO[L12DIO0-9]?|STAGE\s*[12]?)[):.\-_]?\s*""")
+    private val REGULATION_MARK_PREFIX = Regex("""^[A-Z]\s+(?=[A-Za-z]{2})""")
     private val TRAILING_HP = Regex("""\s*\d{2,3}$""")
     private val SUFFIX_SPACE = Regex("""([a-z])(V|ex)\b""")
 
@@ -45,7 +47,9 @@ object OcrParser {
         val fromSlash = lines.firstNotNullOfOrNull { line ->
             SLASH_NUMBER.find(line.text)?.let { match ->
                 val raw = match.groupValues[1].replace('o', '0', ignoreCase = true)
-                if (raw.all { it == '0' }) null else normalizeCollectorNumber(raw)
+                // When "1" fuses with slash (e.g. "o0/196" instead of "001/196"), recover as "001"
+                val numStr = if (raw.all { it == '0' }) "001" else raw
+                normalizeCollectorNumber(numStr)
             }
         }
         if (fromSlash != null) return fromSlash
@@ -54,7 +58,7 @@ object OcrParser {
 
         val maxBottom = lines.maxOfOrNull { it.top + it.height } ?: 0f
         val bottomLines = if (maxBottom > 0f) {
-            lines.filter { it.top >= maxBottom * 0.65f }
+            lines.filter { it.top >= maxBottom * 0.78f }
         } else {
             lines
         }
@@ -62,6 +66,10 @@ object OcrParser {
         for (line in bottomLines.reversed()) {
             val text = line.text.trim()
             if (isBottomNoise(text)) continue
+            CONCAT_COLLECTOR_NUMBER.find(text)?.let { match ->
+                val numStr = match.groupValues[1]
+                return normalizeCollectorNumber(numStr)
+            }
             val match = ISOLATED_NUMBER.find(text) ?: continue
             val numStr = match.groupValues[1]
             if (numStr.all { it == '0' }) continue
@@ -77,6 +85,7 @@ object OcrParser {
         if (upper.contains("FRAQUEZA") || upper.contains("RESISTÊNCIA") || upper.contains("RECUO") || upper.contains("RECUAR")) return true
         if (upper.contains("REGRA") || upper.contains("PRÊMIO") || upper.contains("PREMIO")) return true
         if (upper.startsWith("LLUST") || upper.startsWith("LOST") || upper.startsWith("LUST") || upper.startsWith("ILUS")) return true
+        if (upper.contains("APOIADOR") || upper.contains("SUPPORTER") || upper.contains("BARALHO") || upper.contains("DECK")) return true
         return false
     }
 
@@ -109,6 +118,7 @@ object OcrParser {
 
     private fun cleanNameCandidate(text: String): String {
         var s = STAGE_PREFIX.replace(text.trim(), "").trim()
+        s = REGULATION_MARK_PREFIX.replace(s, "").trim()
         s = TRAILING_HP.replace(s, "").trim()
         return s
     }
@@ -120,18 +130,22 @@ object OcrParser {
         s = s.replace(Regex("""(?<=[a-z])X\b"""), " GX")
 
         val ruleText = allLines.joinToString(" ") { it.text }
-        if (Regex("""(?i)Regra.*GX""").containsMatchIn(ruleText)) {
-            if (!s.endsWith(" GX", ignoreCase = true)) s = "$s GX"
+        val isVmax = Regex("""(?i)Regra.*VMAX|Quando seu Pokémon VMAX\b|\bVMAX\b""").containsMatchIn(ruleText)
+        if (isVmax) {
+            s = s.replace(Regex("""(?i)\s*(VMAX|Vx|VM|V)$"""), "").trim()
+            s = "$s VMAX"
+        } else if (Regex("""(?i)Regra.*GX|ALIADOS|ataque\s*GX|\bGX\b""").containsMatchIn(ruleText)) {
+            s = s.replace(Regex("""(?i)\s*GX$"""), "").trim()
+            s = "$s GX"
         } else if (Regex("""(?i)Regra\s*V\b|Quando seu Pokémon V é Nocauteado""").containsMatchIn(ruleText)) {
-            if (!s.endsWith(" V", ignoreCase = true)) s = "$s V"
+            s = s.replace(Regex("""(?i)\s*V$"""), "").trim()
+            s = "$s V"
         } else if (Regex("""(?i)Regra.*Pokémon\s*ex\b|Quando seu Pokémon eX""").containsMatchIn(ruleText)) {
-            if (s.endsWith(" e", ignoreCase = true)) {
-                s = s.dropLast(2) + " ex"
-            } else if (!s.endsWith(" ex", ignoreCase = true)) {
-                s = "$s ex"
-            }
+            s = s.replace(Regex("""(?i)\s*(ex|ek|eX|e)$"""), "").trim()
+            s = "$s ex"
         } else if (Regex("""(?i)Regra.*Pokémon-EX\b""").containsMatchIn(ruleText)) {
-            if (!s.endsWith(" EX", ignoreCase = true)) s = "$s EX"
+            s = s.replace(Regex("""(?i)\s*EX$"""), "").trim()
+            s = "$s EX"
         }
 
         if (s.endsWith("lI")) {
