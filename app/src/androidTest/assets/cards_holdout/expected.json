@@ -1,162 +1,202 @@
 {
   "sm9-1.png": {
     "localId": "1",
-    "name": "Celebi e Venusaur GX"
+    "name": "Celebi e Venusaur GX",
+    "id": "sm9-1"
   },
   "sm9-109.png": {
     "localId": "109",
-    "name": "Aegislash"
+    "name": "Aegislash",
+    "id": "sm9-109"
   },
   "sm9-131.png": {
     "localId": "131",
-    "name": "Lugia"
+    "name": "Lugia",
+    "id": "sm9-131"
   },
   "sm9-153.png": {
     "localId": "153",
-    "name": "Etiqueta de Retorno"
+    "name": "Etiqueta de Retorno",
+    "id": "sm9-153"
   },
   "sm9-174.png": {
     "localId": "174",
-    "name": "Hospitalidade da Érica"
+    "name": "Hospitalidade da Érica",
+    "id": "sm9-174"
   },
   "sm9-196.png": {
     "localId": "196",
-    "name": "Comunicação Pokémon"
+    "name": "Comunicação Pokémon",
+    "id": "sm9-196"
   },
   "sm9-23.png": {
     "localId": "23",
-    "name": "Squirtle"
+    "name": "Squirtle",
+    "id": "sm9-23"
   },
   "sm9-44.png": {
     "localId": "44",
-    "name": "Blitzle"
+    "name": "Blitzle",
+    "id": "sm9-44"
   },
   "sm9-66.png": {
     "localId": "66",
-    "name": "Mr. Mime"
+    "name": "Mr. Mime",
+    "id": "sm9-66"
   },
   "sm9-88.png": {
     "localId": "88",
-    "name": "Absol"
+    "name": "Absol",
+    "id": "sm9-88"
   },
   "sv01-001.png": {
     "localId": "001",
-    "name": "Pineco"
+    "name": "Pineco",
+    "id": "sv01-001"
   },
   "sv01-030.png": {
     "localId": "030",
-    "name": "Growlithe"
+    "name": "Growlithe",
+    "id": "sv01-030"
   },
   "sv01-058.png": {
     "localId": "058",
-    "name": "Cetoddle"
+    "name": "Cetoddle",
+    "id": "sv01-058"
   },
   "sv01-087.png": {
     "localId": "087",
-    "name": "Shuppet"
+    "name": "Shuppet",
+    "id": "sv01-087"
   },
   "sv01-115.png": {
     "localId": "115",
-    "name": "Sandile"
+    "name": "Sandile",
+    "id": "sv01-115"
   },
   "sv01-144.png": {
     "localId": "144",
-    "name": "Chansey"
+    "name": "Chansey",
+    "id": "sv01-144"
   },
   "sv01-172.png": {
     "localId": "172",
-    "name": "Busca de Energia"
+    "name": "Busca de Energia",
+    "id": "sv01-172"
   },
   "sv01-201.png": {
     "localId": "201",
-    "name": "Toedscool"
+    "name": "Toedscool",
+    "id": "sv01-201"
   },
   "sv01-229.png": {
     "localId": "229",
-    "name": "Banette ex"
+    "name": "Banette ex",
+    "id": "sv01-229"
   },
   "sv01-258.png": {
     "localId": "258",
-    "name": "Energia Fighting Básica"
+    "name": "Energia Fighting Básica",
+    "id": "sv01-258"
   },
   "swsh1-1.png": {
     "localId": "1",
-    "name": "Celebi V"
+    "name": "Celebi V",
+    "id": "swsh1-1"
   },
   "swsh1-120.png": {
     "localId": "120",
-    "name": "Sableye V"
+    "name": "Sableye V",
+    "id": "swsh1-120"
   },
   "swsh1-144.png": {
     "localId": "144",
-    "name": "Noctowl"
+    "name": "Noctowl",
+    "id": "swsh1-144"
   },
   "swsh1-168.png": {
     "localId": "168",
-    "name": "Fruta Lum"
+    "name": "Fruta Lum",
+    "id": "swsh1-168"
   },
   "swsh1-192.png": {
     "localId": "192",
-    "name": "Indeedee V"
+    "name": "Indeedee V",
+    "id": "swsh1-192"
   },
   "swsh1-216.png": {
     "localId": "216",
-    "name": "Bola Rápida"
+    "name": "Bola Rápida",
+    "id": "swsh1-216"
   },
   "swsh1-25.png": {
     "localId": "25",
-    "name": "Victini V"
+    "name": "Victini V",
+    "id": "swsh1-25"
   },
   "swsh1-49.png": {
     "localId": "49",
-    "name": "Lapras V"
+    "name": "Lapras V",
+    "id": "swsh1-49"
   },
   "swsh1-73.png": {
     "localId": "73",
-    "name": "Yamper"
+    "name": "Yamper",
+    "id": "swsh1-73"
   },
   "swsh1-97.png": {
     "localId": "97",
-    "name": "Rhyhorn"
+    "name": "Rhyhorn",
+    "id": "swsh1-97"
   },
   "swsh11-001.png": {
     "localId": "001",
-    "name": "Oddish"
+    "name": "Oddish",
+    "id": "swsh11-001"
   },
   "swsh11-025.png": {
     "localId": "025",
-    "name": "Lampent"
+    "name": "Lampent",
+    "id": "swsh11-025"
   },
   "swsh11-049.png": {
     "localId": "049",
-    "name": "Kyurem VMAX"
+    "name": "Kyurem VMAX",
+    "id": "swsh11-049"
   },
   "swsh11-073.png": {
     "localId": "073",
-    "name": "Banette"
+    "name": "Banette",
+    "id": "swsh11-073"
   },
   "swsh11-097.png": {
     "localId": "097",
-    "name": "Makuhita"
+    "name": "Makuhita",
+    "id": "swsh11-097"
   },
   "swsh11-121.png": {
     "localId": "121",
-    "name": "Inkay"
+    "name": "Inkay",
+    "id": "swsh11-121"
   },
   "swsh11-145.png": {
     "localId": "145",
-    "name": "Ambipom"
+    "name": "Ambipom",
+    "id": "swsh11-145"
   },
   "swsh11-169.png": {
     "localId": "169",
-    "name": "Volo"
+    "name": "Volo",
+    "id": "swsh11-169"
   },
   "swsh11-193.png": {
     "localId": "193",
-    "name": "Dama"
+    "name": "Dama",
+    "id": "swsh11-193"
   },
   "swsh11-217.png": {
     "localId": "217",
-    "name": "Aspirador Perdido"
+    "name": "Aspirador Perdido",
+    "id": "swsh11-217"
   }
 }
