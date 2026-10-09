@@ -9,9 +9,17 @@ object OcrParser {
     private val DAMAGE_OR_MODIFIER = Regex("""[+xX-]\s*\d+|\d+\s*[+xX-]""")
     private val YEAR = Regex("""\b(19\d{2}|20\d{2})\b""")
     private val PROMO = Regex("""\b([A-Z]{2,4})(\d{2,3})\b""")
-    private val HP = Regex("""HP\s*(\d+)""")
-    private val NOISE = setOf("BASIC", "STAGE 1", "STAGE 2", "TRAINER", "ENERGY")
-    private const val NAME_WINDOW = 5
+    private val HP_EXTRACTION = Regex("""(?i)\b(?:HP|PS|PV|PL|P\$)\s*(\d+)""")
+    private val HP_REGEX = Regex("""(?i)\b(HP|PS|PV|PL|P\$)\s*\d+""")
+    private val HP_SOLO_REGEX = Regex("""(?i)^\s*[\W_A-Z]{0,2}\s*\d{2,3}\s*[A-Z]?\s*$""")
+    private val STAGE_WORDS = setOf(
+        "BASIC", "STAGE 1", "STAGE 2", "TRAINER", "ENERGY",
+        "BÁSICO", "BASICO", "ESTÁGIO 1", "ESTAGIO 1", "ESTÁGIO 2", "ESTAGIO 2",
+        "ESTÁGIO1", "ESTAGIO1", "ESTÁGIO2", "ESTAGIO2", "E5TÁGIO1", "STÁGIO", "GASICO", "ASICO", "BASILD",
+    )
+    private val STAGE_PREFIX = Regex("""(?i)^([BG]?ASIC[OAD]|E[5S]T[ÁA]GIO[L12]?|STAGE\s*[12]?)\s*""")
+    private val TRAILING_HP = Regex("""\s*\d{2,3}$""")
+    private val SUFFIX_SPACE = Regex("""([a-z])(V|ex)\b""")
 
     fun parse(lines: List<OcrLine>): ParsedCardText {
         val rawText = lines.joinToString("\n") { it.text }
@@ -23,7 +31,7 @@ object OcrParser {
                 if (letters == "HP") null else letters + match.groupValues[2]
             }
         }
-        val hp = lines.firstNotNullOfOrNull { HP.find(it.text)?.groupValues?.get(1)?.toIntOrNull() }
+        val hp = lines.firstNotNullOfOrNull { HP_EXTRACTION.find(it.text)?.groupValues?.get(1)?.toIntOrNull() }
         return ParsedCardText(
             name = pickName(lines),
             collectorNumber = collectorNumber,
@@ -63,7 +71,7 @@ object OcrParser {
     }
 
     private fun isBottomNoise(text: String): Boolean {
-        if (YEAR.containsMatchIn(text) || DAMAGE_OR_MODIFIER.containsMatchIn(text) || HP.containsMatchIn(text)) return true
+        if (YEAR.containsMatchIn(text) || DAMAGE_OR_MODIFIER.containsMatchIn(text) || HP_EXTRACTION.containsMatchIn(text)) return true
         val upper = text.uppercase()
         if (upper.contains("POKÉMON") || upper.contains("POKEMON") || upper.contains("NINTENDO") || upper.contains("GAME FREAK")) return true
         if (upper.contains("FRAQUEZA") || upper.contains("RESISTÊNCIA") || upper.contains("RECUO") || upper.contains("RECUAR")) return true
@@ -78,13 +86,66 @@ object OcrParser {
         if (raw.length >= 3) raw else raw.trimStart('0').ifEmpty { "0" }
 
     private fun pickName(lines: List<OcrLine>): String? {
-        val candidates = lines.sortedBy { it.top }.take(NAME_WINDOW)
-            .filterNot { isNoise(it.text) || !hasNameLetters(it.text) }
-        var best: OcrLine? = null
-        for (line in candidates) {
-            if (best == null || line.height > best.height) best = line
+        if (lines.isEmpty()) return null
+        val maxBottom = lines.maxOfOrNull { it.top + it.height } ?: 0f
+        val headerCutoff = if (maxBottom > 0f) maxOf(maxBottom * 0.25f, 150f) else Float.MAX_VALUE
+        val candidates = lines
+            .filter { it.top <= headerCutoff }
+            .filterNot { isNoise(it.text) || isHpLine(it) }
+            .mapNotNull { line ->
+                val cleaned = cleanNameCandidate(line.text)
+                if (hasNameLetters(cleaned)) line to cleaned else null
+            }
+
+        if (candidates.isEmpty()) return null
+
+        val best = candidates.maxWithOrNull(
+            compareBy<Pair<OcrLine, String>> { it.first.height }
+                .thenByDescending { -it.first.top }
+        )?.second ?: return null
+
+        return normalizeCardName(best, lines)
+    }
+
+    private fun cleanNameCandidate(text: String): String {
+        var s = STAGE_PREFIX.replace(text.trim(), "").trim()
+        s = TRAILING_HP.replace(s, "").trim()
+        return s
+    }
+
+    private fun normalizeCardName(name: String, allLines: List<OcrLine>): String {
+        var s = name
+        s = SUFFIX_SPACE.replace(s) { m -> "${m.groupValues[1]} ${m.groupValues[2]}" }
+        s = s.replace(Regex("""\s+X\b"""), " GX")
+        s = s.replace(Regex("""(?<=[a-z])X\b"""), " GX")
+
+        val ruleText = allLines.joinToString(" ") { it.text }
+        if (Regex("""(?i)Regra.*GX""").containsMatchIn(ruleText)) {
+            if (!s.endsWith(" GX", ignoreCase = true)) s = "$s GX"
+        } else if (Regex("""(?i)Regra\s*V\b|Quando seu Pokémon V é Nocauteado""").containsMatchIn(ruleText)) {
+            if (!s.endsWith(" V", ignoreCase = true)) s = "$s V"
+        } else if (Regex("""(?i)Regra.*Pokémon\s*ex\b|Quando seu Pokémon eX""").containsMatchIn(ruleText)) {
+            if (s.endsWith(" e", ignoreCase = true)) {
+                s = s.dropLast(2) + " ex"
+            } else if (!s.endsWith(" ex", ignoreCase = true)) {
+                s = "$s ex"
+            }
+        } else if (Regex("""(?i)Regra.*Pokémon-EX\b""").containsMatchIn(ruleText)) {
+            if (!s.endsWith(" EX", ignoreCase = true)) s = "$s EX"
         }
-        return best?.text
+
+        if (s.endsWith("lI")) {
+            s = s.dropLast(1) + "l"
+        }
+
+        return s
+    }
+
+    private fun isHpLine(line: OcrLine): Boolean {
+        val trimmed = line.text.trim()
+        if (HP_REGEX.containsMatchIn(trimmed) || HP_SOLO_REGEX.matches(trimmed)) return true
+        if (line.left > 350f && (trimmed.any { it.isDigit() } || trimmed.length <= 6)) return true
+        return false
     }
 
     // A card name is printed as text; a large purely numeric read (e.g. the HP value
@@ -94,9 +155,13 @@ object OcrParser {
 
     private fun isNoise(text: String): Boolean {
         val trimmed = text.trim()
-        if (SLASH_NUMBER.containsMatchIn(trimmed) || PROMO.containsMatchIn(trimmed) || HP.containsMatchIn(trimmed)) {
+        if (SLASH_NUMBER.containsMatchIn(trimmed) || PROMO.containsMatchIn(trimmed) || HP_REGEX.containsMatchIn(trimmed)) {
             return true
         }
-        return trimmed.uppercase() in NOISE
+        val upper = trimmed.uppercase()
+        if (upper.contains("REGRA") || upper.startsWith("EVOLUI DE")) {
+            return true
+        }
+        return upper in STAGE_WORDS || STAGE_PREFIX.matches(trimmed)
     }
 }

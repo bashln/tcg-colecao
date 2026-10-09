@@ -90,6 +90,65 @@ class OcrParserTest {
         assertEquals("Furret", r.name)
     }
 
+    @Test fun removes_stage_prefix_from_name() {
+        assertEquals("Butterfree", OcrParser.parse(lines("GASICO Butterfree", "HP 190")).name)
+        assertEquals("Steenee", OcrParser.parse(lines("ESTÁGIOL Steenee", "HP 90")).name)
+        assertEquals("Vikavolt V", OcrParser.parse(lines("ASICOVikavolt V", "HP 200")).name)
+    }
+
+    @Test fun restores_space_before_suffix() {
+        assertEquals("Charizard V", OcrParser.parse(lines("CharizardV", "HP 220")).name)
+        assertEquals("Mew V", OcrParser.parse(lines("MewV", "HP 180")).name)
+        assertEquals("Arbok ex", OcrParser.parse(lines("Arbokex", "HP 270")).name)
+    }
+
+    @Test fun recovers_gx_suffix_from_x() {
+        assertEquals("Decidueye GX", OcrParser.parse(lines("DecidueyeX", "HP 240")).name)
+        assertEquals("Lapras GX", OcrParser.parse(lines("Lapras X", "HP 190")).name)
+    }
+
+    @Test fun strips_trailing_hp_from_name() {
+        assertEquals("Darmanitan de Galar", OcrParser.parse(lines("Darmanitan de Galar140")).name)
+    }
+
+    @Test fun applies_suffix_from_card_rule() {
+        assertEquals("Centiskorch V", OcrParser.parse(lines("Centiskorch", "Regra V")).name)
+        assertEquals("Charizard ex", OcrParser.parse(lines("Charizard e", "Regra dos Pokémon ex")).name)
+        assertEquals("Venusaur EX", OcrParser.parse(lines("Venusaur", "Regra do Pokémon-EX")).name)
+    }
+
+    @Test fun ignores_hp_even_with_letters_like_ps_or_pl() {
+        val bounsweet = listOf(
+            OcrLine("Bounsweet", 34f, 31f, left = 113f),
+            OcrLine("Ps60", 38f, 36f, left = 461f),
+        )
+        assertEquals("Bounsweet", OcrParser.parse(bounsweet).name)
+
+        val torkoal = listOf(
+            OcrLine("Torkoal", 32f, 31f, left = 110f),
+            OcrLine("Pl10", 39f, 36f, left = 447f),
+        )
+        assertEquals("Torkoal", OcrParser.parse(torkoal).name)
+    }
+
+    @Test fun ignores_attack_and_ability_text_in_lower_part_of_card() {
+        val bulbasaur = listOf(
+            OcrLine("Bulbasaur", 35f, 28f),
+            OcrLine("Semente Sanguessuga 20", 505f, 43f),
+        )
+        assertEquals("Bulbasaur", OcrParser.parse(bulbasaur).name)
+
+        val surskit = listOf(
+            OcrLine("Surskit", 35f, 28f),
+            OcrLine("Ataque Rápido", 508f, 34f),
+        )
+        assertEquals("Surskit", OcrParser.parse(surskit).name)
+    }
+
+    @Test fun fixes_beedrill_letter_l_uppercase_i() {
+        assertEquals("Beedrill", OcrParser.parse(lines("BeedrilI")).name)
+    }
+
     @Test fun zubat_card_reads_name_and_number() {
         val r = OcrParser.parse(
             listOf(
