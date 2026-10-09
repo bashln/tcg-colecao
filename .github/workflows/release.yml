@@ -11,8 +11,18 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    # Secrets cannot be read directly in `if:`; expose the keystore secret as job env so the
+    # guard can gate on it. Missing secrets must fail the run, never publish a debug build.
+    env:
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Exigir keystore de release
+        if: env.KEYSTORE_BASE64 == ''
+        run: |
+          echo "::error::ANDROID_KEYSTORE_BASE64 ausente. Uma tag de release sem os secrets falha aqui em vez de publicar um APK assinado com debug."
+          exit 1
 
       - uses: actions/setup-java@v4
         with:
@@ -22,19 +32,45 @@ jobs:
       - uses: android-actions/setup-android@v3
 
       - name: Preparar keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
 
+      - name: Derivar versao da tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          IFS='.' read -r major minor patch <<< "$version"
+          patch="${patch%%-*}"
+          if ! [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ && "$patch" =~ ^[0-9]+$ ]]; then
+            echo "::error::A tag ${GITHUB_REF_NAME} nao segue o formato vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
+          echo "TCG_VERSION_NAME=${major}.${minor}.${patch}" >> "$GITHUB_ENV"
+          echo "TCG_VERSION_CODE=$(( major * 10000 + minor * 100 + patch ))" >> "$GITHUB_ENV"
+
       - name: Compilar APK de release
         env:
-          TCG_KEYSTORE_PATH: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && format('{0}/release.keystore', runner.temp) || '' }}
+          TCG_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
           TCG_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           TCG_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           TCG_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Verificar assinatura de release
+        run: |
+          apk="app/build/outputs/apk/release/app-release.apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+          if [ -z "$apksigner" ]; then
+            echo "::error::apksigner nao encontrado no Android SDK."
+            exit 1
+          fi
+          certs="$("$apksigner" verify --print-certs "$apk")"
+          echo "$certs"
+          if ! grep -q "CN=TCG Colecao" <<< "$certs"; then
+            echo "::error::O APK nao esta assinado com a chave de release (CN=TCG Colecao). Nada e publicado."
+            exit 1
+          fi
 
       - name: Renomear APK
         run: |

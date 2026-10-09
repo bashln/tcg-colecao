@@ -52,8 +52,22 @@ Cadastre em Settings, Secrets and variables, Actions.
 | `ANDROID_KEY_ALIAS` | `tcg` |
 | `ANDROID_KEY_PASSWORD` | a senha da chave |
 
-Sem esses secrets o workflow ainda compila o APK, mas cai na assinatura de
-debug. Serve para teste, não para distribuição.
+Sem esses secrets o workflow falha na etapa "Exigir keystore de release" e nada é
+publicado. O release só publica depois de confirmar, com `apksigner verify
+--print-certs`, que o APK está assinado com a chave de release (`CN=TCG Colecao`).
+Se o keystore faltar ou a assinatura não casar, a tag falha em vez de distribuir
+um APK assinado com debug.
+
+## Versão
+
+A versão vem da tag. O workflow deriva `TCG_VERSION_NAME` (a tag sem o `v`) e
+`TCG_VERSION_CODE` (`major*10000 + minor*100 + patch`) e os exporta antes do
+Gradle. Assim cada release tem `versionCode` e `versionName` próprios, como o
+Obtainium e as atualizações do Android exigem.
+
+| Tag | versionName | versionCode |
+| --- | --- | --- |
+| `v1.2.3` | `1.2.3` | `10203` |
 
 ## Build local
 
@@ -62,7 +76,9 @@ debug. Serve para teste, não para distribuição.
 ```
 
 Sem as variáveis `TCG_KEYSTORE_PATH`, `TCG_KEYSTORE_PASSWORD`, `TCG_KEY_ALIAS`
-e `TCG_KEY_PASSWORD` no ambiente, o release usa a assinatura de debug.
+e `TCG_KEY_PASSWORD` no ambiente, o release usa a assinatura de debug. Sem
+`TCG_VERSION_NAME` e `TCG_VERSION_CODE`, usa `1.0` e `1`. Isso vale só para o
+build local; a tag no CI sempre usa a chave de release e a versão da tag.
 
 ## Obtainium
 
