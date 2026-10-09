@@ -25,6 +25,12 @@ class OcrParserTest {
         assertEquals("SWSH027", r.promoCode)
     }
 
+    @Test fun ignores_hp_without_space_as_promo() {
+        val r = OcrParser.parse(lines("Furret", "HP110"))
+        assertNull(r.promoCode)
+        assertEquals(110, r.hp)
+    }
+
     @Test fun picks_topmost_large_text_as_name_and_drops_noise() {
         val r = OcrParser.parse(lines("BASIC", "Furret", "HP 110", "Pancada de Cauda"))
         assertEquals("Furret", r.name)

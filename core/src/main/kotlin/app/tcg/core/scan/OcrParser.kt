@@ -5,7 +5,7 @@ import app.tcg.core.domain.model.ParsedCardText
 
 object OcrParser {
     private val NUMBER = Regex("""\b(\d{1,3})\s*/\s*(\d{1,3})\b""")
-    private val PROMO = Regex("""\b([A-Z]{2,4}\d{2,3})\b""")
+    private val PROMO = Regex("""\b([A-Z]{2,4})(\d{2,3})\b""")
     private val HP = Regex("""HP\s*(\d+)""")
     private val NOISE = setOf("BASIC", "STAGE 1", "STAGE 2", "TRAINER", "ENERGY")
     private const val NAME_WINDOW = 5
@@ -14,7 +14,13 @@ object OcrParser {
         val rawText = lines.joinToString("\n") { it.text }
         val collectorNumber = lines.firstNotNullOfOrNull { NUMBER.find(it.text)?.groupValues?.get(1) }
             ?.let(::normalizeCollectorNumber)
-        val promoCode = lines.firstNotNullOfOrNull { PROMO.find(it.text)?.groupValues?.get(1) }
+        val promoCode = lines.firstNotNullOfOrNull { line ->
+            PROMO.find(line.text)?.let { match ->
+                val letters = match.groupValues[1]
+                // No-space HP ("HP110") matches the promo shape but is not a promo.
+                if (letters == "HP") null else letters + match.groupValues[2]
+            }
+        }
         val hp = lines.firstNotNullOfOrNull { HP.find(it.text)?.groupValues?.get(1)?.toIntOrNull() }
         return ParsedCardText(
             name = pickName(lines),
