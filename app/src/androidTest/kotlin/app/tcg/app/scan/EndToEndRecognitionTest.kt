@@ -2,14 +2,14 @@ package app.tcg.app.scan
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import app.tcg.app.data.local.TcgDatabase
+import app.tcg.app.data.repository.RoomCardRepository
+import app.tcg.app.ui.scan.ScanViewModel
 import app.tcg.app.ui.scan.toOcrLines
 import app.tcg.core.data.tcgdex.KtorTcgdexCardSource
-import app.tcg.core.data.tcgdex.TcgdexCardSource
-import app.tcg.core.domain.model.Card
-import app.tcg.core.scan.CandidateRanker
-import app.tcg.core.scan.OcrParser
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -28,12 +28,13 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * End-to-end identification measurement: does the card the OCR pipeline extracts resolve to the
- * correct TCGdex card as the TOP ranked candidate?
+ * End-to-end identification measurement through the shipped scan path: does the card the OCR
+ * pipeline extracts resolve to the correct TCGdex card as the TOP candidate the user sees?
  *
- * Unlike [OcrRecognitionTest] (which measures raw name/number OCR exactness), this exercises the
- * whole production path a scan takes: ML Kit OCR -> [toOcrLines] -> [OcrParser] -> live
- * [KtorTcgdexCardSource] lookups (name + number, merged and de-duped) -> [CandidateRanker].
+ * This drives the real [ScanViewModel.onTextRecognized] with a [RoomCardRepository] over an
+ * in-memory Room database and the live [KtorTcgdexCardSource], then reads the ranked candidates
+ * from [ScanViewModel.state]. Unlike a direct [app.tcg.core.scan.CandidateRanker] call, the
+ * numbers include the repository cache and the view-model merge/filter/cap logic the app runs.
  *
  * Two datasets are measured and reported independently, matching [OcrRecognitionTest]:
  *  - main (assets/cards): the tuned set.
@@ -77,18 +78,10 @@ class EndToEndRecognitionTest {
         }.sortedBy { it.file }.toList()
     }
 
-    private suspend fun searchSafely(block: suspend () -> List<Card>): List<Card> =
-        try {
-            block()
-        } catch (e: Exception) {
-            println("E2E request failed: ${e.message}")
-            emptyList()
-        }
-
     private suspend fun measure(
         recognizer: TextRecognizer,
         context: Context,
-        source: TcgdexCardSource,
+        viewModel: ScanViewModel,
         dataset: Dataset,
     ): Summary {
         val cards = expectedCards(dataset.dir)
@@ -108,31 +101,22 @@ class EndToEndRecognitionTest {
                 continue
             }
 
-            val parsed = OcrParser.parse(text.toOcrLines())
-            val name = parsed.name
-            val collectorNumber = parsed.collectorNumber
-            val byName = if (name != null) searchSafely { source.searchByName(name) } else emptyList()
-            val byNumber = if (collectorNumber != null) {
-                searchSafely { source.searchByNumber(null, collectorNumber) }
-            } else {
-                emptyList()
-            }
-            val candidates = (byName + byNumber).distinctBy { it.id }
-            val ranked = CandidateRanker.rank(parsed, candidates)
-            val gotTop = ranked.take(5).map { it.value.id }
+            viewModel.onTextRecognized(text.toOcrLines())
 
+            val state = viewModel.state.value
+            val gotTop = state.candidates.take(5).map { it.value.id }
             val top1 = gotTop.firstOrNull() == card.id
             val top5 = gotTop.contains(card.id)
             if (top1) top1Hits++
             if (top5) top5Hits++
             if (!top1) {
-                misses += "${card.file}: name='${parsed.name}' num='${parsed.collectorNumber}' " +
-                    "setTotal=${parsed.setTotal} | expected=${card.id} gotTop=$gotTop"
+                misses += "${card.file}: expected=${card.id} gotTop=$gotTop " +
+                    "| error=${state.error} manual=${state.manualSearch}"
             }
 
             println(
                 "E2E ${card.file} -> top1=$top1 top5=$top5 expectedId=${card.id} gotTop=$gotTop " +
-                    "| name='${parsed.name}' num='${parsed.collectorNumber}' setTotal=${parsed.setTotal}"
+                    "| error=${state.error}"
             )
             delay(150)
         }
@@ -155,7 +139,11 @@ class EndToEndRecognitionTest {
 
     @Test
     fun measures_end_to_end_top_candidate_accuracy() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().context
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.context
+        val db = Room.inMemoryDatabaseBuilder(instrumentation.targetContext, TcgDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         val httpClient = HttpClient(OkHttp) {
             install(ContentNegotiation) {
@@ -163,12 +151,14 @@ class EndToEndRecognitionTest {
             }
         }
         val source = KtorTcgdexCardSource(httpClient)
+        val viewModel = ScanViewModel(RoomCardRepository(db.cardDao(), source))
 
         val summaries = try {
-            datasets.map { measure(recognizer, context, source, it) }
+            datasets.map { measure(recognizer, context, viewModel, it) }
         } finally {
             recognizer.close()
             httpClient.close()
+            db.close()
         }
 
         summaries.forEach { report(it) }
