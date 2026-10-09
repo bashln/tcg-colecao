@@ -88,6 +88,37 @@ Decisões ainda em aberto, a confirmar com o usuário.
   `:core` para KMP na fatia da web. Recomendação, manter a S1 focada no
   Android e só então extrair, porque o `:core` já nasce sem Android.
 
+### Backend e sincronização, proposta
+
+O usuário já tem uma conta Supabase, do site dele. Decisão sugerida, usar
+Supabase, em um projeto novo e separado do site, para não acoplar esquema,
+backup e limites dos dois.
+
+O que fica no Supabase.
+
+- Autenticação, pelo Supabase Auth.
+- Só as linhas da coleção. Uma tabela por usuário, com chave em `user_id`,
+  `card_id`, `variant`, `condition`, mais `quantity`, `price_paid` e
+  `updated_at`.
+- A sincronização. Reconcilição simples, last-write-wins por linha, com o
+  `updated_at` do servidor. Não precisamos de CRDT, porque o caso real é a
+  mesma pessoa nos próprios devices.
+
+O que não fica no Supabase.
+
+- O catálogo de cartas. Ele vem do TCGdex e é cache local.
+- As imagens. Elas vêm do CDN do TCGdex. Assim o tráfego do plano grátis não
+  vira gargalo.
+
+Performance. Para este app a carga é ínfima. Guardamos poucas linhas por
+usuário e nenhuma imagem. O peso está no TCGdex, não no Supabase. O ponto de
+atenção não é desempenho, é construir a sincronização, porque o Supabase é um
+Postgres com API e tempo real, não um motor de sincronização offline como o
+Firestore. A sincronização é nossa e vive atrás das interfaces de repositório.
+
+Segurança. Chave anônima mais RLS por `user_id` no app. A chave de serviço
+nunca vai para Android, web ou repositório.
+
 ## Fontes de dados
 
 | Fonte | Papel | Chave | Observação |
