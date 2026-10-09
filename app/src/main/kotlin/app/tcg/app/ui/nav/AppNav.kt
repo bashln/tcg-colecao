@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.QrCodeScanner
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -40,6 +40,8 @@ import app.tcg.app.ui.card.CardDetailScreen
 import app.tcg.app.ui.card.CardDetailViewModel
 import app.tcg.app.ui.collection.CollectionScreen
 import app.tcg.app.ui.collection.CollectionViewModel
+import app.tcg.app.ui.components.EmptyState
+import app.tcg.app.ui.components.LoadingState
 import app.tcg.app.ui.scan.ScanScreen
 import app.tcg.app.ui.scan.ScanViewModel
 import app.tcg.core.data.repository.CardRepository
@@ -112,7 +114,10 @@ fun AppNav(
                 val viewModel: CollectionViewModel = viewModel(
                     factory = viewModelFactory { initializer { CollectionViewModel(collectionRepository) } },
                 )
-                CollectionScreen(viewModel = viewModel)
+                CollectionScreen(
+                    viewModel = viewModel,
+                    onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
+                )
             }
             composable(
                 route = Routes.CARD_DETAIL,
@@ -148,7 +153,7 @@ private fun CardDetailRoute(
     val resolved = card
     when {
         loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            LoadingState(stringResource(R.string.detail_loading))
         }
         resolved != null -> {
             val viewModel: CardDetailViewModel = viewModel(
@@ -157,10 +162,14 @@ private fun CardDetailRoute(
                     initializer { CardDetailViewModel(resolved, collectionRepository) }
                 },
             )
-            CardDetailScreen(viewModel = viewModel, onSaved = onSaved)
+            CardDetailScreen(viewModel = viewModel, onBack = onSaved, onSaved = onSaved)
         }
         else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(stringResource(R.string.detail_not_found))
+            EmptyState(
+                icon = Icons.Outlined.SearchOff,
+                title = stringResource(R.string.detail_not_found_title),
+                body = stringResource(R.string.detail_not_found),
+            )
         }
     }
 }
