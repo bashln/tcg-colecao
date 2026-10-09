@@ -37,13 +37,19 @@ object OcrParser {
         if (raw.length >= 3) raw else raw.trimStart('0').ifEmpty { "0" }
 
     private fun pickName(lines: List<OcrLine>): String? {
-        val candidates = lines.sortedBy { it.top }.take(NAME_WINDOW).filterNot { isNoise(it.text) }
+        val candidates = lines.sortedBy { it.top }.take(NAME_WINDOW)
+            .filterNot { isNoise(it.text) || !hasNameLetters(it.text) }
         var best: OcrLine? = null
         for (line in candidates) {
             if (best == null || line.height > best.height) best = line
         }
         return best?.text
     }
+
+    // A card name is printed as text; a large purely numeric read (e.g. the HP value
+    // with no "HP" prefix) must not win the name slot.
+    private fun hasNameLetters(text: String): Boolean =
+        text.trim().count { it.isLetter() } >= 2
 
     private fun isNoise(text: String): Boolean {
         val trimmed = text.trim()

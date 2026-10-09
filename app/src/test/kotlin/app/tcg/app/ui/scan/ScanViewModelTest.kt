@@ -85,6 +85,48 @@ class ScanViewModelTest {
         assertFalse(vm.state.value.manualSearch)
     }
 
+    @Test
+    fun name_and_number_search_by_name() = runTest {
+        val repo = RecordingCardRepository(listOf(card("z", "Zubat", "049", 40)))
+        val vm = ScanViewModel(repo)
+        vm.onTextRecognized(listOf(OcrLine("Zubat", 0f, 40f), OcrLine("049/086", 100f, 40f)))
+        assertEquals(listOf("name"), repo.calls)
+    }
+
+    @Test
+    fun name_only_searches_by_name() = runTest {
+        val repo = RecordingCardRepository(listOf(card("z", "Zubat", "049", 40)))
+        val vm = ScanViewModel(repo)
+        vm.onTextRecognized(listOf(OcrLine("Zubat", 0f, 40f)))
+        assertEquals(listOf("name"), repo.calls)
+    }
+
+    @Test
+    fun number_only_searches_by_number() = runTest {
+        val repo = RecordingCardRepository(listOf(card("z", "Zubat", "049", 40)))
+        val vm = ScanViewModel(repo)
+        vm.onTextRecognized(listOf(OcrLine("049/086", 100f, 40f)))
+        assertEquals(listOf("number"), repo.calls)
+    }
+
+    private class RecordingCardRepository(
+        private val result: List<Card>,
+    ) : CardRepository {
+        val calls = mutableListOf<String>()
+
+        override suspend fun searchByName(name: String): List<Card> {
+            calls += "name"
+            return result
+        }
+
+        override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> {
+            calls += "number"
+            return result
+        }
+
+        override suspend fun getCard(id: String): Card? = result.firstOrNull { it.id == id }
+    }
+
     private class FakeCardRepository(
         private val result: List<Card> = emptyList(),
         private val failing: Boolean = false,

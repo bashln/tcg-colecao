@@ -52,4 +52,36 @@ class OcrParserTest {
     @Test fun keeps_accented_name_intact() {
         assertEquals("Escuridão", OcrParser.parse(lines("Escuridão", "136/189")).name)
     }
+
+    @Test fun ignores_purely_numeric_line_for_name() {
+        val r = OcrParser.parse(
+            listOf(
+                OcrLine("Furret", 0f, 40f),
+                OcrLine("136/189", 100f, 40f),
+                OcrLine("40", 200f, 80f),
+            ),
+        )
+        assertEquals("Furret", r.name)
+    }
+
+    @Test fun zubat_card_reads_name_and_number() {
+        val r = OcrParser.parse(
+            listOf(
+                OcrLine("BÁSICO", 0f, 20f),
+                OcrLine("Zubat", 100f, 60f),
+                OcrLine("N 0041 Pokdmon, Morsego Altura 0,8 m Peso 75 kg", 200f, 20f),
+                OcrLine("lust. Mekoyw", 300f, 20f),
+                OcrLine("Supersônico", 400f, 20f),
+                OcrLine("O Pokémon Ativo do seu oponente agora está Confuso.", 500f, 20f),
+                OcrLine("Fraquesa Ox2", 600f, 20f),
+                OcrLine("Resistência (C-30", 700f, 20f),
+                OcrLine("Rim 049/086", 800f, 20f),
+                OcrLine("Emite", 900f, 20f),
+                OcrLine("40", 1000f, 80f),
+                OcrLine("Recuo", 1100f, 20f),
+            ),
+        )
+        assertEquals("Zubat", r.name)
+        assertEquals("049", r.collectorNumber)
+    }
 }

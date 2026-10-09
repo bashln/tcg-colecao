@@ -46,8 +46,8 @@ class ScanViewModel(
         val name = parsed.name
         val candidates = try {
             when {
-                collectorNumber != null -> repository.searchByNumber(null, collectorNumber)
                 name != null -> repository.searchByName(name)
+                collectorNumber != null -> repository.searchByNumber(null, collectorNumber)
                 else -> emptyList()
             }
         } catch (e: CancellationException) {
