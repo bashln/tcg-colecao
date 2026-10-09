@@ -7,6 +7,7 @@ data class Card(
     val collectorNumber: String, val rarity: String?, val hp: Int?,
     val types: List<String>, val attacks: List<Attack>, val imageUrl: String?,
     val variants: Set<CardVariant>, val prices: List<CardPrice>,
+    val setTotal: Int? = null,
 )
 
 data class Attack(val name: String, val cost: List<String>, val damage: String?, val text: String?)

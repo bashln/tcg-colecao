@@ -16,6 +16,11 @@ object CandidateRanker {
         if (parsed.hp != null && parsed.hp == card.hp) {
             score += 2
         }
+        // Larger than the +4 number match so a matching printed set total outranks a
+        // same-number card from another set when the name alone cannot separate them.
+        if (parsed.setTotal != null && parsed.setTotal == card.setTotal) {
+            score += 6
+        }
         val name = parsed.name ?: return score
         if (name.equals(card.name, ignoreCase = true)) {
             score += 3

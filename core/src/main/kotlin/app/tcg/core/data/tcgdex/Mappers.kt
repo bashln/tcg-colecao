@@ -25,6 +25,9 @@ internal fun TcgdexCardDto.toCard(): Card = Card(
     imageUrl = image?.let { it + IMAGE_SUFFIX },
     variants = variantsDetailed.orEmpty().mapNotNull { variantFromType(it.type) }.toSet(),
     prices = prices(),
+    // The printed denominator ("NNN/TTT") is TCGdex's `official` count; `total` also counts
+    // unnumbered secret rares and is never what the card shows.
+    setTotal = set?.cardCount?.official,
 )
 
 private fun TcgdexCardDto.prices(): List<CardPrice> =

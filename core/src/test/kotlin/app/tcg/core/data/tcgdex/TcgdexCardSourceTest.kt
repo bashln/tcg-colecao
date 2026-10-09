@@ -81,6 +81,31 @@ class TcgdexCardSourceTest {
     }
 
     @Test
+    fun maps_printed_set_total_from_official_count() = runTest {
+        val card = source("furret.json").getCard("swsh3-136")!!
+        assertEquals(189, card.setTotal)
+    }
+
+    @Test
+    fun search_attaches_set_total_from_set_catalog_when_card_brief_lacks_it() = runTest {
+        val brief = """[{"id":"swsh3-136","localId":"136","name":"Furret"}]"""
+        val sets = """[{"id":"swsh3","name":"Escuridão Incandescente","cardCount":{"official":189,"total":201}}]"""
+        val engine = MockEngine { request ->
+            val body = if (request.url.encodedPath.endsWith("/sets")) sets else brief
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val source = KtorTcgdexCardSource(
+            HttpClient(engine) {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            },
+        )
+
+        val cards = source.searchByNumber(null, "136")
+
+        assertEquals(189, cards.single().setTotal)
+    }
+
+    @Test
     fun charizard_normalizes_localized_variant_types() = runTest {
         val card = source("charizard.json").getCard("swsh4-25")!!
         assertEquals(setOf(CardVariant.NORMAL, CardVariant.HOLOFOIL, CardVariant.REVERSE_HOLOFOIL), card.variants)

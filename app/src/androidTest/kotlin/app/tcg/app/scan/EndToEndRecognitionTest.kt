@@ -127,12 +127,12 @@ class EndToEndRecognitionTest {
             if (top5) top5Hits++
             if (!top1) {
                 misses += "${card.file}: name='${parsed.name}' num='${parsed.collectorNumber}' " +
-                    "| expected=${card.id} gotTop=$gotTop"
+                    "setTotal=${parsed.setTotal} | expected=${card.id} gotTop=$gotTop"
             }
 
             println(
                 "E2E ${card.file} -> top1=$top1 top5=$top5 expectedId=${card.id} gotTop=$gotTop " +
-                    "| name='${parsed.name}' num='${parsed.collectorNumber}'"
+                    "| name='${parsed.name}' num='${parsed.collectorNumber}' setTotal=${parsed.setTotal}"
             )
             delay(150)
         }

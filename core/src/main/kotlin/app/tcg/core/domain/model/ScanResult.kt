@@ -10,7 +10,7 @@ data class OcrLine(
 
 data class ParsedCardText(
     val name: String?, val collectorNumber: String?, val promoCode: String?,
-    val hp: Int?, val rawText: String,
+    val hp: Int?, val rawText: String, val setTotal: Int? = null,
 )
 
 data class Scored<T>(val value: T, val score: Int)

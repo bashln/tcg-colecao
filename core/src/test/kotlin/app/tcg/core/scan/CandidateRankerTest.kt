@@ -7,8 +7,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class CandidateRankerTest {
-    private fun card(id: String, name: String, number: String, hp: Int?) = Card(
-        id, name, "set", "Set", number, "Rare", hp, emptyList(), emptyList(), null, emptySet(), emptyList())
+    private fun card(id: String, name: String, number: String, hp: Int?, setTotal: Int? = null) = Card(
+        id, name, "set", "Set", number, "Rare", hp, emptyList(), emptyList(), null, emptySet(), emptyList(), setTotal)
 
     @Test fun ranks_exact_number_and_name_match_first() {
         val parsed = ParsedCardText("Furret", "136", null, 110, "")
@@ -48,5 +48,21 @@ class CandidateRankerTest {
             card("other", "Charmander", "001", 70),
             card("target", "Bulbasaur", "1", 70)))
         assertEquals("target", result.first().value.id)
+    }
+
+    @Test fun matching_set_total_breaks_same_name_and_number_tie() {
+        val parsed = ParsedCardText("Bulbasaur", "001", null, null, "", setTotal = 165)
+        val result = CandidateRanker.rank(parsed, listOf(
+            card("other", "Bulbasaur", "001", null, setTotal = 207),
+            card("target", "Bulbasaur", "001", null, setTotal = 165)))
+        assertEquals("target", result.first().value.id)
+    }
+
+    @Test fun absent_set_total_leaves_ranking_unchanged() {
+        val parsed = ParsedCardText("Bulbasaur", "001", null, null, "")
+        val result = CandidateRanker.rank(parsed, listOf(
+            card("a", "Bulbasaur", "001", null, setTotal = 207),
+            card("b", "Bulbasaur", "001", null, setTotal = 165)))
+        assertEquals(result[0].score, result[1].score)
     }
 }

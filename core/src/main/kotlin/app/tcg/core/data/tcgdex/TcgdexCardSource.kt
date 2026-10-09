@@ -19,15 +19,16 @@ interface TcgdexCardSource {
 
 class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSource {
     private val json = Json { ignoreUnknownKeys = true }
+    private var setOfficialCache: Map<String, Int>? = null
 
     override suspend fun searchByName(name: String, language: String): List<Card> =
-        search("$language/cards") { parameter("name", name) }
+        search(language, "cards") { parameter("name", name) }
 
     override suspend fun searchByNumber(setId: String?, collectorNumber: String, language: String): List<Card> {
         // Printed collector numbers and the stored localId disagree on zero padding across sets,
         // so an empty first query is retried with the number normalized.
         for (number in localIdCandidates(collectorNumber)) {
-            val cards = search("$language/cards") {
+            val cards = search(language, "cards") {
                 setId?.let { parameter("set", it) }
                 parameter("localId", number)
             }
@@ -52,8 +53,12 @@ class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSourc
         return json.decodeFromString(TcgdexCardDto.serializer(), response.bodyAsText()).toCard()
     }
 
-    private suspend fun search(path: String, params: HttpRequestBuilder.() -> Unit): List<Card> {
-        val body = httpClient.get("$BASE_URL/$path") { params() }.bodyAsText()
+    private suspend fun search(
+        language: String,
+        path: String,
+        params: HttpRequestBuilder.() -> Unit,
+    ): List<Card> {
+        val body = httpClient.get("$BASE_URL/$language/$path") { params() }.bodyAsText()
         // The list endpoint answers with an array; tolerate a bare object so a single-card
         // response is still usable.
         val dtos = when (val element = json.parseToJsonElement(body)) {
@@ -61,7 +66,30 @@ class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSourc
             is JsonObject -> listOf(json.decodeFromJsonElement(TcgdexCardDto.serializer(), element))
             else -> emptyList()
         }
-        return dtos.map { it.toCard() }
+        return withSetTotals(dtos.map { it.toCard() }, language)
+    }
+
+    // Search results are card briefs and omit the set's card count, so fetch the set catalog
+    // once and stamp each brief with its printed set size; otherwise a scan has no set signal.
+    private suspend fun withSetTotals(cards: List<Card>, language: String): List<Card> {
+        if (cards.isEmpty() || cards.all { it.setTotal != null }) return cards
+        val officials = setOfficials(language)
+        return cards.map { if (it.setTotal != null) it else it.copy(setTotal = officials[it.setId]) }
+    }
+
+    private suspend fun setOfficials(language: String): Map<String, Int> {
+        setOfficialCache?.let { return it }
+        val body = httpClient.get("$BASE_URL/$language/sets").bodyAsText()
+        val sets = when (val element = json.parseToJsonElement(body)) {
+            is JsonArray -> element.map { json.decodeFromJsonElement(TcgdexSetDto.serializer(), it) }
+            is JsonObject -> listOf(json.decodeFromJsonElement(TcgdexSetDto.serializer(), element))
+            else -> emptyList()
+        }
+        val officials = sets.mapNotNull { set ->
+            set.id?.let { id -> set.cardCount?.official?.let { id to it } }
+        }.toMap()
+        if (officials.isNotEmpty()) setOfficialCache = officials
+        return officials
     }
 
     private companion object {

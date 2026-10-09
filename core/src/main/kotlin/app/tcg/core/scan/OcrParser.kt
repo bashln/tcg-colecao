@@ -40,7 +40,15 @@ object OcrParser {
             promoCode = promoCode,
             hp = hp,
             rawText = rawText,
+            setTotal = pickSetTotal(lines),
         )
+    }
+
+    // The denominator of the printed "NNN/TTT" is the set size as printed, the one signal
+    // that separates same-name, same-number cards from different sets.
+    private fun pickSetTotal(lines: List<OcrLine>): Int? {
+        val match = lines.firstNotNullOfOrNull { SLASH_NUMBER.find(it.text) } ?: return null
+        return match.groupValues[2].replace('o', '0', ignoreCase = true).toIntOrNull()
     }
 
     private fun pickCollectorNumber(lines: List<OcrLine>): String? {

@@ -5,9 +5,16 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 @Serializable
+data class TcgdexCardCountDto(
+    val official: Int? = null,
+    val total: Int? = null,
+)
+
+@Serializable
 data class TcgdexSetDto(
     val id: String? = null,
     val name: String? = null,
+    val cardCount: TcgdexCardCountDto? = null,
 )
 
 @Serializable

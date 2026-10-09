@@ -14,6 +14,18 @@ class OcrParserTest {
         assertEquals("136", r.collectorNumber)
     }
 
+    @Test fun parses_printed_set_total_from_slash_form() {
+        assertEquals(189, OcrParser.parse(lines("Furret", "HP 110", "136/189")).setTotal)
+        assertEquals(165, OcrParser.parse(lines("Bulbasaur", "001/165")).setTotal)
+        assertEquals(196, OcrParser.parse(lines("Oddish", "o0/196")).setTotal)
+    }
+
+    @Test fun set_total_is_null_without_slash_form() {
+        assertNull(OcrParser.parse(lines("Noctowl", "SWSH027")).setTotal)
+        assertNull(OcrParser.parse(lines("Furret", "HP 110", "136")).setTotal)
+        assertNull(OcrParser.parse(emptyList()).setTotal)
+    }
+
     @Test fun extracts_collector_number_with_letter_o_as_zero() {
         assertEquals("019", OcrParser.parse(lines("Charizard V", "D o19/189")).collectorNumber)
         assertEquals("001", OcrParser.parse(lines("Bulbasaur", "GMEW o01/165O")).collectorNumber)
