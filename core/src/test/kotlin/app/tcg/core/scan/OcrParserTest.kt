@@ -157,6 +157,35 @@ class OcrParserTest {
         assertEquals("Surskit", OcrParser.parse(surskit).name)
     }
 
+    @Test fun picks_name_by_largest_font_when_card_does_not_fill_frame() {
+        // Real field photo: the card sits lower in the frame, so the name is far below 25% of the
+        // image bottom and the old header band dropped it. Heights mirror the name being the
+        // largest text on the card.
+        val frogadier = listOf(
+            OcrLine("grant a", 40f, 20f),
+            OcrLine("mands", 70f, 20f),
+            OcrLine("~/Projects/ TCG|", 100f, 25f),
+            OcrLine("ESTÁGIO ,", 360f, 30f),
+            OcrLine("Frogadier", 400f, 55f),
+            OcrLine("Evoluide Eroakie", 470f, 30f),
+            OcrLine("Ilust. Nelno", 520f, 25f),
+            OcrLine("N0657 Fokémon Sapo Bolha Altura. 0,6 m Peso, 10,9 kg", 560f, 30f),
+            OcrLine("Invoca-jitsu", 640f, 30f),
+            OcrLine("Aqua Gume", 690f, 30f),
+            OcrLine("100", 740f, 40f),
+            OcrLine("Recuo", 780f, 25f),
+            OcrLine("50", 800f, 30f),
+            OcrLine("CH", 820f, 20f),
+            OcrLine("S", 840f, 20f),
+            OcrLine("O Pokémon Ativo do seu oponente agora está Confuso.", 860f, 20f),
+            OcrLine("021/086", 960f, 25f),
+        )
+        val r = OcrParser.parse(frogadier)
+        assertTrue(r.name?.contains("Frogadier") == true, "name should contain Frogadier but was '${r.name}'")
+        assertEquals("021", r.collectorNumber)
+        assertEquals(86, r.setTotal)
+    }
+
     @Test fun fixes_beedrill_letter_l_uppercase_i() {
         assertEquals("Beedrill", OcrParser.parse(lines("BeedrilI")).name)
     }

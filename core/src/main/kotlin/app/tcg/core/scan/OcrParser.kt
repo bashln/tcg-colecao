@@ -104,11 +104,8 @@ object OcrParser {
 
     private fun pickName(lines: List<OcrLine>): String? {
         if (lines.isEmpty()) return null
-        val maxBottom = lines.maxOfOrNull { it.top + it.height } ?: 0f
-        val headerCutoff = if (maxBottom > 0f) maxOf(maxBottom * 0.25f, 150f) else Float.MAX_VALUE
         val candidates = lines
-            .filter { it.top <= headerCutoff }
-            .filterNot { isNoise(it.text) || isHpLine(it) }
+            .filterNot { isNoise(it.text) || isHpLine(it) || isLabel(it.text) }
             .mapNotNull { line ->
                 val cleaned = cleanNameCandidate(line.text)
                 if (hasNameLetters(cleaned)) line to cleaned else null
@@ -116,12 +113,24 @@ object OcrParser {
 
         if (candidates.isEmpty()) return null
 
-        val best = candidates.maxWithOrNull(
-            compareBy<Pair<OcrLine, String>> { it.first.height }
-                .thenByDescending { -it.first.top }
-        )?.second ?: return null
+        // The name is the largest text on the card, but not always the absolute tallest OCR box:
+        // attack and ability lines can measure slightly taller. Treat lines within 40% of the
+        // tallest candidate as the same size class and take the topmost, so a lower attack loses
+        // to the name. No position cutoff, so a card that does not fill the frame still works.
+        val tallest = candidates.maxOf { it.first.height }
+        val best = candidates
+            .filter { it.first.height >= tallest * 0.6f }
+            .minByOrNull { it.first.top }
+            ?.second ?: return null
 
         return normalizeCardName(best, lines)
+    }
+
+    // Stage/type labels (BASICO, ESTAGIO, TREINADOR, ENERGIA and their OCR variants) are short
+    // all-caps tokens printed above the name and must not be mistaken for it.
+    private fun isLabel(text: String): Boolean {
+        val letters = text.filter { it.isLetter() }
+        return letters.length in 2..14 && letters.none { it.isLowerCase() }
     }
 
     private fun cleanNameCandidate(text: String): String {
