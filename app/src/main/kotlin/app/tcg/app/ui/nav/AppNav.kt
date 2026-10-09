@@ -4,9 +4,15 @@ import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,6 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -27,6 +35,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import app.tcg.app.R
 import app.tcg.app.ui.card.CardDetailScreen
 import app.tcg.app.ui.card.CardDetailViewModel
 import app.tcg.app.ui.collection.CollectionScreen
@@ -59,16 +68,27 @@ fun AppNav(
     Scaffold(
         bottomBar = {
             if (topLevelRoute) {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 3.dp,
+                ) {
                     NavigationBarItem(
                         selected = currentRoute == Routes.SCAN,
                         onClick = { navController.navigateToTopLevel(Routes.SCAN) },
-                        icon = { Text("Escanear") },
+                        icon = { Icon(Icons.Outlined.QrCodeScanner, contentDescription = null) },
+                        label = { Text(stringResource(R.string.nav_scan)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        ),
                     )
                     NavigationBarItem(
                         selected = currentRoute == Routes.COLLECTION,
                         onClick = { navController.navigateToTopLevel(Routes.COLLECTION) },
-                        icon = { Text("Coleção") },
+                        icon = { Icon(Icons.Outlined.CollectionsBookmark, contentDescription = null) },
+                        label = { Text(stringResource(R.string.nav_collection)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        ),
                     )
                 }
             }
@@ -140,7 +160,7 @@ private fun CardDetailRoute(
             CardDetailScreen(viewModel = viewModel, onSaved = onSaved)
         }
         else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Carta não encontrada.")
+            Text(stringResource(R.string.detail_not_found))
         }
     }
 }

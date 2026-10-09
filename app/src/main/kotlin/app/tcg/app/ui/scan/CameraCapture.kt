@@ -17,10 +17,15 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -33,10 +38,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.tcg.app.R
 import app.tcg.core.domain.model.OcrLine
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -123,18 +130,34 @@ fun CameraCapture(
 
     BoxWithConstraints(modifier = modifier) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
-        // Portrait card frame: 5:7 width:height, 70% of preview width, clamped to fit the height.
-        val frameWidth = minOf(maxWidth * 0.7f, maxHeight * CARD_ASPECT)
+        // Portrait card frame: 5:7 width:height, 72% of preview width, clamped to fit the height.
+        val frameWidth = minOf(maxWidth * 0.72f, maxHeight * 0.8f * CARD_ASPECT)
         val frameHeight = frameWidth / CARD_ASPECT
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(frameWidth, frameHeight)
-                .border(2.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(12.dp)),
-        )
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(frameWidth, frameHeight)
+                    .border(2.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(16.dp)),
+            )
+            Spacer(Modifier.height(12.dp))
+            Surface(
+                color = Color.Black.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(50),
+            ) {
+                Text(
+                    text = stringResource(R.string.scan_hint),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                )
+            }
+        }
         if (!hasPermission) {
             Text(
-                text = "Permita o acesso à câmera para escanear.",
+                text = stringResource(R.string.scan_camera_permission),
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 color = Color.White,
             )

@@ -6,8 +6,11 @@
     <application
         android:name=".TcgApplication"
         android:allowBackup="true"
-        android:label="TCG Pokémon Collection"
-        android:supportsRtl="true">
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Tcg">
         <activity
             android:name=".MainActivity"
             android:exported="true">

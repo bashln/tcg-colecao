@@ -1,16 +1,22 @@
 package app.tcg.app.ui.collection
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -18,17 +24,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.tcg.core.domain.model.CardVariant
-import app.tcg.core.domain.model.CollectionEntry
-import app.tcg.core.domain.model.Condition
+import app.tcg.app.R
+import app.tcg.app.ui.components.CollectionItemCard
+import app.tcg.app.ui.components.EmptyState
+import app.tcg.app.ui.components.formatMoney
 import app.tcg.core.domain.model.Money
-import app.tcg.core.domain.model.PriceSource
-import app.tcg.core.domain.valuation.Valuation
-import coil.compose.AsyncImage
 
 @Composable
 fun CollectionScreen(
@@ -39,41 +45,53 @@ fun CollectionScreen(
 
     Column(modifier = modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Coleção", style = MaterialTheme.typography.headlineSmall)
-                Text(formatMoney(state.total), style = MaterialTheme.typography.titleMedium)
-            }
+            Text(stringResource(R.string.collection_title), style = MaterialTheme.typography.headlineSmall)
+            TotalValueCard(state.total)
             OutlinedTextField(
                 value = state.query,
                 onValueChange = viewModel::onQuery,
-                label = { Text("Buscar por nome") },
+                label = { Text(stringResource(R.string.collection_search_label)) },
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                 singleLine = true,
+                shape = MaterialTheme.shapes.medium,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        if (state.entries.isEmpty()) {
-            Text(
-                text = "Nenhuma carta na coleção.",
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 160.dp),
-                contentPadding = PaddingValues(16.dp),
+        when {
+            state.entries.isEmpty() && state.query.isBlank() -> Box(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                EmptyState(
+                    icon = Icons.Outlined.CollectionsBookmark,
+                    title = stringResource(R.string.collection_empty_title),
+                    body = stringResource(R.string.collection_empty_body),
+                )
+            }
+            state.entries.isEmpty() -> Box(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.collection_no_results),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(32.dp),
+                )
+            }
+            else -> LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 156.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth().weight(1f),
             ) {
                 items(state.entries, key = { it.item.id }) { entry ->
-                    CollectionCard(entry)
+                    CollectionItemCard(entry)
                 }
             }
         }
@@ -81,55 +99,39 @@ fun CollectionScreen(
 }
 
 @Composable
-private fun CollectionCard(entry: CollectionEntry) {
-    val card = entry.card
-    val item = entry.item
-
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        AsyncImage(
-            model = card.imageUrl,
-            contentDescription = card.name,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxWidth().height(180.dp),
-        )
-        Text(
-            text = card.name,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.titleSmall,
-        )
-        Text(
-            text = card.setName,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Text(
-            text = "${variantLabel(item.variant)} · ${conditionLabel(item.condition)} · x${item.quantity}",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Text(
-            text = formatMoney(Valuation.itemValue(card, item.variant, PriceSource.TCGPLAYER)),
-            style = MaterialTheme.typography.bodyMedium,
-        )
+private fun TotalValueCard(total: Money) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(
+                Brush.linearGradient(
+                    listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary),
+                ),
+            )
+            .padding(20.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.AccountBalanceWallet,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                )
+                Text(
+                    text = stringResource(R.string.collection_total),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+            Text(
+                text = formatMoney(total) ?: stringResource(R.string.common_no_price),
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
+        }
     }
-}
-
-private fun formatMoney(money: Money?): String =
-    money?.let { "%.2f ${it.currency.name}".format(it.amount) } ?: "sem preço"
-
-private fun variantLabel(variant: CardVariant) = when (variant) {
-    CardVariant.NORMAL -> "Normal"
-    CardVariant.HOLOFOIL -> "Holo"
-    CardVariant.REVERSE_HOLOFOIL -> "Reverse"
-    CardVariant.FIRST_EDITION -> "1ª edição"
-    CardVariant.PROMO -> "Promo"
-}
-
-private fun conditionLabel(condition: Condition) = when (condition) {
-    Condition.NEAR_MINT -> "NM"
-    Condition.LIGHTLY_PLAYED -> "LP"
-    Condition.MODERATELY_PLAYED -> "MP"
-    Condition.HEAVILY_PLAYED -> "HP"
-    Condition.DAMAGED -> "DMG"
 }

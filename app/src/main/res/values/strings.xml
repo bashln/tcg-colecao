@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TCG Coleção</string>
+
+    <string name="nav_scan">Escanear</string>
+    <string name="nav_collection">Coleção</string>
+
+    <string name="scan_title">Escanear carta</string>
+    <string name="scan_hint">Enquadre a carta no guia</string>
+    <string name="scan_capture">Capturar</string>
+    <string name="scan_gallery">Galeria</string>
+    <string name="scan_search_label">Buscar por nome</string>
+    <string name="scan_search_action">Buscar</string>
+    <string name="scan_camera_permission">Permita o acesso à câmera para escanear.</string>
+    <string name="scan_candidates">%1$d candidato(s)</string>
+    <string name="scan_candidates_title">Candidatos</string>
+    <string name="scan_candidates_empty">Nenhum candidato ainda. Aponte a câmera para uma carta ou use a busca manual.</string>
+    <string name="scan_feedback_title">Não encontramos a carta</string>
+    <string name="scan_feedback_body">Use a busca manual pelo nome abaixo.</string>
+    <string name="scan_attempts_hint">Dica: aproxime a carta para melhorar o reconhecimento.</string>
+    <string name="scan_searching">Buscando…</string>
+
+    <string name="detail_attacks">Ataques</string>
+    <string name="detail_prices">Preços</string>
+    <string name="detail_variant">Variante</string>
+    <string name="detail_condition">Condição</string>
+    <string name="detail_quantity">Quantidade</string>
+    <string name="detail_hp">HP %1$d</string>
+    <string name="detail_save">Salvar na coleção</string>
+    <string name="detail_saved">Carta salva na coleção</string>
+    <string name="detail_not_found">Carta não encontrada.</string>
+    <string name="detail_no_attacks">Esta carta não possui ataques.</string>
+
+    <string name="collection_title">Coleção</string>
+    <string name="collection_total">Valor total</string>
+    <string name="collection_search_label">Buscar na coleção</string>
+    <string name="collection_count">%1$d carta(s)</string>
+    <string name="collection_empty_title">Sua coleção está vazia</string>
+    <string name="collection_empty_body">Escaneie uma carta para começar a sua coleção.</string>
+    <string name="collection_no_results">Nenhuma carta encontrada para a busca.</string>
+
+    <string name="common_no_price">Sem preço</string>
+    <string name="common_price_tcgplayer">TCGplayer</string>
+    <string name="common_price_cardmarket">Cardmarket</string>
+
+    <string name="variant_normal">Normal</string>
+    <string name="variant_holofoil">Holo</string>
+    <string name="variant_reverse_holofoil">Reverse</string>
+    <string name="variant_first_edition">1ª edição</string>
+    <string name="variant_promo">Promo</string>
+
+    <string name="condition_near_mint">NM</string>
+    <string name="condition_lightly_played">LP</string>
+    <string name="condition_moderately_played">MP</string>
+    <string name="condition_heavily_played">HP</string>
+    <string name="condition_damaged">DMG</string>
+
+    <string name="cd_card_image">Imagem da carta</string>
+    <string name="cd_decrease_quantity">Diminuir quantidade</string>
+    <string name="cd_increase_quantity">Aumentar quantidade</string>
+    <string name="cd_capture_button">Capturar carta</string>
+    <string name="cd_gallery_button">Escolher da galeria</string>
+</resources>
