@@ -18,6 +18,7 @@ data class CollectionUiState(
     val entries: List<CollectionEntry> = emptyList(),
     val query: String = "",
     val total: Money = Money(0.0, Currency.USD),
+    val loading: Boolean = false,
 )
 
 class CollectionViewModel(
@@ -31,7 +32,7 @@ class CollectionViewModel(
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.Eagerly,
-                initialValue = stateFor(emptyList(), ""),
+                initialValue = CollectionUiState(loading = true),
             )
 
     fun onQuery(text: String) {

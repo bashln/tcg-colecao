@@ -6,20 +6,30 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.SearchOff
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -27,12 +37,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tcg.app.R
 import app.tcg.app.ui.components.CollectionItemCard
 import app.tcg.app.ui.components.EmptyState
+import app.tcg.app.ui.components.LoadingState
 import app.tcg.app.ui.components.formatMoney
 import app.tcg.core.domain.model.Money
 
@@ -40,6 +51,7 @@ import app.tcg.core.domain.model.Money
 fun CollectionScreen(
     viewModel: CollectionViewModel,
     modifier: Modifier = Modifier,
+    onScanClick: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -55,12 +67,30 @@ fun CollectionScreen(
                 onValueChange = viewModel::onQuery,
                 label = { Text(stringResource(R.string.collection_search_label)) },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (state.query.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.onQuery("") }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Close,
+                                contentDescription = stringResource(R.string.cd_clear_search),
+                            )
+                        }
+                    }
+                },
                 singleLine = true,
                 shape = MaterialTheme.shapes.medium,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {}),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         when {
+            state.loading && state.entries.isEmpty() -> Box(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                LoadingState(stringResource(R.string.collection_loading))
+            }
             state.entries.isEmpty() && state.query.isBlank() -> Box(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center,
@@ -69,18 +99,28 @@ fun CollectionScreen(
                     icon = Icons.Outlined.CollectionsBookmark,
                     title = stringResource(R.string.collection_empty_title),
                     body = stringResource(R.string.collection_empty_body),
+                    action = {
+                        Button(onClick = onScanClick) {
+                            Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.collection_empty_action))
+                        }
+                    },
                 )
             }
             state.entries.isEmpty() -> Box(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = stringResource(R.string.collection_no_results),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(32.dp),
+                EmptyState(
+                    icon = Icons.Outlined.SearchOff,
+                    title = stringResource(R.string.collection_no_results_title),
+                    body = stringResource(R.string.collection_no_results, state.query),
+                    action = {
+                        TextButton(onClick = { viewModel.onQuery("") }) {
+                            Text(stringResource(R.string.collection_clear_search))
+                        }
+                    },
                 )
             }
             else -> LazyVerticalGrid(

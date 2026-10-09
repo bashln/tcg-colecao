@@ -62,7 +62,7 @@ fun CollectionItemCard(entry: CollectionEntry, modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleSmall,
             )
             Text(
-                text = "${card.setName} · ${card.collectorNumber}",
+                text = joinNonBlank(card.setName, card.collectorNumber),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
