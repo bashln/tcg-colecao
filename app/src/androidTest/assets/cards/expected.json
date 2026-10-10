@@ -1,0 +1,232 @@
+{
+  "sm1-1.png": {
+    "localId": "1",
+    "name": "Caterpie",
+    "id": "sm1-1"
+  },
+  "sm1-12.png": {
+    "localId": "12",
+    "name": "Decidueye GX",
+    "id": "sm1-12"
+  },
+  "sm1-18.png": {
+    "localId": "18",
+    "name": "Bounsweet",
+    "id": "sm1-18"
+  },
+  "sm1-23.png": {
+    "localId": "23",
+    "name": "Torkoal",
+    "id": "sm1-23"
+  },
+  "sm1-29.png": {
+    "localId": "29",
+    "name": "Golduck",
+    "id": "sm1-29"
+  },
+  "sm1-35.png": {
+    "localId": "35",
+    "name": "Lapras GX",
+    "id": "sm1-35"
+  },
+  "sm1-40.png": {
+    "localId": "40",
+    "name": "Brionne",
+    "id": "sm1-40"
+  },
+  "sm1-46.png": {
+    "localId": "46",
+    "name": "Araquanid",
+    "id": "sm1-46"
+  },
+  "sm1-51.png": {
+    "localId": "51",
+    "name": "Charjabug",
+    "id": "sm1-51"
+  },
+  "sm1-7.png": {
+    "localId": "7",
+    "name": "Surskit",
+    "id": "sm1-7"
+  },
+  "sv03_5-001.png": {
+    "localId": "001",
+    "name": "Bulbasaur",
+    "id": "sv03.5-001"
+  },
+  "sv03_5-006.png": {
+    "localId": "006",
+    "name": "Charizard ex",
+    "id": "sv03.5-006"
+  },
+  "sv03_5-010.png": {
+    "localId": "010",
+    "name": "Caterpie",
+    "id": "sv03.5-010"
+  },
+  "sv03_5-015.png": {
+    "localId": "015",
+    "name": "Beedrill",
+    "id": "sv03.5-015"
+  },
+  "sv03_5-020.png": {
+    "localId": "020",
+    "name": "Raticate",
+    "id": "sv03.5-020"
+  },
+  "sv03_5-024.png": {
+    "localId": "024",
+    "name": "Arbok ex",
+    "id": "sv03.5-024"
+  },
+  "sv03_5-029.png": {
+    "localId": "029",
+    "name": "Nidoran♀",
+    "id": "sv03.5-029"
+  },
+  "sv03_5-034.png": {
+    "localId": "034",
+    "name": "Nidoking",
+    "id": "sv03.5-034"
+  },
+  "sv03_5-038.png": {
+    "localId": "038",
+    "name": "Ninetales ex",
+    "id": "sv03.5-038"
+  },
+  "sv03_5-043.png": {
+    "localId": "043",
+    "name": "Oddish",
+    "id": "sv03.5-043"
+  },
+  "sv03_5-048.png": {
+    "localId": "048",
+    "name": "Venonat",
+    "id": "sv03.5-048"
+  },
+  "sv03_5-053.png": {
+    "localId": "053",
+    "name": "Persian",
+    "id": "sv03.5-053"
+  },
+  "sv03_5-057.png": {
+    "localId": "057",
+    "name": "Primeape",
+    "id": "sv03.5-057"
+  },
+  "sv03_5-062.png": {
+    "localId": "062",
+    "name": "Poliwrath",
+    "id": "sv03.5-062"
+  },
+  "sv03_5-067.png": {
+    "localId": "067",
+    "name": "Machoke",
+    "id": "sv03.5-067"
+  },
+  "swsh3-1.png": {
+    "localId": "1",
+    "name": "Butterfree V",
+    "id": "swsh3-1"
+  },
+  "swsh3-10.png": {
+    "localId": "10",
+    "name": "Accelgor",
+    "id": "swsh3-10"
+  },
+  "swsh3-15.png": {
+    "localId": "15",
+    "name": "Steenee",
+    "id": "swsh3-15"
+  },
+  "swsh3-19.png": {
+    "localId": "19",
+    "name": "Charizard V",
+    "id": "swsh3-19"
+  },
+  "swsh3-24.png": {
+    "localId": "24",
+    "name": "Blaziken",
+    "id": "swsh3-24"
+  },
+  "swsh3-28.png": {
+    "localId": "28",
+    "name": "Darmanitan de Galar",
+    "id": "swsh3-28"
+  },
+  "swsh3-33.png": {
+    "localId": "33",
+    "name": "Centiskorch V",
+    "id": "swsh3-33"
+  },
+  "swsh3-37.png": {
+    "localId": "37",
+    "name": "Suicune",
+    "id": "swsh3-37"
+  },
+  "swsh3-42.png": {
+    "localId": "42",
+    "name": "Simipour",
+    "id": "swsh3-42"
+  },
+  "swsh3-46.png": {
+    "localId": "46",
+    "name": "Vanillish",
+    "id": "swsh3-46"
+  },
+  "swsh3-51.png": {
+    "localId": "51",
+    "name": "Mareanie",
+    "id": "swsh3-51"
+  },
+  "swsh3-56.png": {
+    "localId": "56",
+    "name": "Flaaffy",
+    "id": "swsh3-56"
+  },
+  "swsh3-6.png": {
+    "localId": "6",
+    "name": "Pansage",
+    "id": "swsh3-6"
+  },
+  "swsh3-60.png": {
+    "localId": "60",
+    "name": "Vikavolt V",
+    "id": "swsh3-60"
+  },
+  "swsh3-69.png": {
+    "localId": "69",
+    "name": "Mew V",
+    "id": "swsh3-69"
+  },
+  "xy1-1.png": {
+    "localId": "1",
+    "name": "Venusaur EX",
+    "id": "xy1-1"
+  },
+  "xy1-10.png": {
+    "localId": "10",
+    "name": "Pansage",
+    "id": "xy1-10"
+  },
+  "xy1-18.png": {
+    "localId": "18",
+    "name": "Skiddo",
+    "id": "xy1-18"
+  },
+  "xy1-27.png": {
+    "localId": "27",
+    "name": "Fletchinder",
+    "id": "xy1-27"
+  },
+  "xy1-35.png": {
+    "localId": "35",
+    "name": "Lapras",
+    "id": "xy1-35"
+  },
+  "xy1-44.png": {
+    "localId": "44",
+    "name": "Voltorb",
+    "id": "xy1-44"
+  }
+}
