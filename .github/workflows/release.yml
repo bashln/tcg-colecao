@@ -24,12 +24,10 @@ jobs:
           echo "::error::ANDROID_KEYSTORE_BASE64 ausente. Uma tag de release sem os secrets falha aqui em vez de publicar um APK assinado com debug."
           exit 1
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-
-      - uses: android-actions/setup-android@v3
 
       - name: Preparar keystore
         env:
