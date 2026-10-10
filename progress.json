@@ -1,24 +1,21 @@
 {
   "task": "Finalizar S1 do app TCG Pokemon Collection",
-  "status": "in_progress",
+  "status": "s1_entregue",
   "completed_steps": [
-    "S1 implementado: scan por CameraX + ML Kit, TCGdex, precos USD/EUR, colecao em Room",
-    "UI profissional (tema Material 3, estados, acessibilidade) + 7 testes Compose",
-    "Reconhecimento por OCR: parser de numero e nome, ranking com numero normalizado e total do set",
-    "Harness de medicao E2E: conjunto principal 46 e holdout 40, rodando no aparelho",
-    "Pipeline de release GitHub Actions com assinatura por env e guarda fail-closed",
-    "Fix: nome pelo maior texto (nao depende da carta preencher o quadro)",
-    "Fix: detalhe busca a carta completa, nao o resumo do cache",
-    "Fix: lista de candidatos relevante e limitada a 10"
+    "S1 implementado: scan, TCGdex, precos USD/EUR, colecao em Room",
+    "UI profissional + 7 testes Compose",
+    "Reconhecimento OCR com correcoes de numero, nome, ranking e total do set",
+    "Recall do caminho real corrigido: main top1 97.8 por cento, holdout top1 87.5 por cento",
+    "Pipeline de release GitHub Actions fail-closed, assinatura por env, versao pela tag",
+    "Merge em main e push para github.com/bashln/tcg-colecao",
+    "Secrets do keystore cadastrados",
+    "Release v0.1.1 publicada com APK assinado CN=TCG Colecao, verificado por fora",
+    "APK da release instalado e rodando no aparelho"
   ],
   "pending_steps": [
-    "Corrigir recall do caminho real de producao (filtro de nome agressivo + setTotal nao persistido no Room)",
-    "Medir E2E pelo caminho real ate holdout top1 >= 85 por cento",
-    "Verificar no device que Frogadier vem primeiro",
-    "Merge da branch em main",
-    "Criar repositorio no GitHub e dar push",
-    "Tag v0.1.0 e release do APK pelo Actions",
-    "Instalar e atualizar pelo Obtainium a partir da release"
+    "Obtainium: usuario adiciona o app pela URL do repositorio",
+    "Verificacao por foto real com luz (unico criterio de aceite ainda aberto)",
+    "Fatias S2 a S7 de paridade com o Collectr (ver docs/vision.md)"
   ],
-  "notes": "gh autenticado como bashln via ssh. Sem remoto ainda. Existem mudancas nao commitadas do fix de recall (Entities, LocalMappers, TcgDatabase, RoomCardRepository, AppModule, ScanViewModel e testes)."
+  "notes": "Repositorio publico: https://github.com/bashln/tcg-colecao . Release: https://github.com/bashln/tcg-colecao/releases/tag/v0.1.1 . Plano do restante em docs/plans/GOAL.md . App instalado por assinatura de release no aparelho."
 }
