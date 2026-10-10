@@ -1,21 +1,21 @@
 {
-  "task": "Finalizar S1 do app TCG Pokemon Collection",
-  "status": "s1_entregue",
+  "task": "Home e Perfil com camada de estatisticas e navegacao de 4 abas",
+  "status": "concluido",
   "completed_steps": [
-    "S1 implementado: scan, TCGdex, precos USD/EUR, colecao em Room",
-    "UI profissional + 7 testes Compose",
-    "Reconhecimento OCR com correcoes de numero, nome, ranking e total do set",
-    "Recall do caminho real corrigido: main top1 97.8 por cento, holdout top1 87.5 por cento",
-    "Pipeline de release GitHub Actions fail-closed, assinatura por env, versao pela tag",
-    "Merge em main e push para github.com/bashln/tcg-colecao",
-    "Secrets do keystore cadastrados",
-    "Release v0.1.1 publicada com APK assinado CN=TCG Colecao, verificado por fora",
-    "APK da release instalado e rodando no aparelho"
+    "CollectionStats puro em :core: totais, distintos, sets, breakdowns por condicao/variante/raridade, top 5 mais valiosas, investido e lucro",
+    "Testes JVM cobrem colecao vazia, entrada sem preco e entrada sem pricePaid",
+    "HomeViewModel e ProfileViewModel sobre CollectionRepository.observe() com testes deterministas",
+    "HomeScreen com hero de valor, cartas/distintas/sets, Mais valiosas e placeholder de historico de precos",
+    "ProfileScreen com totais, investido/lucro e breakdowns com rotulo, contagem e fatia",
+    "AppNav com 4 abas (Inicio, Colecao, Escanear, Perfil), Inicio como destino inicial, rota de detalhe mantida",
+    "Strings pt-BR externalizadas e componentes TotalValueHero/StatTile/BreakdownRow compartilhados",
+    "Verde: :core:test, :app:testDebugUnitTest, :app:assembleDebug",
+    "11 testes Compose instrumentados verdes no SM-A325M",
+    "Capturas light e dark em /tmp/opencode/ui4/"
   ],
   "pending_steps": [
-    "Obtainium: usuario adiciona o app pela URL do repositorio",
-    "Verificacao por foto real com luz (unico criterio de aceite ainda aberto)",
-    "Fatias S2 a S7 de paridade com o Collectr (ver docs/vision.md)"
+    "Grafico de historico de precos depende de snapshots (fatia futura)",
+    "Verificacao por foto real com luz (criterio S1 ainda aberto)"
   ],
-  "notes": "Repositorio publico: https://github.com/bashln/tcg-colecao . Release: https://github.com/bashln/tcg-colecao/releases/tag/v0.1.1 . Plano do restante em docs/plans/GOAL.md . App instalado por assinatura de release no aparelho."
+  "notes": "Repositorio publico: https://github.com/bashln/tcg-colecao . Colecao do aparelho limpa durante as capturas; app debug reinstalado. APK de release v0.1.1 pode ser reinstalado quando necessario."
 }

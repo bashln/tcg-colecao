@@ -11,6 +11,12 @@
       "tentativas": 1,
       "abordagens_falhas": ["medir so pelo KtorTcgdexCardSource direto (proxy otimista)"],
       "solucao": "em andamento: remover filtro de nome no ScanViewModel e persistir setTotal no Room"
+    },
+    {
+      "erro": "connectedDebugAndroidTest falhou com INSTALL_FAILED_VERSION_DOWNGRADE (debug versionCode 1 contra release v0.1.1 versionCode 101 instalada)",
+      "tentativas": 2,
+      "abordagens_falhas": ["adb uninstall app.tcg.app retornou DELETE_FAILED_INTERNAL_ERROR", "adb shell pm uninstall --user 0 retornou not installed for 0"],
+      "solucao": "o pacote ja nao estava instalado; reinstalar app-debug.apk limpo resolveu e os 11 testes Compose passaram"
     }
   ]
 }
