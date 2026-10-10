@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.Icon
@@ -42,6 +44,10 @@ import app.tcg.app.ui.collection.CollectionScreen
 import app.tcg.app.ui.collection.CollectionViewModel
 import app.tcg.app.ui.components.EmptyState
 import app.tcg.app.ui.components.LoadingState
+import app.tcg.app.ui.home.HomeScreen
+import app.tcg.app.ui.home.HomeViewModel
+import app.tcg.app.ui.profile.ProfileScreen
+import app.tcg.app.ui.profile.ProfileViewModel
 import app.tcg.app.ui.scan.ScanScreen
 import app.tcg.app.ui.scan.ScanViewModel
 import app.tcg.core.data.repository.CardRepository
@@ -49,10 +55,14 @@ import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.domain.model.Card
 
 private object Routes {
+    const val HOME = "home"
     const val SCAN = "scan"
     const val COLLECTION = "collection"
+    const val PROFILE = "profile"
     const val CARD_ID = "cardId"
     const val CARD_DETAIL = "card/{$CARD_ID}"
+
+    val topLevel = setOf(HOME, SCAN, COLLECTION, PROFILE)
 
     fun cardDetail(cardId: String) = "card/${Uri.encode(cardId)}"
 }
@@ -65,7 +75,7 @@ fun AppNav(
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val topLevelRoute = currentRoute == Routes.SCAN || currentRoute == Routes.COLLECTION
+    val topLevelRoute = currentRoute in Routes.topLevel
 
     Scaffold(
         bottomBar = {
@@ -75,10 +85,10 @@ fun AppNav(
                     tonalElevation = 3.dp,
                 ) {
                     NavigationBarItem(
-                        selected = currentRoute == Routes.SCAN,
-                        onClick = { navController.navigateToTopLevel(Routes.SCAN) },
-                        icon = { Icon(Icons.Outlined.QrCodeScanner, contentDescription = null) },
-                        label = { Text(stringResource(R.string.nav_scan)) },
+                        selected = currentRoute == Routes.HOME,
+                        onClick = { navController.navigateToTopLevel(Routes.HOME) },
+                        icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
+                        label = { Text(stringResource(R.string.nav_home)) },
                         colors = NavigationBarItemDefaults.colors(
                             indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                         ),
@@ -92,15 +102,43 @@ fun AppNav(
                             indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                         ),
                     )
+                    NavigationBarItem(
+                        selected = currentRoute == Routes.SCAN,
+                        onClick = { navController.navigateToTopLevel(Routes.SCAN) },
+                        icon = { Icon(Icons.Outlined.QrCodeScanner, contentDescription = null) },
+                        label = { Text(stringResource(R.string.nav_scan)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        ),
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == Routes.PROFILE,
+                        onClick = { navController.navigateToTopLevel(Routes.PROFILE) },
+                        icon = { Icon(Icons.Outlined.Person, contentDescription = null) },
+                        label = { Text(stringResource(R.string.nav_profile)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        ),
+                    )
                 }
             }
         },
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.SCAN,
+            startDestination = Routes.HOME,
             modifier = Modifier.padding(padding),
         ) {
+            composable(Routes.HOME) {
+                val viewModel: HomeViewModel = viewModel(
+                    factory = viewModelFactory { initializer { HomeViewModel(collectionRepository) } },
+                )
+                HomeScreen(
+                    viewModel = viewModel,
+                    onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
+                    onCardSelected = { cardId -> navController.navigate(Routes.cardDetail(cardId)) },
+                )
+            }
             composable(Routes.SCAN) {
                 val viewModel: ScanViewModel = viewModel(
                     factory = viewModelFactory { initializer { ScanViewModel(cardRepository) } },
@@ -115,6 +153,15 @@ fun AppNav(
                     factory = viewModelFactory { initializer { CollectionViewModel(collectionRepository) } },
                 )
                 CollectionScreen(
+                    viewModel = viewModel,
+                    onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
+                )
+            }
+            composable(Routes.PROFILE) {
+                val viewModel: ProfileViewModel = viewModel(
+                    factory = viewModelFactory { initializer { ProfileViewModel(collectionRepository) } },
+                )
+                ProfileScreen(
                     viewModel = viewModel,
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
                 )

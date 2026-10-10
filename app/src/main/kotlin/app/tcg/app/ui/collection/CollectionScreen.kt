@@ -1,11 +1,9 @@
 package app.tcg.app.ui.collection
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +15,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.QrCodeScanner
@@ -34,8 +31,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -44,8 +39,7 @@ import app.tcg.app.R
 import app.tcg.app.ui.components.CollectionItemCard
 import app.tcg.app.ui.components.EmptyState
 import app.tcg.app.ui.components.LoadingState
-import app.tcg.app.ui.components.formatMoney
-import app.tcg.core.domain.model.Money
+import app.tcg.app.ui.components.TotalValueHero
 
 @Composable
 fun CollectionScreen(
@@ -61,7 +55,7 @@ fun CollectionScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(stringResource(R.string.collection_title), style = MaterialTheme.typography.headlineSmall)
-            TotalValueCard(state.total)
+            TotalValueHero(label = stringResource(R.string.collection_total), total = state.total)
             OutlinedTextField(
                 value = state.query,
                 onValueChange = viewModel::onQuery,
@@ -138,40 +132,3 @@ fun CollectionScreen(
     }
 }
 
-@Composable
-private fun TotalValueCard(total: Money) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(
-                Brush.linearGradient(
-                    listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary),
-                ),
-            )
-            .padding(20.dp),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.AccountBalanceWallet,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                )
-                Text(
-                    text = stringResource(R.string.collection_total),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                )
-            }
-            Text(
-                text = formatMoney(total) ?: stringResource(R.string.common_no_price),
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onPrimary,
-            )
-        }
-    }
-}

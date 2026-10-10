@@ -4,6 +4,8 @@
 
     <string name="nav_scan">Escanear</string>
     <string name="nav_collection">Coleção</string>
+    <string name="nav_home">Início</string>
+    <string name="nav_profile">Perfil</string>
 
     <string name="scan_title">Escanear carta</string>
     <string name="scan_hint">Enquadre a carta no guia</string>
@@ -75,4 +77,33 @@
     <string name="cd_clear_search">Limpar busca</string>
     <string name="cd_open_card">Ver detalhes da carta</string>
     <string name="cd_back">Voltar</string>
+
+    <string name="home_title">Início</string>
+    <string name="home_total_label">Valor da coleção</string>
+    <string name="home_stat_cards">Cartas</string>
+    <string name="home_stat_distinct">Distintas</string>
+    <string name="home_stat_sets">Sets</string>
+    <string name="home_most_valuable">Mais valiosas</string>
+    <string name="home_chart_title">Histórico de preços</string>
+    <string name="home_chart_soon">Em breve</string>
+    <string name="home_chart_placeholder">O gráfico aparece quando o app guardar o primeiro histórico de preços.</string>
+    <string name="home_loading">Carregando seu resumo…</string>
+    <string name="home_empty_title">Sua coleção está vazia</string>
+    <string name="home_empty_body">Escaneie sua primeira carta para ver o valor e os destaques aqui.</string>
+    <string name="home_empty_action">Escanear uma carta</string>
+
+    <string name="profile_title">Perfil</string>
+    <string name="profile_total_value">Valor total</string>
+    <string name="profile_invested">Investido</string>
+    <string name="profile_profit">Lucro</string>
+    <string name="profile_loss">Prejuízo</string>
+    <string name="profile_breakdown_condition">Por condição</string>
+    <string name="profile_breakdown_variant">Por variante</string>
+    <string name="profile_breakdown_rarity">Por raridade</string>
+    <string name="profile_share">%1$d%%</string>
+    <string name="profile_rarity_unknown">Sem raridade</string>
+    <string name="profile_loading">Carregando suas estatísticas…</string>
+    <string name="profile_empty_title">Ainda não há estatísticas</string>
+    <string name="profile_empty_body">Escaneie uma carta para acompanhar valor, quantidade e detalhes da sua coleção.</string>
+    <string name="profile_empty_action">Escanear uma carta</string>
 </resources>
