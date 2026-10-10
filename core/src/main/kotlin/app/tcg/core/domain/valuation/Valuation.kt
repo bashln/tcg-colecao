@@ -20,7 +20,7 @@ object Valuation {
         return Money(total, currencyOf(source))
     }
 
-    private fun currencyOf(source: PriceSource) = when (source) {
+    fun currencyOf(source: PriceSource) = when (source) {
         PriceSource.TCGPLAYER -> Currency.USD
         PriceSource.CARDMARKET -> Currency.EUR
     }
