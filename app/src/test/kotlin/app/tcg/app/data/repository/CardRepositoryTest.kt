@@ -102,21 +102,34 @@ class CardRepositoryTest {
     }
 
     @Test
-    fun search_by_name_records_network_once_and_then_reads_cache() = runTest {
-        val first = repo.searchByName("Furret")
-        val second = repo.searchByName("Furret")
+    fun search_by_name_falls_back_to_cache_when_network_fails() = runTest {
+        repo.searchByName("Furret")
+        source.searchError = RuntimeException("offline")
 
-        assertEquals(listOf("swsh3-136"), first.map { it.id })
-        assertEquals(listOf("swsh3-136"), second.map { it.id })
-        assertEquals(1, source.searchNameCalls)
+        val cached = repo.searchByName("Furret")
+
+        assertEquals(listOf("swsh3-136"), cached.map { it.id })
     }
 
     @Test
-    fun search_by_number_caches_result_for_the_same_query() = runTest {
+    fun search_by_number_falls_back_to_cache_when_network_fails() = runTest {
         repo.searchByNumber("swsh3", "136")
-        repo.searchByNumber("swsh3", "136")
+        source.searchError = RuntimeException("offline")
 
-        assertEquals(1, source.searchNumberCalls)
+        val cached = repo.searchByNumber("swsh3", "136")
+
+        assertEquals(listOf("swsh3-136"), cached.map { it.id })
+    }
+
+    @Test
+    fun search_by_name_keeps_set_total_through_the_cache_when_offline() = runTest {
+        source.searchResult = sampleCard().copy(setTotal = 198)
+        repo.searchByName("Furret")
+        source.searchError = RuntimeException("offline")
+
+        val fromCache = repo.searchByName("Furret").single()
+
+        assertEquals(198, fromCache.setTotal)
     }
 
     private class FakeTcgdexCardSource : TcgdexCardSource {
@@ -125,15 +138,19 @@ class CardRepositoryTest {
         var searchNumberCalls = 0
         var getResult: Card? = sampleCard()
         var getError: Exception? = null
+        var searchResult: Card = sampleCard()
+        var searchError: Exception? = null
 
         override suspend fun searchByName(name: String, language: String): List<Card> {
             searchNameCalls++
-            return listOf(sampleCard())
+            searchError?.let { throw it }
+            return listOf(searchResult)
         }
 
         override suspend fun searchByNumber(setId: String?, collectorNumber: String, language: String): List<Card> {
             searchNumberCalls++
-            return listOf(sampleCard())
+            searchError?.let { throw it }
+            return listOf(searchResult)
         }
 
         override suspend fun getCard(id: String, language: String): Card? {

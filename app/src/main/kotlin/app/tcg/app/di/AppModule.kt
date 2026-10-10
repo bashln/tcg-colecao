@@ -43,7 +43,9 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TcgDatabase =
-        Room.databaseBuilder(context, TcgDatabase::class.java, "tcg.db").build()
+        Room.databaseBuilder(context, TcgDatabase::class.java, "tcg.db")
+            .addMigrations(TcgDatabase.MIGRATION_1_2)
+            .build()
 
     @Provides
     fun provideCardDao(database: TcgDatabase): CardDao = database.cardDao()

@@ -106,18 +106,26 @@ class ScanViewModelTest {
     }
 
     @Test
-    fun name_and_number_keeps_only_matching_number_results_and_caps_at_ten() = runTest {
-        val nameResult = card("name-1", "Frogadier", "001", 120)
-        val matchingNumbers = (2..12).map { card("num-$it", "Frogadier", "001", 120) }
-        val unrelatedNumbers = (1..5).map { card("other-$it", "Charmander", "001", 60) }
-        val repo = SplitCardRepository(
-            byName = listOf(nameResult),
-            byNumber = matchingNumbers + unrelatedNumbers,
-        )
+    fun merged_name_and_number_candidates_are_capped_at_ten() = runTest {
+        val byName = (1..6).map { card("name-$it", "Frogadier", "001", 120) }
+        val byNumber = (1..6).map { card("num-$it", "Charmander", "001", 60) }
+        val repo = SplitCardRepository(byName = byName, byNumber = byNumber)
         val vm = ScanViewModel(repo)
         vm.onTextRecognized(listOf(OcrLine("Frogadier", 0f, 40f), OcrLine("001/198", 100f, 40f)))
         assertEquals(10, vm.state.value.candidates.size)
-        assertEquals(setOf("Frogadier"), vm.state.value.candidates.map { it.value.name }.toSet())
+    }
+
+    @Test
+    fun number_result_survives_when_its_name_does_not_match_the_parsed_name() = runTest {
+        val nameHit = card("name-hit", "Frogadier", "999", 120)
+        val numberHit = card("num-hit", "Greninja", "001", 120)
+        val repo = SplitCardRepository(byName = listOf(nameHit), byNumber = listOf(numberHit))
+        val vm = ScanViewModel(repo)
+        vm.onTextRecognized(listOf(OcrLine("Frogadier", 0f, 40f), OcrLine("001/198", 100f, 40f)))
+        assertTrue(
+            "a misread name must not discard the correct number result",
+            vm.state.value.candidates.any { it.value.id == "num-hit" },
+        )
     }
 
     @Test

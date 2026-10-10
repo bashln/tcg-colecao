@@ -25,6 +25,7 @@ data class CardEntity(
     val types: List<String>,
     val attacks: List<Attack>,
     val variants: Set<CardVariant>,
+    val setTotal: Int?,
 )
 
 @Entity(

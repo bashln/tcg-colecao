@@ -47,9 +47,7 @@ class ScanViewModel(
         val ranked = try {
             val byName = if (name != null) repository.searchByName(name) else emptyList()
             val byNumber = if (collectorNumber != null) repository.searchByNumber(null, collectorNumber) else emptyList()
-            val filtered = byName + byNumber.filter { CandidateRanker.nameMatches(name, it.name) }
-            val merged = if (filtered.isEmpty()) byName + byNumber else filtered
-            CandidateRanker.rank(parsed, merged.distinctBy { it.id }).take(CANDIDATE_LIMIT)
+            CandidateRanker.rank(parsed, (byName + byNumber).distinctBy { it.id }).take(CANDIDATE_LIMIT)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {

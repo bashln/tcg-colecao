@@ -1,0 +1,16 @@
+{
+  "errors": [
+    {
+      "erro": "agy CLI travou esperando task do Gradle por mais de 10 minutos sem avancar",
+      "tentativas": 1,
+      "abordagens_falhas": ["rodar agy em background com --print e esperar"],
+      "solucao": "matar o agy, validar o diff nao commitado por fora e seguir com subagente do OpenCode"
+    },
+    {
+      "erro": "E2E pelo caminho real caiu para holdout top1 57.5 por cento",
+      "tentativas": 1,
+      "abordagens_falhas": ["medir so pelo KtorTcgdexCardSource direto (proxy otimista)"],
+      "solucao": "em andamento: remover filtro de nome no ScanViewModel e persistir setTotal no Room"
+    }
+  ]
+}

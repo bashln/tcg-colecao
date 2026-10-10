@@ -1,0 +1,24 @@
+{
+  "task": "Finalizar S1 do app TCG Pokemon Collection",
+  "status": "in_progress",
+  "completed_steps": [
+    "S1 implementado: scan por CameraX + ML Kit, TCGdex, precos USD/EUR, colecao em Room",
+    "UI profissional (tema Material 3, estados, acessibilidade) + 7 testes Compose",
+    "Reconhecimento por OCR: parser de numero e nome, ranking com numero normalizado e total do set",
+    "Harness de medicao E2E: conjunto principal 46 e holdout 40, rodando no aparelho",
+    "Pipeline de release GitHub Actions com assinatura por env e guarda fail-closed",
+    "Fix: nome pelo maior texto (nao depende da carta preencher o quadro)",
+    "Fix: detalhe busca a carta completa, nao o resumo do cache",
+    "Fix: lista de candidatos relevante e limitada a 10"
+  ],
+  "pending_steps": [
+    "Corrigir recall do caminho real de producao (filtro de nome agressivo + setTotal nao persistido no Room)",
+    "Medir E2E pelo caminho real ate holdout top1 >= 85 por cento",
+    "Verificar no device que Frogadier vem primeiro",
+    "Merge da branch em main",
+    "Criar repositorio no GitHub e dar push",
+    "Tag v0.1.0 e release do APK pelo Actions",
+    "Instalar e atualizar pelo Obtainium a partir da release"
+  ],
+  "notes": "gh autenticado como bashln via ssh. Sem remoto ainda. Existem mudancas nao commitadas do fix de recall (Entities, LocalMappers, TcgDatabase, RoomCardRepository, AppModule, ScanViewModel e testes)."
+}

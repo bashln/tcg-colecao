@@ -64,6 +64,7 @@ fun Card.toEntity() = CardEntity(
     types = types,
     attacks = attacks,
     variants = variants,
+    setTotal = setTotal,
 )
 
 fun CardEntity.toCard(prices: List<CardPriceEntity>): Card = Card(
@@ -79,6 +80,7 @@ fun CardEntity.toCard(prices: List<CardPriceEntity>): Card = Card(
     attacks = attacks,
     variants = variants,
     prices = prices.map(CardPriceEntity::toPrice),
+    setTotal = setTotal,
 )
 
 fun CardPrice.toEntity(cardId: String) = CardPriceEntity(
