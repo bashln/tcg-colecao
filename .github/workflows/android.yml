@@ -1,0 +1,56 @@
+name: android
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref so pushes stay fast and cheap.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Instalar plataforma e build-tools do Android
+        run: |
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -n1)"
+          if [ -z "$sdkmanager" ]; then
+            echo "::error::sdkmanager nao encontrado no Android SDK."
+            exit 1
+          fi
+          yes | "$sdkmanager" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Somente testes de unidade no JVM. Nenhum teste conectado roda aqui: preserva o
+      # aparelho de teste ligado via ADB e nunca desinstala dados locais.
+      - name: Testes de dominio e unidade Android
+        run: ./gradlew :core:test :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Compilar APK de debug
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Publicar relatorios de teste
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: |
+            **/build/test-results/**/*.xml
+            **/build/reports/tests/**
+          if-no-files-found: ignore
+          retention-days: 7
