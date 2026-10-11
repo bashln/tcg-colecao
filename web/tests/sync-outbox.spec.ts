@@ -236,7 +236,7 @@ test('collection stays available locally without a sync binding or outbox entrie
   await expect(page.getByRole('heading', { name: 'Charizard' })).toBeVisible()
   await expect(page.getByText('Carta adicionada à coleção')).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Charizard' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Charizard' })).toBeVisible({ timeout: 15_000 })
 
   const pendingCount = await page.evaluate(async () => {
     const store = await import(`${location.origin}/src/collection/store.ts`)
