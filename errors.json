@@ -328,6 +328,14 @@
         "nenhuma; inspeção de status confirmou que são metadados locais ignorados"
       ],
       "solucao": "excluir supabase/.temp e codex-session-*.md de todo commit; preservar stash@{0}"
+    },
+    {
+      "erro": "primeiro design OTA tratou assinatura/permitir apps desta fonte como suficientes para experiência sideload; pesquisa oficial mostrou Android developer verification regional vigente no Brasil desde 2026-09-30",
+      "tentativas": 0,
+      "abordagens_falhas": [
+        "assumir que assinatura APK remove fluxo de desenvolvedor não verificado ou substitui registro de pacote"
+      ],
+      "solucao": "corrigir spec/plano OTA: registrar identidade e app.tcg.app + fingerprint da chave de release antes de distribuição ampla; documentar conta Limited gratuita até 20 dispositivos vs Full Distribution US$25; manter Play Protect independente; não pagar nem enviar documentos automaticamente"
     }
   ]
 }

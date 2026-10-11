@@ -19,7 +19,7 @@ Arquivos:
 RED: escrever testes; `ReleaseParser`/`UpdateChecker` ausentes ⇒ `Unresolved reference`.
 
 Testes (`ReleaseParserTest`):
-- `stable releases are kept and drafts and prereleases are excluded`
+- `stable releases are kept and drafts and prereleases are excluded` (JSON usa a chave `prerelease`)
 - `highest stable version wins when several exist`
 - `versionCode is derived from the tag using major*10000+minor*100+patch`
 - `malformed tag is rejected with a typed error`
@@ -104,6 +104,7 @@ Arquivos:
 - `app/src/test/kotlin/app/tcg/app/ui/update/UpdateViewModelTest.kt`
 
 Regras: `canRequestPackageInstalls()` falso ⇒ diálogo + `ACTION_MANAGE_UNKNOWN_APP_SOURCES`.
+Essa permissão de origem não substitui Android developer verification.
 Dispara `ACTION_VIEW` com `FLAG_GRANT_READ_URI_PERMISSION`; **nunca** instala silenciosamente,
 **nunca** suprime Play Protect. Copy honesto (ver spec). Teste do ViewModel cobre
 estados loading/offline/ready/error. Commit:
@@ -123,6 +124,26 @@ Commit: `docs+ci: document in-app OTA and assert release asset/version contract`
 1 → 2 → 3 → 4 → 5 → 6. Toda tarefa: RED observado, GREEN, suíte completa verde,
 CI (android+web) verde no push, uma linha em `.audit/supabase-auto-sync.tsv`,
 `progress.json` e `errors.json`.
+
+### Gate externo antes de release pública
+
+- No Brasil, verificar regra vigente de Android developer verification antes de
+  distribuição pública em dispositivos certificados.
+- Para distribuição ampla: titular conclui identidade no Android Developer
+  Console (ou Play Console se aplicável) e registra `app.tcg.app` + fingerprint
+  SHA-256 do certificado de release. Só declarar release pronta após confirmar
+  status Registered.
+- Full Distribution tem taxa documentada de US$25 e exige verificação de
+  identidade. Limited Distribution é gratuita, mas limita a 20 aparelhos
+  explicitamente autorizados; adequada para teste pessoal, não release pública.
+- Não pagar, criar conta nem enviar documentos em nome do titular. São ações
+  externas com cobrança/dados pessoais; preparar instruções e continuar código
+  enquanto aguardam ação do titular.
+- Registro não garante ausência de avisos do Play Protect.
+- Fontes oficiais: https://developer.android.com/developer-verification/guides,
+  https://developer.android.com/developer-verification/guides/limited-distribution,
+  https://developer.android.com/developer-verification/guides/full-distribution,
+  https://developer.android.com/developer-verification/guides/faq.
 
 ## Não faz parte (ainda)
 

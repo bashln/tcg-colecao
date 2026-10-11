@@ -27,6 +27,9 @@ Protect.
   fechado (keystore ausente ou `apksigner` não casando ⇒ nada publicado).
 - **Play Protect:** pode exibir aviso para app sideloaded. **Isso não é removível
   nem prometemos remover.** O copy explica honestamente a origem (GitHub).
+- **Android developer verification:** distribuição pública no Brasil também exige
+  cumprir o registro Android vigente. APK assinado não equivale a identidade de
+  desenvolvedor verificada nem a nome de pacote registrado.
 - **Instalação:** `PackageInstaller`/diálogo do sistema via `ACTION_VIEW` com
   FileProvider. Sem install silencioso, sem `REQUEST_INSTALL` privilegiado além
   do padrão "permitir apps desta fonte".
@@ -97,7 +100,35 @@ UpdateInstaller (plataforma)           -> FileProvider + ACTION_VIEW; pre-check 
   conceda "permitir desta fonte" para **este** app antes de disparar o instalador.
 - `canRequestPackageInstalls()` ⇒ se falso, diálogo explicando e atalho para
   `ACTION_MANAGE_UNKNOWN_APP_SOURCES` (pacote deste app). Nunca forçar.
-- Esse é o único gating de sistema; não há permissão privilegiada buscada.
+- Essa permissão trata apenas do instalador. É separada do Android developer
+  verification e do Play Protect; não substitui registro de pacote nem remove
+  avisos de segurança.
+
+### Registro do desenvolvedor Android (gate externo de distribuição)
+
+- Desde 30/09/2026, o Android iniciou a aplicação regional das regras de
+  verificação no Brasil, entre outros países. App sideloaded não registrado pode
+  exigir o fluxo avançado do sistema; assinatura sozinha não elimina esse fluxo.
+- Antes de uma release pública para distribuição ampla, registrar a identidade
+  do desenvolvedor e o pacote `app.tcg.app` no Android Developer Console (ou
+  Play Console se o app também for distribuído pela Play), associando o SHA-256
+  do certificado da chave de release.
+- Para distribuição pública ampla, o caminho documentado é conta Full
+  Distribution, com verificação de identidade e taxa de US$25. Conta Limited
+  Distribution é gratuita, sem documento oficial, mas limita compartilhamento a
+  20 aparelhos autorizados; serve para teste pessoal, não para distribuição
+  pública do produto.
+- Não criar conta, enviar documento pessoal ou pagar taxa automaticamente. Esse
+  gate depende do titular da conta e de dados pessoais que não estão no repo.
+  O código, build e testes OTA podem avançar antes dele; distribuição pública
+  fica bloqueada até registro confirmado.
+- Registro/verificação melhora a atribuição e experiência de instalação, mas
+  **não garante** que Play Protect nunca exiba um aviso de análise ou segurança.
+- Fontes oficiais consultadas em 2026-10-11:
+  - https://developer.android.com/developer-verification/guides
+  - https://developer.android.com/developer-verification/guides/limited-distribution
+  - https://developer.android.com/developer-verification/guides/full-distribution
+  - https://developer.android.com/developer-verification/guides/faq
 
 ## UX (pt-BR)
 
@@ -120,6 +151,8 @@ UpdateInstaller (plataforma)           -> FileProvider + ACTION_VIEW; pre-check 
 ## Segurança
 
 - Nenhum token/secreto embutido no app ou no repo.
+- Release pública não é declarada pronta sem verificar status de registro do
+  pacote/chave Android aplicável à região e canal de distribuição.
 - Download somente de `browser_download_url` HTTPS do próprio GitHub; valida
   tamanho/SHA-256 quando disponíveis; assinatura garantida pelo sistema.
 - Nenhum bypass/supressão de Play Protect; nenhum install silencioso; nenhum
