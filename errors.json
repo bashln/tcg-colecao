@@ -344,6 +344,14 @@
         "assertar headers[Accept]==null"
       ],
       "solucao": "asserção corrigida para Authorization nulo + Accept != application/vnd.github+json (intencao de seguranca: nenhum cabecalho de API/credencial ao host de asset)"
+    },
+    {
+      "erro": "FileProvider.getUriForFile lancou 'Failed to find configured root' sob Robolectric (parse do file_paths.xml / cache estatico inconsistente entre contexts de teste)",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "confiar no FileProvider real dentro do teste unitario"
+      ],
+      "solucao": " seam contentUri injetavel (producao usa FileProvider; teste injeta URI fake) — logica do instalador totalmente testada; declaracao do provider verificada via packageManager; URI real do FileProvider validado no aparelho (5b/device)"
     }
   ]
 }

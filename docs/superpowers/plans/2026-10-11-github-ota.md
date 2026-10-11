@@ -120,23 +120,47 @@ Testes:
 
 Commit: `feat(app): update coordinator state machine (TDD)`.
 
-## Tarefa 5 — Instalador de plataforma + UI + wiring
+## Tarefa 5a — Instalador de plataforma (handoff)
 
 Arquivos:
-- `app/src/main/kotlin/app/tcg/app/update/UpdateInstaller.kt` (FileProvider + `ACTION_VIEW`, pre-check `PackageManager`)
-- `app/src/main/AndroidManifest.xml` (`REQUEST_INSTALL_PACKAGES`, provider FileProvider)
+- `app/src/main/kotlin/app/tcg/app/update/UpdateInstaller.kt`
+- `app/src/main/AndroidManifest.xml` (`REQUEST_INSTALL_PACKAGES` + provider FileProvider)
 - `app/src/main/res/xml/file_paths.xml`
-- `app/src/main/res/values/strings.xml` (`update_*` pt-BR)
+- `app/src/test/kotlin/app/tcg/app/update/UpdateInstallerTest.kt`
+
+RED: `UpdateInstaller` ausente.
+
+Testes (Robolectric; seams `canRequestInstalls`/`archivePackageName`/`launch` injetados):
+- `validated in-cache apk is handed to the os installer`
+- `missing install-source permission routes to settings`
+- `non-existent or non-file apk is refused`
+- `file outside the private cache is refused`
+- `unparseable or wrong-package apk is refused`
+- `handoff grants only read permission via a content uri`
+- `the file provider authority is app-scoped and not exported`
+
+Regras: só um APK **já validado** no cache privado recebe handoff (existe, é
+arquivo, dentro de `cacheDir`, `applicationId` igual). Sem permissão de origem ⇒
+rota para `ACTION_MANAGE_UNKNOWN_APP_SOURCES`. Handoff = `ACTION_VIEW` + URI
+`content` do FileProvider + `FLAG_GRANT_READ_URI_PERMISSION` (somente leitura) +
+MIME `application/vnd.android.package-archive`. **Nunca** instalação silenciosa,
+**nunca** downgrade, **nunca** limpar/desinstalar; autoridade de instalar fica
+com o `PackageInstaller` do sistema. `REQUEST_INSTALL_PACKAGES` é só para o
+install-in-app real e não substitui Android developer verification. Commit:
+`feat(app): safe APK install handoff via FileProvider (TDD)`.
+
+## Tarefa 5b — UI de atualização + wiring
+
+Arquivos:
 - `app/src/main/kotlin/app/tcg/app/ui/update/` (entrada em Perfil + estados)
-- `app/src/main/kotlin/app/tcg/app/di/AppModule.kt` (providers)
+- `app/src/main/kotlin/app/tcg/app/di/AppModule.kt` (providers: source/downloader/coordinator/installer)
+- `app/src/main/res/values/strings.xml` (`update_*` pt-BR)
 - `app/src/test/kotlin/app/tcg/app/ui/update/UpdateViewModelTest.kt`
 
-Regras: `canRequestPackageInstalls()` falso ⇒ diálogo + `ACTION_MANAGE_UNKNOWN_APP_SOURCES`.
-Essa permissão de origem não substitui Android developer verification.
-Dispara `ACTION_VIEW` com `FLAG_GRANT_READ_URI_PERMISSION`; **nunca** instala silenciosamente,
-**nunca** suprime Play Protect. Copy honesto (ver spec). Teste do ViewModel cobre
-estados loading/offline/ready/error. Commit:
-`feat(app): GitHub OTA installer and update UI (TDD)`.
+Teste do ViewModel cobre estados loading/offline/ready/error e dispara o
+handoff do instalador só em InstallReady (5a). Copy honesto (ver spec; não promete
+Play Protect sem avisos; não afirma que developer verification está tratada). Commit:
+`feat(app): update UI and wiring (TDD)`.
 
 ## Tarefa 6 — Docs + salvaguarda do workflow de release
 

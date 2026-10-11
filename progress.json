@@ -188,7 +188,8 @@
           "OTA Tarefa 1: ReleaseParser (stable/estrict-tag/versionCode-sem-overflow/APK-unico, erros tipados) + UpdateChecker (só versionCode, nunca downgrade). Verde: parser 12/12, checker 5/5, app 174/174, core 65/65.",
           "OTA Tarefa 2: GitHubReleaseSource (sem token, ETag+corpo juntos, 304 NotModified carrega cache, offline/429 tipados). Verde: source 7/7, app 181/181, core 65/65.",
           "OTA Tarefa 3: ApkValidator (pacote/certificado/versão estritamente maior) + ApkDownloader (https-only, sem credenciais, tamanho+SHA-256, limita disco, remove parcial). Verde: validator 6/6, downloader 7/7, app 194/194, core 65/65.",
-          "OTA Tarefa 4: UpdateCoordinator (check→Ready→download→InstallReady handoff; serializado; cancel→Ready; incompatible rejeitado antes do instalador; offline/erro tipados). Verde: coordinator 11/11, app 205/205, core 65/65."
+          "OTA Tarefa 4: UpdateCoordinator (check→Ready→download→InstallReady handoff; serializado; cancel→Ready; incompatible rejeitado antes do instalador; offline/erro tipados). Verde: coordinator 11/11, app 205/205, core 65/65.",
+          "OTA Tarefa 5a: UpdateInstaller (handoff FileProvider ACTION_VIEW read-only, gate de origem, so APK validado em cache; manifest REQUEST_INSTALL_PACKAGES + provider). Verde: installer 7/7, app 212/212, core 65/65."
         ],
         "pending_steps": [
           "Especificar fase integrada: projeto novo isolado + migrations/RLS/RPC + Auth/login + cliente remoto e acionadores automáticos + recuperação/conflitos",
