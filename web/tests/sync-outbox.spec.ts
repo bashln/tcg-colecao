@@ -234,6 +234,7 @@ test('collection stays available locally without a sync binding or outbox entrie
   await page.getByRole('button', { name: /Charizard Base Set/ }).click()
   await page.getByRole('button', { name: 'Adicionar à coleção' }).click()
   await expect(page.getByRole('heading', { name: 'Charizard' })).toBeVisible()
+  await expect(page.getByText('Carta adicionada à coleção')).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Charizard' })).toBeVisible()
 

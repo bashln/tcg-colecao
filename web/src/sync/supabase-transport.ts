@@ -1,4 +1,14 @@
-import type { CollectionOperation } from './policy.ts'
+import {
+  CONDITIONS,
+  CURRENCIES,
+  VARIANTS,
+  parseCardId,
+  parseItemId,
+  type CardVariant,
+  type Condition,
+  type Currency,
+} from '../domain/model.ts'
+import type { CollectionOperation, SyncItem } from './policy.ts'
 
 export interface SequencedOperation {
   sequence: number
@@ -35,8 +45,17 @@ export class SupabaseSyncError extends Error {
   }
 }
 
-const VARIANT_VALUES = ['NORMAL', 'HOLOFOIL', 'REVERSE_HOLOFOIL', 'FIRST_EDITION', 'PROMO']
-const CONDITION_VALUES = ['NEAR_MINT', 'LIGHTLY_PLAYED', 'MODERATELY_PLAYED', 'HEAVILY_PLAYED', 'DAMAGED']
+function isVariant(value: unknown): value is CardVariant {
+  return VARIANTS.some((variant) => variant === value)
+}
+
+function isCondition(value: unknown): value is Condition {
+  return CONDITIONS.some((condition) => condition === value)
+}
+
+function isCurrency(value: unknown): value is Currency {
+  return CURRENCIES.some((currency) => currency === value)
+}
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical)
@@ -171,39 +190,49 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
 function parseRemoteOperation(row: Record<string, unknown>): CollectionOperation {
   const deviceId = typeof row.deviceId === 'string' ? row.deviceId : 'unknown-device'
   const opId = typeof row.opId === 'string' ? row.opId : crypto.randomUUID()
-  const itemId = typeof row.itemId === 'string' ? row.itemId : ''
   const baseRevision = typeof row.baseRevision === 'number' ? row.baseRevision : 0
 
   if (row.kind === 'delete') {
-    return { kind: 'delete', opId, deviceId, itemId, baseRevision }
+    const deletedId = parseItemId(row.itemId)
+    if (deletedId === null) throw new SupabaseSyncError('unavailable', 'Item remoto inválido')
+    return { kind: 'delete', opId, deviceId, itemId: deletedId, baseRevision }
   }
 
   const rawItem = asRecord(row.item)
-  const variant = String(rawItem.variant)
-  const condition = String(rawItem.condition)
-  if (!VARIANT_VALUES.includes(variant)) throw new SupabaseSyncError('unavailable', 'Variante remota desconhecida')
-  if (!CONDITION_VALUES.includes(condition)) throw new SupabaseSyncError('unavailable', 'Condição remota desconhecida')
+  const id = parseItemId(rawItem.id)
+  const cardId = parseCardId(rawItem.cardId)
+  const variant = rawItem.variant
+  const condition = rawItem.condition
+  if (id === null) throw new SupabaseSyncError('unavailable', 'Item remoto inválido')
+  if (cardId === null) throw new SupabaseSyncError('unavailable', 'Carta remota inválida')
+  if (!isVariant(variant)) throw new SupabaseSyncError('unavailable', 'Variante remota desconhecida')
+  if (!isCondition(condition)) throw new SupabaseSyncError('unavailable', 'Condição remota desconhecida')
+  const quantity = Number(rawItem.quantity)
+  if (!Number.isSafeInteger(quantity) || quantity < 1) throw new SupabaseSyncError('unavailable', 'Quantidade remota inválida')
+  const addedAt = Number(rawItem.addedAt)
+  if (!Number.isSafeInteger(addedAt)) throw new SupabaseSyncError('unavailable', 'Data remota inválida')
 
-  const rawPrice = rawItem.pricePaid
-  const pricePaid =
-    rawPrice === null || rawPrice === undefined
-      ? null
-      : (() => {
-          const price = asRecord(rawPrice)
-          return { amount: Number(price.amount), currency: String(price.currency) }
-        })()
-
-  const item = {
-    id: String(rawItem.id),
-    cardId: String(rawItem.cardId),
-    quantity: Number(rawItem.quantity),
+  const item: SyncItem = {
+    id,
+    cardId,
+    quantity,
     variant,
     condition,
-    pricePaid,
-    addedAt: Number(rawItem.addedAt),
-  } as unknown as Extract<CollectionOperation, { kind: 'create' }>['item']
+    pricePaid: parseRemotePrice(rawItem.pricePaid),
+    addedAt,
+  }
 
   return row.kind === 'create'
     ? { kind: 'create', opId, deviceId, item }
     : { kind: 'replace', opId, deviceId, item, baseRevision }
+}
+
+function parseRemotePrice(value: unknown): SyncItem['pricePaid'] {
+  if (value === null || value === undefined) return null
+  const raw = asRecord(value)
+  const amount = Number(raw.amount)
+  const currency = raw.currency
+  if (!Number.isSafeInteger(amount) || amount < 0) throw new SupabaseSyncError('unavailable', 'Preço remoto inválido')
+  if (!isCurrency(currency)) throw new SupabaseSyncError('unavailable', 'Moeda remota desconhecida')
+  return { amount, currency: currency satisfies Currency }
 }

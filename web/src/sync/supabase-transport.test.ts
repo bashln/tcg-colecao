@@ -4,9 +4,8 @@ import { parseCardId, parseItemId } from '../domain/model.ts'
 import { createSupabaseTransport, type SupabaseHttp } from './supabase-transport.ts'
 import type { CollectionOperation } from './policy.ts'
 
-const itemId = parseItemId('00000000-0000-4000-8000-000000000001')
-const cardId = parseCardId('base1-4')
-if (itemId === null || cardId === null) throw new Error('Invalid sync test IDs')
+const itemId = parseItemId('00000000-0000-4000-8000-000000000001')!
+const cardId = parseCardId('base1-4')!
 
 function createOp(opId: string, deviceId: string, quantity = 2): CollectionOperation {
   return {
