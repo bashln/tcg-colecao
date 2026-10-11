@@ -13,6 +13,9 @@ import app.tcg.core.domain.model.CardPrice
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.CollectionEntry
 import app.tcg.core.domain.model.CollectionItem
+import app.tcg.core.domain.model.CollectionItemChanges
+import app.tcg.core.domain.model.CollectionItemDetails
+import app.tcg.core.domain.model.CollectionUpdate
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
@@ -74,6 +77,13 @@ class ProfileScreenTest {
         ): CollectionItem = error("not used")
 
         override suspend fun list(): List<CollectionEntry> = entries.value
+
+        override suspend fun getById(itemId: String): CollectionItemDetails? = entries.value
+            .firstOrNull { it.item.id == itemId }
+            ?.let { CollectionItemDetails(it.item, it.card) }
+
+        override suspend fun update(original: CollectionItem, changes: CollectionItemChanges): CollectionUpdate =
+            CollectionUpdate.NotFound
 
         override suspend fun remove(itemId: String) = Unit
     }

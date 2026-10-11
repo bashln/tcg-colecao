@@ -1,6 +1,7 @@
 package app.tcg.core.data.tcgdex
 
 import app.tcg.core.domain.model.Card
+import app.tcg.core.domain.model.SetCatalog
 import io.ktor.client.HttpClient
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
@@ -15,6 +16,7 @@ interface TcgdexCardSource {
     suspend fun searchByName(name: String, language: String = "pt"): List<Card>
     suspend fun searchByNumber(setId: String?, collectorNumber: String, language: String = "pt"): List<Card>
     suspend fun getCard(id: String, language: String = "pt"): Card?
+    suspend fun getSetCatalog(setId: String, language: String = "pt"): SetCatalog
 }
 
 class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSource {
@@ -51,6 +53,21 @@ class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSourc
         val response = httpClient.get("$BASE_URL/$language/cards/$id")
         if (response.status == HttpStatusCode.NotFound) return null
         return json.decodeFromString(TcgdexCardDto.serializer(), response.bodyAsText()).toCard()
+    }
+
+    override suspend fun getSetCatalog(setId: String, language: String): SetCatalog {
+        require(setId.isNotBlank())
+        val response = httpClient.get("$BASE_URL/$language/cards") {
+            parameter("set", setId)
+        }
+        check(response.status.value in 200..299) { "TCGdex set catalog request failed" }
+        val element = json.parseToJsonElement(response.bodyAsText())
+        val array = element as? JsonArray ?: error("TCGdex set catalog response was not a list")
+        val cards = array
+            .map { json.decodeFromJsonElement(TcgdexCardDto.serializer(), it).toCard() }
+            .filter { it.setId == setId }
+            .distinctBy { it.id }
+        return SetCatalog(setId, cards)
     }
 
     private suspend fun search(

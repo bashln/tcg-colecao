@@ -7,6 +7,11 @@ import app.tcg.app.testutil.testEntry
 import app.tcg.app.testutil.testPrice
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
+import app.tcg.core.domain.model.CurrentHoldingsHistory
+import app.tcg.core.domain.model.PriceSource
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -16,6 +21,8 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
+
+    private val clock = Clock.fixed(Instant.parse("2026-01-10T12:00:00Z"), ZoneOffset.UTC)
 
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
@@ -65,5 +72,44 @@ class HomeViewModelTest {
 
         assertEquals(2, viewModel.state.value.stats.totalCards)
         assertEquals(Money(2.0, Currency.USD), viewModel.state.value.stats.totalValue)
+    }
+
+    @Test
+    fun price_source_switches_the_history_without_changing_the_home_total() = runTest {
+        val repository = FakeCollectionRepository(
+            listOf(testEntry(testCard("a", prices = listOf(testPrice(2.0))), qty = 2)),
+        )
+        val viewModel = HomeViewModel(repository, clock)
+        advanceUntilIdle()
+        assertEquals(PriceSource.TCGPLAYER, viewModel.priceSource.value)
+        assertEquals(Money(4.0, Currency.USD), viewModel.state.value.stats.totalValue)
+
+        viewModel.selectPriceSource(PriceSource.CARDMARKET)
+        advanceUntilIdle()
+
+        val history = (viewModel.priceHistory.value as PriceHistoryUiState.Ready).history
+        assertEquals(PriceSource.CARDMARKET, history.source)
+        assertEquals(Money(4.0, Currency.USD), viewModel.state.value.stats.totalValue)
+    }
+
+    @Test
+    fun history_error_can_retry_without_hiding_collection_stats() = runTest {
+        val repository = FakeCollectionRepository(
+            listOf(testEntry(testCard("a", prices = listOf(testPrice(2.0))))),
+        )
+        repository.failHistory = true
+        val viewModel = HomeViewModel(repository, clock)
+        advanceUntilIdle()
+        assertEquals(PriceHistoryUiState.Unavailable, viewModel.priceHistory.value)
+        assertEquals(1, viewModel.state.value.stats.totalCards)
+
+        repository.failHistory = false
+        viewModel.retryPriceHistory()
+        advanceUntilIdle()
+
+        assertEquals(
+            CurrentHoldingsHistory(PriceSource.TCGPLAYER, java.time.LocalDate.parse("2026-01-10"), 0, emptyList(), null),
+            (viewModel.priceHistory.value as PriceHistoryUiState.Ready).history,
+        )
     }
 }

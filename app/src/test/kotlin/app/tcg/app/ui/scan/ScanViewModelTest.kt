@@ -1,6 +1,7 @@
 package app.tcg.app.ui.scan
 
 import app.tcg.core.data.repository.CardRepository
+import app.tcg.core.data.repository.SetCatalogResult
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.OcrLine
 import java.io.IOException
@@ -186,6 +187,8 @@ class ScanViewModelTest {
         }
 
         override suspend fun getCard(id: String): Card? = result.firstOrNull { it.id == id }
+
+        override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
     }
 
     private class SplitCardRepository(
@@ -198,6 +201,8 @@ class ScanViewModelTest {
 
         override suspend fun getCard(id: String): Card? =
             (byName + byNumber).firstOrNull { it.id == id }
+
+        override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
     }
 
     private class FakeCardRepository(
@@ -210,6 +215,8 @@ class ScanViewModelTest {
         override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> = respond()
 
         override suspend fun getCard(id: String): Card? = result.firstOrNull { it.id == id }
+
+        override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
 
         private fun respond(): List<Card> = when {
             cancellation -> throw CancellationException("cancelled")

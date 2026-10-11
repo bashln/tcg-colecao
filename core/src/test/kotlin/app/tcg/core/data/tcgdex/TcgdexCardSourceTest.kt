@@ -3,6 +3,7 @@ package app.tcg.core.data.tcgdex
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.PriceSource
+import app.tcg.core.domain.model.SetCatalog
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -50,6 +51,51 @@ class TcgdexCardSourceTest {
         assertTrue(url.contains("/pt/cards"))
         assertTrue(url.contains("set=swsh3"))
         assertTrue(url.contains("localId=136"))
+    }
+
+    @Test
+    fun set_catalog_filters_prefix_collisions_and_duplicate_cards() = runTest {
+        val body = """[
+            {"id":"swsh3-136","localId":"136","name":"Furret","set":{"id":"swsh3"}},
+            {"id":"swsh3.5-001","localId":"001","name":"Crobat","set":{"id":"swsh3.5"}},
+            {"id":"swsh3-136","localId":"136","name":"Furret","set":{"id":"swsh3"}}
+        ]"""
+        val requested = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            requested += request.url.toString()
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val source = KtorTcgdexCardSource(
+            HttpClient(engine) {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            },
+        )
+
+        val catalog: SetCatalog = source.getSetCatalog("swsh3")
+
+        assertEquals("swsh3", catalog.setId)
+        assertEquals(listOf("swsh3-136"), catalog.cards.map { it.id })
+        assertTrue(requested.single().contains("set=swsh3"))
+    }
+
+    @Test
+    fun set_catalog_rejects_non_list_responses() = runTest {
+        val engine = MockEngine {
+            respond("{}", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val source = KtorTcgdexCardSource(HttpClient(engine))
+
+        kotlin.test.assertFails { source.getSetCatalog("swsh3") }
+    }
+
+    @Test
+    fun set_catalog_rejects_empty_catalogs() = runTest {
+        val engine = MockEngine {
+            respond("[]", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val source = KtorTcgdexCardSource(HttpClient(engine))
+
+        kotlin.test.assertFails { source.getSetCatalog("swsh3") }
     }
 
     @Test

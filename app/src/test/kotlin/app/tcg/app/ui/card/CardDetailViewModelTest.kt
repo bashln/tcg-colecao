@@ -6,6 +6,9 @@ import app.tcg.core.domain.model.CardPrice
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.CollectionEntry
 import app.tcg.core.domain.model.CollectionItem
+import app.tcg.core.domain.model.CollectionItemChanges
+import app.tcg.core.domain.model.CollectionItemDetails
+import app.tcg.core.domain.model.CollectionUpdate
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
@@ -59,6 +62,11 @@ class CardDetailViewModelTest {
         }
 
         override suspend fun list(): List<CollectionEntry> = emptyList()
+
+        override suspend fun getById(itemId: String): CollectionItemDetails? = null
+
+        override suspend fun update(original: CollectionItem, changes: CollectionItemChanges): CollectionUpdate =
+            CollectionUpdate.NotFound
 
         override fun observe(): Flow<List<CollectionEntry>> = flowOf(emptyList())
 

@@ -40,6 +40,8 @@ import androidx.navigation.navArgument
 import app.tcg.app.R
 import app.tcg.app.ui.card.CardDetailScreen
 import app.tcg.app.ui.card.CardDetailViewModel
+import app.tcg.app.ui.card.CollectionItemEditScreen
+import app.tcg.app.ui.card.CollectionItemEditViewModel
 import app.tcg.app.ui.collection.CollectionScreen
 import app.tcg.app.ui.collection.CollectionViewModel
 import app.tcg.app.ui.components.EmptyState
@@ -61,10 +63,13 @@ private object Routes {
     const val PROFILE = "profile"
     const val CARD_ID = "cardId"
     const val CARD_DETAIL = "card/{$CARD_ID}"
+    const val COLLECTION_ITEM_ID = "itemId"
+    const val COLLECTION_ITEM_EDIT = "collection-item/{$COLLECTION_ITEM_ID}"
 
     val topLevel = setOf(HOME, SCAN, COLLECTION, PROFILE)
 
     fun cardDetail(cardId: String) = "card/${Uri.encode(cardId)}"
+    fun collectionItemEdit(itemId: String) = "collection-item/${Uri.encode(itemId)}"
 }
 
 @Composable
@@ -136,7 +141,7 @@ fun AppNav(
                 HomeScreen(
                     viewModel = viewModel,
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
-                    onCardSelected = { cardId -> navController.navigate(Routes.cardDetail(cardId)) },
+                    onCollectionItemSelected = { itemId -> navController.navigate(Routes.collectionItemEdit(itemId)) },
                 )
             }
             composable(Routes.SCAN) {
@@ -150,11 +155,13 @@ fun AppNav(
             }
             composable(Routes.COLLECTION) {
                 val viewModel: CollectionViewModel = viewModel(
-                    factory = viewModelFactory { initializer { CollectionViewModel(collectionRepository) } },
+                    factory = viewModelFactory { initializer { CollectionViewModel(collectionRepository, cardRepository) } },
                 )
                 CollectionScreen(
                     viewModel = viewModel,
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
+                    onCardSelected = { cardId -> navController.navigate(Routes.cardDetail(cardId)) },
+                    onCollectionItemSelected = { itemId -> navController.navigate(Routes.collectionItemEdit(itemId)) },
                 )
             }
             composable(Routes.PROFILE) {
@@ -174,6 +181,23 @@ fun AppNav(
                     cardId = entry.arguments?.getString(Routes.CARD_ID).orEmpty(),
                     cardRepository = cardRepository,
                     collectionRepository = collectionRepository,
+                    onSaved = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = Routes.COLLECTION_ITEM_EDIT,
+                arguments = listOf(navArgument(Routes.COLLECTION_ITEM_ID) { type = NavType.StringType }),
+            ) { entry ->
+                val itemId = entry.arguments?.getString(Routes.COLLECTION_ITEM_ID).orEmpty()
+                val viewModel: CollectionItemEditViewModel = viewModel(
+                    key = "collection-item-edit-$itemId",
+                    factory = viewModelFactory {
+                        initializer { CollectionItemEditViewModel(itemId, collectionRepository) }
+                    },
+                )
+                CollectionItemEditScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
                     onSaved = { navController.popBackStack() },
                 )
             }

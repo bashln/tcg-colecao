@@ -30,6 +30,26 @@
     <string name="detail_variant">Variante</string>
     <string name="detail_condition">Condição</string>
     <string name="detail_quantity">Quantidade</string>
+    <string name="collection_edit_title">Editar carta</string>
+    <string name="collection_edit_save">Salvar alterações</string>
+    <string name="collection_edit_saving">Salvando alterações…</string>
+    <string name="collection_edit_saved">Alterações salvas</string>
+    <string name="collection_edit_price_paid">Preço pago (opcional)</string>
+    <string name="collection_edit_price_hint">Ex.: 12,50</string>
+    <string name="collection_edit_price_help">Deixe em branco se não souber quanto pagou.</string>
+    <string name="collection_edit_clear_price">Limpar preço pago</string>
+    <string name="collection_edit_price_invalid">Informe um valor válido, igual ou maior que zero.</string>
+    <string name="collection_edit_missing">Esta carta não está mais na sua coleção.</string>
+    <string name="collection_edit_load_error">Não foi possível carregar esta carta. Tente novamente.</string>
+    <string name="collection_edit_card_unavailable">Os dados da carta não estão disponíveis agora. Você ainda pode editar os dados da sua coleção.</string>
+    <string name="collection_edit_duplicate">Você já tem esta carta com a mesma variante e condição. Escolha outra combinação.</string>
+    <string name="collection_edit_stale">Esta posse mudou enquanto você editava. Seus dados continuam aqui. Recarregue para ver a versão atual antes de salvar.</string>
+    <string name="collection_edit_save_error">Não foi possível salvar as alterações. Tente novamente.</string>
+    <string name="collection_edit_reload">Recarregar dados</string>
+    <string name="collection_edit_retry">Tentar novamente</string>
+    <string name="collection_edit_back">Voltar à coleção</string>
+    <string name="collection_edit_choose_copy">Escolha a cópia que deseja editar</string>
+    <string name="common_cancel">Cancelar</string>
     <string name="detail_hp">HP %1$d</string>
     <string name="detail_save">Salvar na coleção</string>
     <string name="detail_saving">Salvando…</string>
@@ -41,8 +61,33 @@
     <string name="detail_no_attacks">Esta carta não possui ataques.</string>
 
     <string name="collection_title">Coleção</string>
+    <string name="collection_cards">Cartas</string>
+    <string name="collection_sets">Expansões</string>
+    <string name="collection_lens_owned">Tenho</string>
+    <string name="collection_lens_missing">Faltam</string>
     <string name="collection_total">Valor total</string>
     <string name="collection_search_label">Buscar na coleção</string>
+    <string name="collection_missing_search">Buscar carta ou expansão</string>
+    <string name="collection_sets_search">Buscar expansões</string>
+    <string name="collection_sets_empty_title">Nenhuma expansão ainda</string>
+    <string name="collection_sets_empty_body">Adicione cartas para ver o progresso das suas expansões.</string>
+    <plurals name="collection_set_owned_count">
+        <item quantity="one">%d carta distinta na coleção</item>
+        <item quantity="other">%d cartas distintas na coleção</item>
+    </plurals>
+    <string name="collection_set_loading">Carregando catálogo da expansão…</string>
+    <string name="collection_set_unavailable_title">Não foi possível carregar o catálogo</string>
+    <string name="collection_set_unavailable_body">Confira sua conexão e tente novamente. Suas cartas salvas continuam disponíveis abaixo.</string>
+    <string name="collection_set_retry">Tentar novamente</string>
+    <string name="collection_set_progress">%1$d de %2$d cartas desta expansão</string>
+    <string name="collection_set_filter_all">Todas</string>
+    <string name="collection_set_filter_owned">Tenho</string>
+    <string name="collection_set_filter_missing">Faltam</string>
+    <string name="collection_set_complete_title">Expansão completa</string>
+    <string name="collection_set_complete_body">Você já tem todas as cartas deste catálogo.</string>
+    <string name="collection_set_owned">Na coleção · x%1$d</string>
+    <string name="collection_set_missing">Toque para ver e adicionar</string>
+    <string name="collection_set_card_action">Ver detalhes de %1$s</string>
     <string name="collection_count">%1$d carta(s)</string>
     <string name="collection_loading">Carregando sua coleção…</string>
     <string name="collection_empty_title">Sua coleção está vazia</string>
@@ -51,6 +96,32 @@
     <string name="collection_no_results_title">Nenhuma carta encontrada</string>
     <string name="collection_no_results">Nenhuma carta corresponde a “%1$s”.</string>
     <string name="collection_clear_search">Limpar busca</string>
+    <string name="collection_missing_no_sets_title">Nenhuma expansão iniciada</string>
+    <string name="collection_missing_no_sets_body">Adicione uma carta à coleção para descobrir o que falta na expansão.</string>
+    <string name="collection_missing_checking">Consultando as expansões da sua coleção…</string>
+    <string name="collection_missing_waiting">Identificando cartas faltantes…</string>
+    <string name="collection_missing_scope">Somente expansões com cartas salvas na coleção entram nesta busca.</string>
+    <string name="collection_missing_pending">Consultando %1$d expansões…</string>
+    <string name="collection_missing_pending_set">Aguardando catálogo: %1$s</string>
+    <string name="collection_missing_owned_summary">Você tem %1$d cartas diferentes em %2$d cópias salvas.</string>
+    <string name="collection_missing_failed_title">Não foi possível consultar</string>
+    <string name="collection_missing_retry_all">Tentar novamente nas expansões indisponíveis</string>
+    <string name="collection_missing_unavailable_title">Não foi possível identificar faltantes</string>
+    <string name="collection_missing_unavailable_body">Cartas diferentes: %1$d · Cópias salvas: %2$d. Confira sua conexão e tente novamente. Suas cartas continuam disponíveis em Tenho.</string>
+    <string name="collection_missing_no_results_title">Nenhuma carta encontrada</string>
+    <string name="collection_missing_none_body">Você não tem cartas faltantes nos catálogos verificados.</string>
+    <string name="collection_missing_no_results">Nenhuma carta faltante corresponde a “%1$s” nas expansões verificadas.</string>
+    <string name="collection_missing_catalog_mismatch">Algumas cartas salvas não aparecem neste catálogo. Elas continuam na coleção e não contam como faltantes.</string>
+    <string name="collection_missing_card_subtitle">Nº %1$s · %2$s · toque para ver e adicionar</string>
+    <string name="collection_missing_all_complete">Nenhuma carta faltando nos catálogos verificados.</string>
+    <plurals name="collection_missing_confirmed_partial">
+        <item quantity="one">%1$d carta faltante confirmada · %2$d de %3$d expansões verificadas</item>
+        <item quantity="other">%1$d cartas faltantes confirmadas · %2$d de %3$d expansões verificadas</item>
+    </plurals>
+    <plurals name="collection_missing_confirmed_complete">
+        <item quantity="one">%1$d carta faltante nas expansões verificadas</item>
+        <item quantity="other">%1$d cartas faltantes nas expansões verificadas</item>
+    </plurals>
 
     <string name="common_no_price">Sem preço</string>
     <string name="common_price_tcgplayer">TCGplayer</string>
@@ -75,6 +146,7 @@
     <string name="cd_gallery_button">Escolher da galeria</string>
     <string name="cd_close_search">Fechar busca por nome</string>
     <string name="cd_clear_search">Limpar busca</string>
+    <string name="cd_close_set">Voltar para expansões</string>
     <string name="cd_open_card">Ver detalhes da carta</string>
     <string name="cd_back">Voltar</string>
 
@@ -85,8 +157,13 @@
     <string name="home_stat_sets">Sets</string>
     <string name="home_most_valuable">Mais valiosas</string>
     <string name="home_chart_title">Histórico de preços</string>
-    <string name="home_chart_soon">Em breve</string>
-    <string name="home_chart_placeholder">O gráfico aparece quando o app guardar o primeiro histórico de preços.</string>
+    <string name="home_chart_disclosure">Estimativa das cartas e quantidades que você tem hoje, usando as cotações que este app salvou em cada data. Não é o valor histórico da sua coleção nem a data de atualização do mercado.</string>
+    <string name="home_chart_loading">Carregando cotações salvas…</string>
+    <string name="home_chart_error">Não foi possível abrir o histórico de preços.</string>
+    <string name="home_chart_empty">Ainda não há cotações salvas para esta fonte e estas variantes.</string>
+    <string name="home_chart_coverage">%1$d de %2$d unidades com cotação</string>
+    <string name="home_chart_old_capture">%1$d unidades usam uma cotação salva há mais de 7 dias.</string>
+    <string name="home_chart_one_day">Primeiro registro em %1$s. A tendência aparece após outro dia de captura.</string>
     <string name="home_loading">Carregando seu resumo…</string>
     <string name="home_empty_title">Sua coleção está vazia</string>
     <string name="home_empty_body">Escaneie sua primeira carta para ver o valor e os destaques aqui.</string>

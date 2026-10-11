@@ -12,6 +12,8 @@ import app.tcg.core.domain.model.CardPrice
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.PriceSource
+import app.tcg.core.domain.model.SetCatalog
+import app.tcg.core.data.repository.SetCatalogResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -58,6 +60,38 @@ class CardRepositoryTest {
     }
 
     @Test
+    fun successful_full_card_refresh_records_market_price_history() = runTest {
+        source.getResult = fullCard()
+
+        repo.getCard("swsh3-136")
+
+        val observations = db.cardDao().priceObservationsFor(
+            "swsh3-136",
+            PriceSource.TCGPLAYER,
+            CardVariant.NORMAL,
+            Currency.USD,
+        )
+        assertEquals(1, observations.size)
+        assertEquals(0.27, observations.single().amount, 0.0)
+    }
+
+    @Test
+    fun search_results_do_not_record_daily_history() = runTest {
+        source.searchResult = fullCard()
+
+        repo.searchByName("Furret")
+
+        assertTrue(
+            db.cardDao().priceObservationsFor(
+                "swsh3-136",
+                PriceSource.TCGPLAYER,
+                CardVariant.NORMAL,
+                Currency.USD,
+            ).isEmpty(),
+        )
+    }
+
+    @Test
     fun get_card_replaces_cached_brief_with_full_network_card() = runTest {
         db.cardDao().upsert(briefCard().toEntity())
         source.getResult = fullCard()
@@ -87,6 +121,20 @@ class CardRepositoryTest {
     fun get_card_returns_null_when_local_and_network_miss() = runTest {
         source.getResult = null
         assertNull(repo.getCard("missing"))
+    }
+
+    @Test
+    fun set_catalog_is_marked_complete_only_when_non_empty_and_is_not_written_to_partial_cache() = runTest {
+        val card = sampleCard()
+        source.setCatalogResult = SetCatalog("swsh3", listOf(card))
+
+        val result = repo.getSetCatalog("swsh3")
+
+        assertEquals(SetCatalogResult.Complete(SetCatalog("swsh3", listOf(card))), result)
+        assertNull(db.cardDao().getById(card.id))
+
+        source.setCatalogError = RuntimeException("offline")
+        assertEquals(SetCatalogResult.Unavailable, repo.getSetCatalog("swsh3"))
     }
 
     @Test
@@ -140,6 +188,8 @@ class CardRepositoryTest {
         var getError: Exception? = null
         var searchResult: Card = sampleCard()
         var searchError: Exception? = null
+        var setCatalogResult = SetCatalog("swsh3", listOf(sampleCard()))
+        var setCatalogError: Exception? = null
 
         override suspend fun searchByName(name: String, language: String): List<Card> {
             searchNameCalls++
@@ -157,6 +207,11 @@ class CardRepositoryTest {
             getCalls++
             getError?.let { throw it }
             return getResult
+        }
+
+        override suspend fun getSetCatalog(setId: String, language: String): SetCatalog {
+            setCatalogError?.let { throw it }
+            return setCatalogResult
         }
     }
 

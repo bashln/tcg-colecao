@@ -1,6 +1,7 @@
 package app.tcg.app.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,16 +24,22 @@ import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +54,8 @@ import app.tcg.app.ui.components.formatMoney
 import app.tcg.app.ui.components.joinNonBlank
 import app.tcg.core.domain.model.CollectionEntry
 import app.tcg.core.domain.model.PriceSource
+import app.tcg.core.domain.model.CurrentHoldingsHistory
+import app.tcg.core.domain.model.HistoryContinuity
 import app.tcg.core.domain.stats.CollectionStats
 import app.tcg.core.domain.valuation.Valuation
 import coil.compose.AsyncImage
@@ -55,7 +65,7 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     modifier: Modifier = Modifier,
     onScanClick: () -> Unit = {},
-    onCardSelected: (String) -> Unit = {},
+    onCollectionItemSelected: (String) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -89,13 +99,27 @@ fun HomeScreen(
                     },
                 )
             }
-            else -> HomeContent(stats = state.stats, onCardSelected = onCardSelected)
+            else -> HomeContent(
+                stats = state.stats,
+                priceHistory = viewModel.priceHistory.collectAsStateWithLifecycle().value,
+                priceSource = viewModel.priceSource.collectAsStateWithLifecycle().value,
+                onPriceSourceSelected = viewModel::selectPriceSource,
+                onPriceHistoryRetry = viewModel::retryPriceHistory,
+                onCollectionItemSelected = onCollectionItemSelected,
+            )
         }
     }
 }
 
 @Composable
-private fun HomeContent(stats: CollectionStats, onCardSelected: (String) -> Unit) {
+private fun HomeContent(
+    stats: CollectionStats,
+    priceHistory: PriceHistoryUiState,
+    priceSource: PriceSource,
+    onPriceSourceSelected: (PriceSource) -> Unit,
+    onPriceHistoryRetry: () -> Unit,
+    onCollectionItemSelected: (String) -> Unit,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
@@ -107,9 +131,11 @@ private fun HomeContent(stats: CollectionStats, onCardSelected: (String) -> Unit
         item { CollectionKeyNumbers(stats) }
         item { SectionHeader(stringResource(R.string.home_most_valuable)) }
         items(stats.mostValuable, key = { it.item.id }) { entry ->
-            MostValuableRow(entry = entry, onClick = { onCardSelected(entry.card.id) })
+            MostValuableRow(entry = entry, onClick = { onCollectionItemSelected(entry.item.id) })
         }
-        item { PriceChartPlaceholder() }
+        item {
+            PriceHistoryCard(priceHistory, priceSource, onPriceSourceSelected, onPriceHistoryRetry)
+        }
     }
 }
 
@@ -119,7 +145,7 @@ private fun MostValuableRow(entry: CollectionEntry, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClickLabel = stringResource(R.string.cd_open_card), onClick = onClick),
+            .clickable(onClickLabel = stringResource(R.string.cd_open_card), role = Role.Button, onClick = onClick),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
@@ -169,7 +195,12 @@ private fun MostValuableRow(entry: CollectionEntry, onClick: () -> Unit) {
 }
 
 @Composable
-private fun PriceChartPlaceholder() {
+private fun PriceHistoryCard(
+    state: PriceHistoryUiState,
+    source: PriceSource,
+    onSourceSelected: (PriceSource) -> Unit,
+    onRetry: () -> Unit,
+) {
     Card(
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -187,23 +218,122 @@ private fun PriceChartPlaceholder() {
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                ) {
-                    Text(
-                        text = stringResource(R.string.home_chart_soon),
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    )
-                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = source == PriceSource.TCGPLAYER,
+                    onClick = { onSourceSelected(PriceSource.TCGPLAYER) },
+                    label = { Text(stringResource(R.string.common_price_tcgplayer)) },
+                )
+                FilterChip(
+                    selected = source == PriceSource.CARDMARKET,
+                    onClick = { onSourceSelected(PriceSource.CARDMARKET) },
+                    label = { Text(stringResource(R.string.common_price_cardmarket)) },
+                )
             }
             Text(
-                text = stringResource(R.string.home_chart_placeholder),
+                text = stringResource(R.string.home_chart_disclosure),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            when (state) {
+                PriceHistoryUiState.Loading -> Text(stringResource(R.string.home_chart_loading))
+                PriceHistoryUiState.Unavailable -> {
+                    Text(stringResource(R.string.home_chart_error))
+                    TextButton(onClick = onRetry) { Text(stringResource(R.string.collection_set_retry)) }
+                }
+                is PriceHistoryUiState.Ready -> PriceHistoryContent(state.history)
+            }
         }
+    }
+}
+
+@Composable
+private fun PriceHistoryContent(history: CurrentHoldingsHistory) {
+    val points = history.recorded
+    if (points.isEmpty()) {
+        Text(stringResource(R.string.home_chart_empty))
+        return
+    }
+    val last = history.latest ?: return
+    Text(
+        text = formatMoney(last.value).orEmpty(),
+        style = MaterialTheme.typography.headlineSmall,
+        color = MaterialTheme.colorScheme.primary,
+    )
+    Text(
+        text = stringResource(
+            R.string.home_chart_coverage,
+            last.coverage.pricedUnits,
+            last.coverage.totalUnits,
+        ),
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (last.coverage.olderThanSevenDaysUnits > 0) {
+        Text(
+            text = stringResource(R.string.home_chart_old_capture, last.coverage.olderThanSevenDaysUnits),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    if (points.size == 1) {
+        Text(stringResource(R.string.home_chart_one_day, points.single().utcDay.toString()))
+    } else {
+        PriceHistoryPlot(history)
+    }
+    points.takeLast(3).asReversed().forEach { point ->
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(point.utcDay.toString(), style = MaterialTheme.typography.bodySmall)
+            Text(
+                formatMoney(point.estimate.value).orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PriceHistoryPlot(history: CurrentHoldingsHistory) {
+    val points = history.recorded
+    val primary = MaterialTheme.colorScheme.primary
+    val guide = MaterialTheme.colorScheme.outlineVariant
+    val values = points.map { it.estimate.value.amount }
+    val minValue = values.minOrNull() ?: 0.0
+    val maxValue = values.maxOrNull() ?: 0.0
+    val firstDay = points.first().utcDay.toEpochDay()
+    val spanDays = (points.last().utcDay.toEpochDay() - firstDay).coerceAtLeast(1)
+    val spokenPoints = points.joinToString(". ") { point ->
+        "${point.utcDay}: ${formatMoney(point.estimate.value)}, " +
+            "${point.estimate.coverage.pricedUnits} de ${point.estimate.coverage.totalUnits} unidades com preço"
+    }
+    Canvas(
+        modifier = Modifier.fillMaxWidth().height(148.dp).semantics { contentDescription = spokenPoints },
+    ) {
+        val left = 8.dp.toPx()
+        val top = 12.dp.toPx()
+        val right = size.width - left
+        val bottom = size.height - top
+        for (fraction in listOf(0f, 0.5f, 1f)) {
+            val y = top + (bottom - top) * fraction
+            drawLine(guide, Offset(left, y), Offset(right, y), strokeWidth = 1.dp.toPx())
+        }
+        fun position(index: Int): Offset {
+            val point = points[index]
+            val x = left + (point.utcDay.toEpochDay() - firstDay).toFloat() / spanDays * (right - left)
+            val range = maxValue - minValue
+            val normalized = if (range == 0.0) 0.5f else ((point.estimate.value.amount - minValue) / range).toFloat()
+            return Offset(x, bottom - normalized * (bottom - top))
+        }
+        points.forEachIndexed { index, point ->
+            val current = position(index)
+            if (index > 0 && point.continuity == HistoryContinuity.CONTINUES_SEGMENT) {
+                drawLine(primary, position(index - 1), current, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+            }
+            drawCircle(primary, radius = 4.dp.toPx(), center = current)
+        }
+    }
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(points.first().utcDay.toString(), style = MaterialTheme.typography.labelSmall)
+        Text(points.last().utcDay.toString(), style = MaterialTheme.typography.labelSmall)
     }
 }

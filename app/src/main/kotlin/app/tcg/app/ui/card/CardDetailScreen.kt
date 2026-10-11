@@ -181,7 +181,7 @@ fun CardDetailScreen(
 }
 
 @Composable
-private fun HeroCard(card: Card) {
+internal fun HeroCard(card: Card) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -204,7 +204,7 @@ private fun HeroCard(card: Card) {
 }
 
 @Composable
-private fun TitleBlock(card: Card) {
+internal fun TitleBlock(card: Card) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(card.name, style = MaterialTheme.typography.headlineSmall)
         val subtitle = joinNonBlank(card.setName, card.collectorNumber)
@@ -268,7 +268,7 @@ private fun PriceSection(tcgplayer: app.tcg.core.domain.model.Money?, cardmarket
 }
 
 @Composable
-private fun VariantSelector(
+internal fun VariantSelector(
     variants: List<CardVariant>,
     selected: CardVariant,
     onSelect: (CardVariant) -> Unit,
@@ -291,7 +291,7 @@ private fun VariantSelector(
 }
 
 @Composable
-private fun ConditionSelector(
+internal fun ConditionSelector(
     selected: Condition,
     onSelect: (Condition) -> Unit,
 ) {
@@ -313,7 +313,7 @@ private fun ConditionSelector(
 }
 
 @Composable
-private fun QuantityStepper(
+internal fun QuantityStepper(
     quantity: Int,
     onDecrease: () -> Unit,
     onIncrease: () -> Unit,
