@@ -16,6 +16,9 @@ local.properties
 /core/build/
 .kotlin/
 
+## Dependencias de pacote nunca entram no repo.
+node_modules/
+
 ## Nada de config de agente ou IA entra no repo.
 .opencode/
 .claude/

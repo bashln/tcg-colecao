@@ -1,0 +1,14 @@
+{
+  "name": "tcg-supabase-harness",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Applies supabase/migrations verbatim to an unprivileged throwaway PostgreSQL cluster and exercises RLS/RPC boundaries without Docker.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "embedded-postgres": "^18.4.0-beta.17",
+    "pg": "^8.16.3"
+  }
+}
