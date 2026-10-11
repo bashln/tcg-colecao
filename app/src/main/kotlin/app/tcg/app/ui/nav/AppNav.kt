@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -39,6 +40,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import app.tcg.app.BuildConfig
 import app.tcg.app.R
 import app.tcg.app.auth.AuthController
 import app.tcg.app.data.sync.SyncLinkRepository
@@ -58,6 +60,10 @@ import app.tcg.app.ui.profile.ProfileScreen
 import app.tcg.app.ui.profile.ProfileViewModel
 import app.tcg.app.ui.scan.ScanScreen
 import app.tcg.app.ui.scan.ScanViewModel
+import app.tcg.app.ui.update.UpdateScreen
+import app.tcg.app.ui.update.UpdateViewModel
+import app.tcg.app.update.UpdateCoordinator
+import app.tcg.app.update.UpdateInstaller
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.domain.model.Card
@@ -69,6 +75,7 @@ private object Routes {
     const val COLLECTION = "collection"
     const val PROFILE = "profile"
     const val ACCOUNT = "account"
+    const val UPDATE = "update"
     const val CARD_ID = "cardId"
     const val CARD_DETAIL = "card/{$CARD_ID}"
     const val COLLECTION_ITEM_ID = "itemId"
@@ -86,6 +93,8 @@ fun AppNav(
     collectionRepository: CollectionRepository,
     authController: AuthController,
     syncLinkRepository: SyncLinkRepository,
+    updateCoordinator: UpdateCoordinator,
+    updateInstaller: UpdateInstaller,
     navController: NavHostController = rememberNavController(),
 ) {
     // Restore any persisted session once so a returning signed-in user sees their state.
@@ -185,6 +194,7 @@ fun AppNav(
                     viewModel = viewModel,
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
                     onAccountClick = { navController.navigate(Routes.ACCOUNT) },
+                    onUpdatesClick = { navController.navigate(Routes.UPDATE) },
                 )
             }
             composable(Routes.ACCOUNT) {
@@ -208,6 +218,30 @@ fun AppNav(
                     onConfirmLink = viewModel::confirmLink,
                     onCancelLink = viewModel::cancelLink,
                     onSignOut = viewModel::signOut,
+                    onDismissError = viewModel::dismissError,
+                )
+            }
+            composable(Routes.UPDATE) {
+                val context = LocalContext.current
+                val viewModel: UpdateViewModel = viewModel(
+                    factory = viewModelFactory {
+                        initializer {
+                            UpdateViewModel(
+                                coordinator = updateCoordinator,
+                                installHandoff = { file -> updateInstaller.handoff(file) },
+                                openInstallSettings = { context.startActivity(updateInstaller.installSettingsIntent()) },
+                            )
+                        }
+                    },
+                )
+                UpdateScreen(
+                    state = viewModel.state.collectAsStateWithLifecycle().value,
+                    installBlocked = viewModel.installBlocked.collectAsStateWithLifecycle().value,
+                    currentVersionName = BuildConfig.VERSION_NAME,
+                    onCheck = viewModel::check,
+                    onAccept = viewModel::acceptAndDownload,
+                    onCancel = viewModel::cancelDownload,
+                    onInstall = viewModel::install,
                     onDismissError = viewModel::dismissError,
                 )
             }

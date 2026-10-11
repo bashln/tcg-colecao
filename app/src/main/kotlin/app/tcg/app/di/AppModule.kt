@@ -17,6 +17,12 @@ import app.tcg.app.data.local.TcgDatabase
 import app.tcg.app.data.repository.RoomCardRepository
 import app.tcg.app.data.repository.RoomCollectionRepository
 import app.tcg.app.data.sync.SyncLinkRepository
+import app.tcg.app.update.ApkDownloader
+import app.tcg.app.update.GitHubReleaseSource
+import app.tcg.app.update.InstalledAppInfo
+import app.tcg.app.update.OtaPlatform
+import app.tcg.app.update.UpdateCoordinator
+import app.tcg.app.update.UpdateInstaller
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.data.tcgdex.KtorTcgdexCardSource
@@ -30,6 +36,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
+import java.io.File
 import java.util.UUID
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
@@ -115,4 +122,58 @@ object AppModule {
     @Singleton
     fun provideSyncLinkRepository(dao: CollectionDao, deviceId: String): SyncLinkRepository =
         SyncLinkRepository(dao, deviceId)
+
+    @Provides
+    @Singleton
+    fun provideGitHubReleaseSource(httpClient: HttpClient): GitHubReleaseSource =
+        GitHubReleaseSource(httpClient)
+
+    @Provides
+    @Singleton
+    fun provideApkDownloader(@ApplicationContext context: Context, httpClient: HttpClient): ApkDownloader =
+        ApkDownloader(httpClient, File(context.cacheDir, "ota"))
+
+    @Provides
+    @Singleton
+    fun provideInstalledApp(@ApplicationContext context: Context): InstalledAppInfo = InstalledAppInfo(
+        applicationId = context.packageName,
+        versionCode = BuildConfig.VERSION_CODE.toLong(),
+        signatureDigest = OtaPlatform.installedSignatureDigest(context),
+    )
+
+    @Provides
+    @Singleton
+    fun provideUpdateCoordinator(
+        @ApplicationContext context: Context,
+        installedApp: InstalledAppInfo,
+        source: GitHubReleaseSource,
+        downloader: ApkDownloader,
+    ): UpdateCoordinator = UpdateCoordinator(
+        installedApp = installedApp,
+        fetchRelease = { source.fetchLatestStable() },
+        downloadApk = { release, progress ->
+            downloader.download(
+                url = release.apkUrl,
+                expectedSizeBytes = release.apkSizeBytes,
+                expectedSha256 = release.apkSha256,
+                onProgress = progress,
+            )
+        },
+        readArchiveMetadata = { file -> OtaPlatform.archiveMetadata(context, file) },
+    )
+
+    @Provides
+    @Singleton
+    fun provideUpdateInstaller(@ApplicationContext context: Context): UpdateInstaller = UpdateInstaller(
+        context = context,
+        canRequestInstalls = {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.packageManager.canRequestPackageInstalls()
+            } else {
+                true
+            }
+        },
+        archivePackageName = { file -> OtaPlatform.archiveMetadata(context, file)?.applicationId },
+        launch = { intent -> context.startActivity(intent) },
+    )
 }

@@ -8,6 +8,8 @@ import app.tcg.app.ui.nav.AppNav
 import app.tcg.app.ui.theme.TcgTheme
 import app.tcg.app.auth.AuthController
 import app.tcg.app.data.sync.SyncLinkRepository
+import app.tcg.app.update.UpdateCoordinator
+import app.tcg.app.update.UpdateInstaller
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import dagger.hilt.android.AndroidEntryPoint
@@ -28,6 +30,12 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var syncLinkRepository: SyncLinkRepository
 
+    @Inject
+    lateinit var updateCoordinator: UpdateCoordinator
+
+    @Inject
+    lateinit var updateInstaller: UpdateInstaller
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -38,6 +46,8 @@ class MainActivity : ComponentActivity() {
                     collectionRepository = collectionRepository,
                     authController = authController,
                     syncLinkRepository = syncLinkRepository,
+                    updateCoordinator = updateCoordinator,
+                    updateInstaller = updateInstaller,
                 )
             }
         }

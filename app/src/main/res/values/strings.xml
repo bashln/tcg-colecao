@@ -207,4 +207,30 @@
     <string name="account_error_email_not_confirmed">Confirme o e-mail antes de entrar.</string>
     <string name="account_error_network">Sem conexão. Tente de novo.</string>
     <string name="account_error_unknown">Não foi possível continuar. Tente de novo.</string>
+
+    <string name="update_title">Atualizações</string>
+    <string name="update_intro">Veja se há uma versão nova do app. As atualizações vêm do repositório público no GitHub.</string>
+    <string name="update_check">Procurar atualização</string>
+    <string name="update_checking">Procurando atualização…</string>
+    <string name="update_no_update">Você já está na versão mais recente (%1$s).</string>
+    <string name="update_available_title">Versão nova disponível: %1$s</string>
+    <string name="update_release_notes">Notas desta versão</string>
+    <string name="update_download">Baixar atualização</string>
+    <string name="update_downloading">Baixando atualização…</string>
+    <string name="update_progress">Baixado: %1$s de %2$s</string>
+    <string name="update_cancel">Cancelar</string>
+    <string name="update_install_ready">Download concluído. Toque para instalar a versão %1$s.</string>
+    <string name="update_install">Instalar</string>
+    <string name="update_install_blocked">Não foi possível preparar a instalação deste pacote. Tente baixar de novo.</string>
+    <string name="update_needs_permission">Para instalar, permita que este app instale apps. Isso é usado só para atualizar. Depois de permitir, volte e toque em Instalar.</string>
+    <string name="update_open_settings">Abrir ajustes</string>
+    <string name="update_error_offline">Sem conexão. Verifique a internet e tente de novo.</string>
+    <string name="update_error_rate_limited">Muitas consultas agora. Tente de novo em instantes.</string>
+    <string name="update_error_download">Não foi possível baixar. Tente de novo.</string>
+    <string name="update_error_metadata">Não foi possível verificar a atualização. Tente de novo.</string>
+    <string name="update_incompatible">Este pacote não pode ser instalado sobre a versão atual.</string>
+    <string name="update_retry">Tentar de novo</string>
+    <string name="update_dismiss">Fechar</string>
+    <string name="update_source_note">O Android pode mostrar um aviso de segurança para apps fora da Play Store. Confirme que o pacote vem do repositório público do projeto antes de instalar. Esse aviso é do sistema e não é removido por este app.</string>
+    <string name="update_progress_label">Progresso do download</string>
 </resources>
