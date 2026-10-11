@@ -19,18 +19,25 @@ Arquivos:
 RED: escrever testes; `ReleaseParser`/`UpdateChecker` ausentes ⇒ `Unresolved reference`.
 
 Testes (`ReleaseParserTest`):
-- `stable releases are kept and drafts and prereleases are excluded` (JSON usa a chave `prerelease`)
+- `stable releases are kept and drafts and prereleases are excluded` (chave `prerelease`)
 - `highest stable version wins when several exist`
 - `versionCode is derived from the tag using major*10000+minor*100+patch`
+- `strict stable tag format rejects pre-release suffixes`
 - `malformed tag is rejected with a typed error`
 - `missing apk asset is a typed error`
+- `multiple apk assets are a typed error`
 - `apk asset is matched by file name and android package content type`
+- `versionCode overflow is rejected`
+- `invalid json is rejected`
+- `no stable release returns no stable`
+- `highest valid wins even when a lower release is malformed`
 
 Testes (`UpdateCheckerTest`):
 - `newer remote version offers an update`
 - `equal version offers no update`
 - `older remote version offers no update (never downgrade)`
 - `version name mismatch with higher code still offers update`
+- `null remote offers no update`
 
 GREEN: implementar parser (filtro stable + derivação de versão + asset) e checker
 (comparação por `versionCode`). Commit: `feat(app): GitHub release parser + update checker (TDD)`.
