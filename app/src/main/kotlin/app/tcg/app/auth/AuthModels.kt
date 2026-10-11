@@ -1,9 +1,12 @@
 package app.tcg.app.auth
 
+import kotlinx.serialization.Serializable
+
 /**
  * An authenticated Supabase session. Tokens are held in memory/secure storage only and
  * never written to logs. [expiresAtEpochSeconds] drives proactive refresh.
  */
+@Serializable
 data class AuthSession(
     val userId: String,
     val email: String,
