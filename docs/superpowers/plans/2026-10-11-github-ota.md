@@ -73,18 +73,32 @@ Arquivos:
 - `app/src/main/kotlin/app/tcg/app/update/ApkDownloader.kt`
 - `app/src/main/kotlin/app/tcg/app/update/ApkValidator.kt`
 - `app/src/test/kotlin/app/tcg/app/update/ApkValidatorTest.kt`
+- `app/src/test/kotlin/app/tcg/app/update/ApkDownloaderTest.kt`
 
-RED: `ApkValidator` ausente.
+RED: `ApkValidator`/`ApkDownloader` ausentes.
 
 Testes (`ApkValidatorTest`):
 - `wrong application id is rejected`
 - `lower or equal version code is rejected (no downgrade)`
 - `signature mismatch is rejected`
+- `missing archive signature digest is rejected`
 - `matching package version and signature is accepted`
 
-Download (integridade, no `ApkDownloader`/coordinator): tamanho diferente do
-`apkSizeBytes` ou SHA-256 diferente ⇒ erro + apaga o arquivo parcial
-(`partial or corrupt download is rejected and removed`). Commit:
+Testes (`ApkDownloaderTest`, MockEngine + diretório temporário):
+- `https asset downloads and reports size and sha256`
+- `http url is rejected as invalid`
+- `download sends no authorization or api headers`
+- `http error status is rejected and leaves no file`
+- `size mismatch is rejected and removes the partial`
+- `sha256 mismatch is rejected and removes the partial`
+- `oversized body is bounded and removes the partial`
+
+Integridade/segurança do download: URL precisa ser `https`; nenhuma
+`Authorization`/cabeçalho de API é enviada (nada vazа para o host de redirect,
+que pode ser `githubusercontent.com`); tamanho máximo limita disco; tamanho
+exato + SHA-256 conferidos quando presentes; qualquer não-sucesso (HTTP,
+mismatch, oversized, cancelamento) apaga o arquivo parcial via `finally`.
+A autoridade de instalar continua com o `PackageInstaller` do Android. Commit:
 `feat(app): APK download integrity + install pre-check validator (TDD)`.
 
 ## Tarefa 4 — UpdateCoordinator (máquina de estados)

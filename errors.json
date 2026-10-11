@@ -336,6 +336,14 @@
         "assumir que assinatura APK remove fluxo de desenvolvedor não verificado ou substitui registro de pacote"
       ],
       "solucao": "corrigir spec/plano OTA: registrar identidade e app.tcg.app + fingerprint da chave de release antes de distribuição ampla; documentar conta Limited gratuita até 20 dispositivos vs Full Distribution US$25; manter Play Protect independente; não pagar nem enviar documentos automaticamente"
+    },
+    {
+      "erro": "asserção 'sem Accept' no ApkDownloader falhou porque Ktor injeta Accept:*/* por padrão",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "assertar headers[Accept]==null"
+      ],
+      "solucao": "asserção corrigida para Authorization nulo + Accept != application/vnd.github+json (intencao de seguranca: nenhum cabecalho de API/credencial ao host de asset)"
     }
   ]
 }
