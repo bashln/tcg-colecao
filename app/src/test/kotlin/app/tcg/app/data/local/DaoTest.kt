@@ -202,4 +202,44 @@ class DaoTest {
             helper.close()
         }
     }
+
+    @Test
+    fun migration_4_5_creates_per_identity_cursor_and_preserves_collection() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(null)
+                .callback(
+                    object : SupportSQLiteOpenHelper.Callback(4) {
+                        override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                            db.execSQL("CREATE TABLE collection_items (id TEXT NOT NULL PRIMARY KEY, cardId TEXT NOT NULL, quantity INTEGER NOT NULL, condition TEXT NOT NULL, variant TEXT NOT NULL, pricePaidAmount REAL, pricePaidCurrency TEXT, addedAt INTEGER NOT NULL, revision INTEGER NOT NULL DEFAULT 1)")
+                            db.execSQL("INSERT INTO collection_items (id, cardId, quantity, condition, variant, addedAt, revision) VALUES ('item-1', 'swsh3-136', 3, 'NEAR_MINT', 'NORMAL', 42, 2)")
+                        }
+
+                        override fun onUpgrade(
+                            db: androidx.sqlite.db.SupportSQLiteDatabase,
+                            oldVersion: Int,
+                            newVersion: Int,
+                        ) = Unit
+                    },
+                )
+                .build(),
+        )
+
+        try {
+            val database = helper.writableDatabase
+            TcgDatabase.MIGRATION_4_5.migrate(database)
+
+            database.query("SELECT COUNT(*) FROM sync_cursor").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0, cursor.getInt(0))
+            }
+            database.query("SELECT revision FROM collection_items WHERE id = 'item-1'").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(2L, cursor.getLong(0))
+            }
+        } finally {
+            helper.close()
+        }
+    }
 }

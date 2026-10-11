@@ -179,13 +179,13 @@
           "Arquitetura atual: coordenadores Kotlin/TS usam apenas transportes fake e não têm cliente/Auth instalado; Android não inclui WorkManager e web não registra service worker",
           "Limites atuais consultados: Android WorkManager agenda trabalho persistente best-effort; Web Background Sync não é Baseline e Safari/iOS não oferece suporte — sync com app fechado não pode ser prometida uniformemente",
           "Usuário autorizou execução completa usando goal-worker e poteto-mode e definiu automático quando app está ativo/retomado; trabalho de arquitetura iniciado com trilha auditável",
-          "Android SupabaseSyncTransport (TDD RED->GREEN) fala o contrato RPC já commitado: push/pull via /rest/v1/rpc, assinatura SHA-256 canônica igual à web, mapeamento applied/already-applied/conflict, erros tipados UNAUTHORIZED/DEVICE_REVOKED/UNAVAILABLE, recusa de sessão anônima antes de qualquer chamada e cursor de pull por serverSequence. Verde: teste focado 5/5, app 109/109, core 65/65, assembleDebug."
+          "Android SupabaseSyncTransport (TDD RED->GREEN) fala o contrato RPC já commitado: push/pull via /rest/v1/rpc, assinatura SHA-256 canônica igual à web, mapeamento applied/already-applied/conflict, erros tipados UNAUTHORIZED/DEVICE_REVOKED/UNAVAILABLE, recusa de sessão anônima antes de qualquer chamada e cursor de pull por serverSequence. Verde: teste focado 5/5, app 109/109, core 65/65, assembleDebug.",
+          "Room SyncLocalStore (TDD RED->GREEN): outbox->SyncOperation, ack por identity, aplicação remota autoritativa e atômica (item + cursor na mesma transação), cursor monotônico por identidade (tabela sync_cursor, migração 4->5), colisão de configuração retorna false sem perda silenciosa. Verde: store 8/8, DaoTest 6/6 (incl. migração 4->5), app 118/118, core 65/65, assembleDebug."
         ],
         "pending_steps": [
           "Especificar fase integrada: projeto novo isolado + migrations/RLS/RPC + Auth/login + cliente remoto e acionadores automáticos + recuperação/conflitos",
           "Confirmar plano/faturamento da organização Supabase antes de criar projeto remoto; nenhuma mudança remota feita",
           "App shell offline reload permanece lacuna de release separada",
-          "Room SyncLocalStore: aplicação remota + cursor atômicos por identidade (transação única)",
           "Auth Supabase Android: sign-up/login/session restore/logout + armazenamento de sessão e UI de conta",
           "Acionadores automáticos: sync após edição local, ao retomar e ao restaurar rede com app ativo",
           "Reconciliar representação de dinheiro: web/kotlin Double vs bigint do servidor (evitar truncamento silencioso)",

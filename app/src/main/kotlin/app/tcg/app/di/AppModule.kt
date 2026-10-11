@@ -44,7 +44,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TcgDatabase =
         Room.databaseBuilder(context, TcgDatabase::class.java, "tcg.db")
-            .addMigrations(TcgDatabase.MIGRATION_1_2, TcgDatabase.MIGRATION_2_3, TcgDatabase.MIGRATION_3_4)
+            .addMigrations(TcgDatabase.MIGRATION_1_2, TcgDatabase.MIGRATION_2_3, TcgDatabase.MIGRATION_3_4, TcgDatabase.MIGRATION_4_5)
             .build()
 
     @Provides

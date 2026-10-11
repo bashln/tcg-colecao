@@ -7,8 +7,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class],
-    version = 4,
+    entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class],
+    version = 5,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -72,6 +72,18 @@ abstract class TcgDatabase : RoomDatabase() {
                 )
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_outbox_opId` ON `sync_outbox` (`opId`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_sync_outbox_identity_sequence` ON `sync_outbox` (`identity`, `sequence`)")
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `sync_cursor` (
+                        `identity` TEXT NOT NULL,
+                        `lastSequence` INTEGER NOT NULL,
+                        PRIMARY KEY(`identity`)
+                    )""".trimIndent(),
+                )
             }
         }
     }

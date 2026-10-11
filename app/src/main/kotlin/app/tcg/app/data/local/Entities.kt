@@ -53,6 +53,13 @@ data class SyncBindingEntity(
     val deviceId: String,
 )
 
+/** Per-identity pull cursor. Advances monotonically so a crash resumes without re-applying. */
+@Entity(tableName = "sync_cursor")
+data class SyncCursorEntity(
+    @PrimaryKey val identity: String,
+    val lastSequence: Long,
+)
+
 @Entity(
     tableName = "sync_outbox",
     indices = [Index(value = ["opId"], unique = true), Index(value = ["identity", "sequence"])],

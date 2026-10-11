@@ -135,6 +135,15 @@ abstract class CollectionDao {
     @Query("DELETE FROM sync_binding WHERE slot = 0")
     abstract suspend fun clearSyncBinding()
 
+    @Query("SELECT * FROM sync_cursor WHERE identity = :identity")
+    abstract suspend fun getSyncCursor(identity: String): SyncCursorEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun upsertSyncCursor(cursor: SyncCursorEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun upsertRemoteItem(item: CollectionItemEntity)
+
     @Insert
     abstract suspend fun insertSyncOperation(operation: SyncOutboxEntity): Long
 

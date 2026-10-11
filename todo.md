@@ -126,7 +126,7 @@
 
 - [x] **Contrato RPC inspecionado** e travado: `push_collection_operations` / `pull_collection_operations` (SECURITY DEFINER), RLS por `auth.uid()`, CAS por item, tombstone e cursor por sequência.
 - [x] **`SupabaseSyncTransport` (Android) TDD RED→GREEN**: serialização de create/replace/delete, assinatura SHA-256 canônica (igual à web) para detectar reuso de `opId`, mapeamento applied/already-applied/conflict/rejected, erros tipados `UNAUTHORIZED`/`DEVICE_REVOKED`/`UNAVAILABLE`, recusa de sessão anônima antes de rede, cursor de pull por `serverSequence`.
-- [ ] **Room `SyncLocalStore`**: aplicação remota + cursor atômicos por identidade em transação única; replay idempotente e proteção contra troca de identidade.
+- [x] **Room `SyncLocalStore`**: aplicação remota autoritativa e atômica (item + cursor na mesma transação), replay idempotente por cursor monotônico por identidade (tabela `sync_cursor`, migração 4→5), ack isolado e proteção contra troca de identidade; colisão de configuração falha sem sobrescrever dados locais.
 - [ ] **Auth Supabase Android**: sign-up/login/restore/logout, armazenamento seguro de sessão e UI de conta com prévia explícita de vínculo.
 - [ ] **Acionadores automáticos**: sync após edição local, ao retomar o app e ao restaurar rede enquanto ativo; preservar modo local-only offline e no sign-out.
 - [ ] **Reconciliar dinheiro**: web/kotlin usam `Double`, o servidor grava `bigint`; decidir unidades menores para não truncar centavos.
