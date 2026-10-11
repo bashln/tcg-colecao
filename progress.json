@@ -5,7 +5,7 @@
     "CollectionStats puro em :core: totais, distintos, sets, breakdowns por condicao/variante/raridade, top 5 mais valiosas, investido e lucro",
     "Testes JVM cobrem colecao vazia, entrada sem preco e entrada sem pricePaid",
     "HomeViewModel e ProfileViewModel sobre CollectionRepository.observe() com testes deterministas",
-    "HomeScreen com hero de valor, cartas/distintas/sets, Mais valiosas e placeholder de historico de precos",
+    "HomeScreen com hero de valor, cartas/distintas/sets, Mais valiosas e grafico acessivel de historico estimado por snapshots",
     "ProfileScreen com totais, investido/lucro e breakdowns com rotulo, contagem e fatia",
     "AppNav com 4 abas (Inicio, Colecao, Escanear, Perfil), Inicio como destino inicial, rota de detalhe mantida",
     "Strings pt-BR externalizadas e componentes TotalValueHero/StatTile/BreakdownRow compartilhados",
@@ -14,8 +14,268 @@
     "Capturas light e dark em /tmp/opencode/ui4/"
   ],
   "pending_steps": [
-    "Grafico de historico de precos depende de snapshots (fatia futura)",
+    "Atualizar periodicamente os precos atuais das cartas da colecao antes de mostrar uma curva de historico confiavel",
     "Verificacao por foto real com luz (criterio S1 ainda aberto)"
   ],
-  "notes": "Repositorio publico: https://github.com/bashln/tcg-colecao . Colecao do aparelho limpa durante as capturas; app debug reinstalado. APK de release v0.1.1 pode ser reinstalado quando necessario."
+  "next_phase": {
+    "name": "S3, snapshots e grafico de historico de precos",
+    "status": "implementado_localmente_verificado",
+    "completed_steps": [
+      "Room v3 persiste observacoes diarias por carta, mercado, variante e moeda",
+      "Refresh completo e adicao a colecao capturam o preco de mercado",
+      "Migracao 2 para 3 e idempotencia diaria verificadas",
+      "Home projeta as quantidades atuais sobre os snapshots sem alegar valor historico da colecao",
+      "A serie separa TCGplayer em USD e Cardmarket em EUR, preserva itens sem cotacao e mostra idade/cobertura",
+      "Projecao e atualizacao reativa Room cobertas por testes de unidade e repositorio",
+      ":core:test, :app:testDebugUnitTest, :app:compileDebugAndroidTestKotlin e :app:assembleDebug passaram",
+      "APK debug atualizado no Galaxy A32 com adb install -r, sem limpar dados; captura fisica confirmou estado de colecao vazia"
+    ],
+    "pending_steps": [
+      "Atualizacao periodica dos precos da colecao",
+      "Verificacao visual do grafico com dados no Galaxy A32 ou aparelho isolado"
+    ]
+  },
+  "active_slice": {
+    "name": "S3, histórico estimado de preço na Home",
+    "status": "implementado_localmente_verificado; revisao_independente_sem_achados_apos_ajustes",
+    "completed_steps": [
+      "CardRepository carrega catálogo completo e tipado por expansão sem gravar briefs no cache parcial do Room",
+      "Filtro exato por setId evita colisões de prefixo retornadas pela API",
+      "Coleção agrupa expansões iniciadas e conta IDs distintos, sem duplicar quantidade, variante ou condição",
+      "Tela permite alternar entre todas, tenho e faltam; carta faltante abre o fluxo atual de detalhe e adição",
+      "Falha de catálogo mantém cartas salvas visíveis e não mostra faltantes sem catálogo completo",
+      "Busca é limpa ao alternar entre Cartas e Expansões; Voltar do Android fecha detalhe de expansão",
+      "Sete testes instrumentados de U1 passaram no Galaxy A32, incluindo toque na grade da coleção, no fallback offline e em cartas possuídas/faltantes da expansão",
+      ":core:test, :app:testDebugUnitTest, :app:compileDebugAndroidTestKotlin e :app:assembleDebug passaram com --rerun-tasks",
+      "E1 adiciona atualização transacional por CollectionItem.id, preservando ID e data e recusando colisões e snapshots desatualizados",
+      "Testes Room cobrem preservação de identidade, conflito, repetição idempotente, remoção e preço pago; teste de domínio valida entradas",
+      "CollectionItemEditNavigationTest (1), CollectionScreenTest (8) e HomeScreenTest (3) passaram no Galaxy A32",
+      "EndToEndRecognitionTest passou isoladamente no Galaxy A32 (1 teste, 0 falhas): 45/46 top-1 (97,8%) principal e 35/40 (87,5%) holdout; holdout top-5 38/40 (95,0%)",
+      "EndToEndRecognitionTest levou 286,5 s; UTP registrou cancelamento gRPC na finalização, embora XML e log de instrumentação reportem PASS",
+      "APK debug atual foi reinstalado e iniciado no Galaxy A32 após instrumentação; nenhum dado pessoal foi semeado ou alterado",
+      "A série da Home exibe fonte/moeda, cobertura e idade das capturas, com texto alternativo para os pontos",
+      "Consulta Room, projeção de valores e troca de fonte cobertos por testes JVM",
+      "Revisão independente retirou import sem uso e timestamp desnecessário da consulta; nova suíte passou",
+      "APK final instalado no Galaxy A32 com adb install -r; captura física mostra corretamente a coleção vazia"
+    ],
+    "pending_steps": [
+      "A suíte conectada completa ainda não tem resultado verificado; o teste OCR isolado passou, mas a finalização UTP registrou cancelamento gRPC",
+      "Documentar o tempo do teste OCR e evitar rodadas repetidas no aparelho com dados locais sem backup, pois Gradle/UTP desinstala o app ao final",
+      "Inspecionar fisicamente o editor no A32 com uma fixture isolada; os fluxos instrumentados usaram repositórios isolados",
+      "Revisão independente sem comentários da integração de E1 concluída, sem achados",
+      "A validação visual do gráfico com uma coleção populada continua pendente; a captura do A32 mostrou a coleção vazia e nenhum dado de teste foi inserido",
+      "Publicar pelo workflow GitHub somente após autorização explícita de release"
+    ],
+    "future": [
+      "Supabase CLI conectado localmente; projeto de destino, Auth, RLS e sincronização seguem sem decisão e sem alterações",
+      "Web app para iPhone deve compartilhar coleção via sincronização com Android; escolher monorepo ou repositório separado depois da decisão KMP/backend",
+      "Catálogo pesquisável de expansões ainda não iniciadas não faz parte da U1"
+    ]
+  },
+  "web_slice": {
+    "name": "Web responsiva, coleção local e primeiro scan manual",
+    "status": "prototype_locally_verified_not_complete_product",
+    "completed_steps": [
+      "React + TypeScript + Vite mantêm o build Android nativo independente",
+      "Busca manual TCGdex com validação de payload e estados completo, parcial e indisponível",
+      "IndexedDB persiste posses com unicidade por carta, variante e condição; add soma quantidade e edição preserva identidade",
+      "Coleção responsiva oferece busca, filtros, alternância Tenho/Faltam, estimativa com fonte/moeda e edição/remoção confirmada",
+      "Seleção de foto/câmera, OCR local Tesseract e recuperação para busca manual estão implementados, mas não foram verificados com câmera ou fotos físicas",
+      "A volta explícita da tela de scan, o ciclo de foco, a restauração de foco e a dupla ativação segura da remoção estão cobertos pelo Playwright",
+      "JSON de exportação e importação validada com merge atômico, idempotência, conflito sem mutação e limite de arquivo",
+      "Playwright Chromium cobre busca manual, inclusão, reload, edição, remoção, export, restore, migração IndexedDB v1 e layout a 390 px",
+      "npm run build, 5 testes unitários e 7 Playwright Chromium passaram localmente em 2026-10-10",
+      "Workflow GitHub Actions executa testes e build e guarda dist como artefato por sete dias; execução remota pendente"
+    ],
+    "pending_steps": [
+      "Verificar endpoint TCGdex real, rede/CORS e comportamento de resultados incompletos",
+      "Verificar câmera, OCR, permissões, Safari e orientação em iPhone real",
+      "Verificar navegação completa por teclado e leitor de tela",
+      "Definir e implementar Auth/RLS/sync web e Android com conflito e recuperação testados; primeira consulta real do catálogo retornou 503",
+      "Confirmar custo do plano Supabase antes da criação remota; nenhum projeto existente foi alterado"
+    ]
+  },
+  "autonomous_web_program": {
+    "task": "Concluir produto web local-first com conta opcional e sincronização Android/web",
+    "status": "active_product_consolidation",
+    "product_design": {
+      "status": "spec_written_self_reviewed",
+      "spec": "docs/superpowers/specs/2026-10-10-community-collection-product-design.md",
+      "completed_steps": [
+        "Alinhado produto gratuito e comunitário no lançamento, com apoio/doações/planos pagos somente como possibilidade futura sem bloquear funções essenciais",
+        "Recomendada direção Vercel para frontend estático e projeto Supabase novo/isolado para Auth/Postgres/RLS/RPC, preservando React/Vite e Android nativo",
+        "Especificados requisitos de experiência local-first, backup, segurança, sync, catálogo, monetização futura e gates de deploy",
+        "Revisão própria confirmou escopo delimitado, critérios de conclusão e proibição de ações remotas não verificadas"
+      ],
+      "pending_steps": [],
+      "plan": "docs/superpowers/plans/2026-10-10-local-sync-foundation.md",
+      "plan_status": "tasks_1_to_6_complete_review_findings_fixed_uncommitted",
+      "implementation_completed_steps": [
+        "Criada trilha SDD isolada em .superpowers/sdd/2026-10-10-local-sync-foundation/progress.md sem alterar todo.md preexistente",
+        "RED confirmado para testes novos de coordinator e memory transport: módulos ausentes; política existente passou 5/5",
+        "Pré-flight detectou teste unitário configurado por lista explícita e uniu tarefas de teste/implementação para preservar ciclo RED-GREEN verificável",
+        "Implementado transporte in-memory por identidade com replay idempotente, sequência por conta, conflitos por operação e falha injetável",
+        "Implementado coordenador TypeScript com retry, confirmação seletiva, cursor pull e chamadas locais vinculadas à identidade",
+        "Testes de transporte/coordinator adicionados à suíte unitária web; 22 testes unitários passaram e build web passou",
+        "Outbox IndexedDB v4 grava create/replace/delete em ordem causal no mesmo transaction dos writes locais, com binding por identidade, ack protegido e cursor monotônico",
+        "Migração v3 preserva operações pendentes e restaura ordem create/replace/delete; migração v1 continua preservando coleção local",
+        "Coordenador mantém conflitos pendentes, repete operação após falha de ack, e não avança cursor após troca de identidade",
+        "Playwright cobre operações CRUD, import/merge, isolamento, rollback e migrations; 14 E2E passaram",
+        "Texto de erro de armazenamento esclarece preservação da coleção; teste Playwright RED/GREEN",
+        "Review crítico do fundamento web corrigido em um passe: ordem causal, erro em callbacks IDB, import rollback, cursor e retry",
+        "Verificação final web passou em 2026-10-10: 22 testes unitários, 14 testes Chromium e build TypeScript/Vite"
+      ],
+      "implementation_pending_steps": [
+        "Integrar coordenador à outbox IndexedDB com aplicação remota e metadados de cursor",
+        "Integrar coordinator Room às operações pendentes, aplicar pull localmente e armazenar cursor por identidade",
+        "Implementar coordenador Kotlin e testes dois dispositivos",
+        "Adicionar experiência opcional de conta, prévia de vínculo, estado de sync e resolução de conflito",
+        "Avaliar Auth Supabase em web e Kotlin, confirmar custo e limites antes de qualquer infraestrutura remota",
+        "Validar UX local-first, acessibilidade, offline shell e registrar testes finais"
+      ],
+      "cross_analysis": {
+        "status": "documented_official_platform_research",
+        "document": "docs/design/product-gap-and-platform-recommendation-2026-10-10.md",
+        "completed_steps": [
+          "Comparados Collectr/TCG Collector com capacidades Android e web comprovadas e lacunas atuais",
+          "Prioridades organizadas em P0 confiança/core, P1 coleção Pokémon aprofundada e P2 recursos de expansão condicionados a demanda/licença",
+          "Recomendado Supabase único para Auth/Postgres/RLS/RPC e Vercel apenas como host estático, sujeito ao plano e termos de uso",
+          "Verificados preços, limites, pausa de projetos Supabase Free, RLS, suporte de deep links Kotlin e restrição não comercial Vercel Hobby em fontes oficiais",
+          "Concluído que login Vercel CLI não é necessário para desenvolvimento nem obrigatório para futura integração Git; deploy remoto permanece gated"
+        ],
+        "sources_checked_at": "2026-10-10",
+        "remote_actions": "none"
+      },
+      "current_execution": {
+        "plan_task": "6",
+        "status": "review_findings_fixed_full_validation_passed_isolated_on_local_branch",
+        "completed_steps": [
+          "Replanejado task Android para revisão local, binding e payload outbox tipado em colunas, mantendo zero integração remota",
+          "Escritos testes Room para create/replace/delete ordenados, merge com provenance, modo sem vínculo e rollback por falha de insert",
+          "RED observado: compilação dos testes falha nos tipos/APIs de sync ainda ausentes",
+          "Room v4 adiciona revision=1, binding único, outbox sequencial por identidade e migração 3→4 preservando coleção/preços",
+          "Add, merge, edit e remove registram payloads na mesma transação; escritas sem binding continuam locais",
+          "Testes verificam ordem/base revision, snapshot de preço pago, tombstone, ack isolado por identidade e rollback de add/edit/remove",
+          "Migration populada mantém carta, item, preço observado e inicia outbox vazia",
+          "Testes focados Room passaram: CollectionRepositoryTest 18/18 e DaoTest 5/5",
+          "Validação ampla passou: :core:test, :app:testDebugUnitTest e :app:assembleDebug",
+          "Testes Kotlin RED observaram APIs de sync ausentes antes do código",
+          "Criados tipos de operação selados, transporte, coordenador e fake isolado por identidade",
+          "Testes cobrem replay via retry, falha de transporte, dois dispositivos, stale replace após tombstone e troca de identidade",
+          "Suíte focada CollectionSyncCoordinatorTest passou",
+          "TDD cancellation: teste falhou primeiro porque CancellationException virou SyncResult.Error; rethrow explícito adicionado e teste focado passou",
+          "TDD identidade: teste de safe publication falhou para var compartilhada; AtomicReference aplicado e check de identidade ocorre imediatamente antes do push",
+          "Teste concorrente bloqueia carregamento do outbox, troca identidade e confirma que push não é iniciado",
+          "Teste file-backed Room fecha/reabre DB e verifica edição persistida, tombstone e sequência create/replace/delete",
+          "Suítes focadas dos três achados passaram: coordinator 7/7, repository 20/20 e DAO/migration 5/5",
+          "Validação completa pós-correções: Android core/app tests + assembleDebug; web 22 unit, 16 Chromium E2E e build",
+          "Review independente: todos os três achados acionáveis corrigidos e cobertos; nenhum backend remoto tocado",
+          "Estado de main inventariado: HEAD = origin/main f50e00c, 39 arquivos modificados e 76 novos; snapshot completo criado como stash@{0}",
+          "Criada worktree local .worktrees/collection-foundation-2026-10-11 na branch work/collection-foundation-2026-10-11 e reaplicado snapshot sem consumir stash",
+          "Verificado: worktree recebeu 39 arquivos modificados e 76 novos, correspondendo ao snapshot; branch main permanece sem tracked/untracked changes; stash de segurança preservado",
+          "Redefinido escopo seguinte conforme correção do usuário: projeto Supabase isolado, login opcional e sincronização automática — não apenas adaptadores locais",
+          "Supabase CLI autenticado lista 3 projetos na organização existente: 1 ACTIVE_HEALTHY e 2 INACTIVE; nenhum está linkado ao checkout e nenhum será alterado",
+          "Pricing oficial consultado: Free permite até 2 projetos ativos e pausa após 1 semana; Pro começa em US$25/mês e compute por projeto. CLI não revela plano/faturamento da organização",
+          "Arquitetura atual: coordenadores Kotlin/TS usam apenas transportes fake e não têm cliente/Auth instalado; Android não inclui WorkManager e web não registra service worker",
+          "Limites atuais consultados: Android WorkManager agenda trabalho persistente best-effort; Web Background Sync não é Baseline e Safari/iOS não oferece suporte — sync com app fechado não pode ser prometida uniformemente",
+          "Usuário autorizou execução completa usando goal-worker e poteto-mode e definiu automático quando app está ativo/retomado; trabalho de arquitetura iniciado com trilha auditável",
+          "Android SupabaseSyncTransport (TDD RED->GREEN) fala o contrato RPC já commitado: push/pull via /rest/v1/rpc, assinatura SHA-256 canônica igual à web, mapeamento applied/already-applied/conflict, erros tipados UNAUTHORIZED/DEVICE_REVOKED/UNAVAILABLE, recusa de sessão anônima antes de qualquer chamada e cursor de pull por serverSequence. Verde: teste focado 5/5, app 109/109, core 65/65, assembleDebug."
+        ],
+        "pending_steps": [
+          "Especificar fase integrada: projeto novo isolado + migrations/RLS/RPC + Auth/login + cliente remoto e acionadores automáticos + recuperação/conflitos",
+          "Confirmar plano/faturamento da organização Supabase antes de criar projeto remoto; nenhuma mudança remota feita",
+          "App shell offline reload permanece lacuna de release separada",
+          "Room SyncLocalStore: aplicação remota + cursor atômicos por identidade (transação única)",
+          "Auth Supabase Android: sign-up/login/session restore/logout + armazenamento de sessão e UI de conta",
+          "Acionadores automáticos: sync após edição local, ao retomar e ao restaurar rede com app ativo",
+          "Reconciliar representação de dinheiro: web/kotlin Double vs bigint do servidor (evitar truncamento silencioso)",
+          "Migração/RLS/RPC aplicadas ao projeto isolado fwzzwqakrvogafqiatgo e teste real de roundtrip entre dois clientes"
+        ]
+      }
+    },
+    "definition_of_done": [
+      "Experiência web responsiva utilizável em desktop e celular, com verificações automatizadas em Chromium e WebKit quando disponível",
+      "Coleção local com busca, gestão de itens, valor com fonte/moeda, importação/exportação recuperáveis e feedback acessível",
+      "Busca de catálogo por nome e número, scanner/OCR com confirmação humana e fallback manual; limites de câmera/OCR documentados por navegador",
+      "Conta opcional com sincronização Android/web, autenticação segura, RLS, resolução explícita de conflitos, exclusões idempotentes e recuperação testada",
+      "Sem deploy, publicação ou recurso pago enquanto custo, destino e blast radius não forem confirmados"
+    ],
+    "completed_steps": [
+      "Corrigida compreensão do estado: existe protótipo local em web/, não versão completa do produto",
+      "Inspecionados checkout, mudanças locais, arquitetura web, cobertura de testes, compatibilidade Android/web e riscos de sync",
+      "Pesquisada referência pública do Collectr; funcionalidades observadas incluem portfólio/valor, scanner, análise de trocas, wishlists e listas compartilháveis",
+      "Baseline npm run build passou sem alterações de código",
+      "Baseline npm run test:unit passou: 5 testes, 0 falhas",
+      "Baseline Playwright Chromium passou: 2 testes, 0 falhas com catálogo interceptado",
+      "Teste de importação criado e confirmado vermelho porque a tela ainda não oferece restauração",
+      "Adicionada dependência Zod 4.6.5 fixada para validar JSON externo com schema executável; npm audit reportou zero vulnerabilidades",
+      "Importação JSON validada e atômica implementada com merge por configuração, deduplicação idempotente por ID e conflitos sem mutação",
+      "Teste de navegador confirmou importação e persistência após reload: 1/1 verde",
+      "Playwright de importação confirmou restore persistente, repetição idempotente, merge de quantidade e rejeição sem mutação: 3/3 verde",
+      "Build TypeScript/Vite passou com Zod incluído",
+      "Suíte Playwright completa passou: 5 testes, 0 falhas",
+      "Suíte unitária passou: 5 testes, 0 falhas",
+      "Review independente encontrou duplicação possível ao reimportar item mesclado e overflow de revision; adicionados testes RED para ambos",
+      "Persistência de assinatura de importações por itemId e guarda de overflow implementadas; quatro testes focados passaram após corrigir callback de migração IndexedDB",
+      "Teste Chromium confirma upgrade de IndexedDB v1 com dados preservados e restauração de posse removida a partir do backup",
+      "Assinatura de idempotência refinada para cobrir somente dados imutáveis da posse; cotação de catálogo atualizada não causa falso conflito",
+      "Suíte unitária final da unidade de importação passou: 6 testes, 0 falhas, incluindo limite comum de arquivo",
+      "Suíte Playwright final passou: 7 testes, incluindo migração v1, idempotência com preços atualizados, conflito, restore e layout mobile",
+      "Build final TypeScript/Vite passou após corrigir inferência never[] na fixture",
+      "README e arquitetura atualizados para documentar importação real e limites ainda não verificados",
+      "Review independente detectou limite de export/import desalinhado; limite unificado em 50 MiB e teste de fronteira RED/GREEN adicionado",
+      "npm run test:unit passou com seis casos após incluir a regra compartilhada de tamanho",
+      "Suíte Chromium completa reexecutada após corrigir limite e documentação: 7 testes, 0 falhas",
+      "Build final TypeScript/Vite passou após remover import não utilizado",
+      "Review detectou overflow em add/edit, nextRevision agora é compartilhado por add/edit/import e teste UI confirma nenhuma mutação",
+      "npm run test:unit passou com sete testes, incluindo fronteira de revision",
+      "Suíte Playwright passou com sete testes, incluindo recusa de add/edit/import no limite sem perda de coleção",
+      "Build TypeScript/Vite passou com proteção de revisão centralizada",
+      "Revisão independente da proteção de revisão terminou sem achados",
+      "Supabase CLI lista 1 projeto ativo e 2 inativos, mas não expõe plano/cobrança; Docker local está inacessível",
+      "Três propostas independentes comparadas: operação/tombstone, vetor causal e revisão CAS",
+      "Especificação docs/plans/web-account-sync.md escolheu log de operações por item, preview de link com checksum e sequência remota, conflitos explícitos e nenhuma soma automática de IDs distintos",
+      "Contrato de política local implementado: create/replace/delete, replay idempotente, conflito por revisão/configuração, tombstone e limite seguro de revisão",
+      "Reviews encontraram alias mutável de payload; cópia defensiva protege item e Money, com teste de mutação RED/GREEN",
+      "Validação final em 2026-10-10: build passou, 12 testes unitários passaram e 7 testes Chromium passaram"
+    ],
+    "pending_steps": [
+      "Validar migração de banco preexistente v1 para v2 com coleção salva antes de release",
+      "Validar endpoint real TCGdex e ampliar testes de estados de rede/erro (live request retornou 503 nesta execução)",
+      "Implementar fixtures de protocolo e simulador local de dois dispositivos antes do transporte Supabase",
+      "Confirmar plano/custo da organização Supabase antes de criar projeto remoto; manter schemas e migrations locais revisáveis",
+      "Implementar Auth/RLS/sync apenas após verificação de isolamento e segurança; nunca migrar coleção sem preview e recovery",
+      "Fechar avaliação UX/acessibilidade e teste em iPhone/Safari se aparelho ficar disponível; não alegar validação física sem evidência",
+      "Revisão independente e validação final no produto real"
+    ],
+    "notes": "Trabalho local pré-existente não commitado foi detectado no checkout. Preservar todas as mudanças fora do escopo. O protótipo web existente está fora do índice Git e não sincroniza com Android. Paridade literal com Collector não é meta; priorizar capacidades equivalentes de coleção sem copiar branding ou depender de fontes de preço sem licença/API confiável."
+  },
+  "notes": "Repositorio publico: https://github.com/bashln/tcg-colecao. E1 implementa editor da posse exata por CollectionItem.id e 12 testes de UI focados passaram no Galaxy A32: editor (1), coleção (8), início (3). S3 agora mostra na Home a estimativa das posses atuais baseada em snapshots locais, com fonte/moeda separadas e cobertura visível. Nesta continuação, Coleção Android usa abas Cartas e Expansões de largura integral; a identidade visual usa teal, azul e âmbar com grafite no tema escuro. APK, testes Compose e JVM compilaram/passaram; testes de contraste WCAG AA passam. Nenhum aparelho está acessível para inspeção visual e não houve instalação. O APK foi atualizado anteriormente no A32 com adb install -r; testes conectados podem desinstalar o app e não devem rodar sem proteger os dados locais. EndToEndRecognitionTest passou isoladamente em 286,5 s com 97,8% top-1 no conjunto principal e 87,5% no holdout, mas UTP registrou cancelamento gRPC ao finalizar; o XML lista 1 teste e 0 falhas. Não publicar release nem alterar Supabase remoto sem autorização específica. A web local implementa coleção IndexedDB, busca, scan com fallback e export; build, 2 testes unitários e 2 fluxos Chromium passaram, com evidências em web/docs/verification-2026-10-10.md. Veja web_slice e docs/plans/web-architecture.md para limites de verificação.",
+  "collection_overview_slice": {
+    "goal_id": "01a12357-4b04-7032-a0ad-9f86af1e9edf",
+    "status": "implemented_locally_verified; ui_runtime_pending",
+    "completed_steps": [
+      "Ai-memory handoff relido: próxima unidade é overview global de possuídas/faltantes no Android.",
+      "CollectionScreen, CollectionViewModel, contrato SetCatalog e testes existentes rastreados.",
+      "A32 SM_A325M Android 13 visto por ADB; captura da coleção vazia salva em /tmp/opencode/a32-resume/collection.png.",
+      "Câmera do scanner estava ativa; nenhuma instalação ou instrumentação conectada executada.",
+      "Três designs comparados e julgados; escolhido Tenho/Faltam dentro de Cartas para preservar tabs de topo, com retries por expansão e busca por nome de expansão.",
+      "Projeção de ownership/coverage implementada com tipos explícitos para não verificado, em progresso, parcial, indisponível e completo.",
+      "ViewModel inicia catálogos ao abrir Faltam, limita concorrência a duas expansões, compartilha resultados com checklist e permite retries sem duplicar chamadas ativas.",
+      "Estados Tenho/Faltam renderizados, com busca, retry por expansão, aviso de IDs fora do catálogo, contagem distintas/cópias e ação de scan no estado vazio.",
+      "Revisão independente levou a correções de cobertura, estado indisponível e falso vazio antes da primeira emissão de Room.",
+      "Suíte :core:test e :app:testDebugUnitTest, compileDebugAndroidTestKotlin e assembleDebug passaram.",
+      "Review independente final confirmou correções de UX e loading inicial sem achados acionáveis.",
+      "Galaxy A32 atual estava no scanner com 10 candidatos; captura salva antes da instalação em /tmp/opencode/a32-collection-overview/before-install.png.",
+      "APK atualizado com adb install -r; comando retornou Success, sem limpar dados."
+    ],
+    "pending_steps": [
+      "Confirmar versão/instalação atualizada e reabrir app após adb install -r.",
+      "Testar navegação e registro de uma carta de teste, verificar persistência na coleção e overview Faltam.",
+      "Remover apenas o registro de teste criado nesta sessão e confirmar que dados prévios continuam intactos.",
+      "Executar testes instrumentados somente se houver modo de impedir UTP de desinstalar app; não apagar dados do aparelho.",
+      "Registrar captura final e fechar validação no log."
+    ],
+    "notes": "Overview global está implementado localmente; falta verificação Compose em runtime e captura física. ADB vê apenas o Galaxy A32 pessoal, sem instalação ou interação nesta retomada. Handoff em ai-memory: handoffs/2026-10-10-pause.md. Worktree isolada não foi usada porque o checkout contém alterações locais necessárias para esta feature; cópia integral ampliaria risco. Nenhuma alteração pré-existente foi descartada."
+  }
 }
