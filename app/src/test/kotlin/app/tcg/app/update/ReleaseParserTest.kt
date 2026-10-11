@@ -123,6 +123,20 @@ class ReleaseParserTest {
     }
 
     @Test
+    fun `patch component above 99 is rejected to prevent versionCode collisions`() {
+        val result = ReleaseParser.parse(page(release("v1.0.100")))
+        assertTrue(result is ReleaseSelection.Rejected)
+        assertEquals(OtaError.MalformedTag, (result as ReleaseSelection.Rejected).error)
+    }
+
+    @Test
+    fun `minor component above 99 is rejected to prevent versionCode collisions`() {
+        val result = ReleaseParser.parse(page(release("v1.100.0")))
+        assertTrue(result is ReleaseSelection.Rejected)
+        assertEquals(OtaError.MalformedTag, (result as ReleaseSelection.Rejected).error)
+    }
+
+    @Test
     fun `invalid json is rejected`() {
         val result = ReleaseParser.parse("not json at all")
         assertTrue(result is ReleaseSelection.Rejected)

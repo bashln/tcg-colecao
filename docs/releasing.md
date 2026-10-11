@@ -53,10 +53,13 @@ Cadastre em Settings, Secrets and variables, Actions.
 | `ANDROID_KEY_PASSWORD` | a senha da chave |
 
 Sem esses secrets o workflow falha na etapa "Exigir keystore de release" e nada é
-publicado. O release só publica depois de confirmar, com `apksigner verify
---print-certs`, que o APK está assinado com a chave de release (`CN=TCG Colecao`).
-Se o keystore faltar ou a assinatura não casar, a tag falha em vez de distribuir
-um APK assinado com debug.
+publicado. O workflow verifica o SHA-256 do certificado com
+`scripts/verify-release-signature.sh`. O fingerprint fixado foi confirmado nos
+APKs públicos `v0.1.1` e `v0.2.0`:
+`d31a9c98580212663993b2ee7ea757e05fa284ccd2b54ad3b38e6b92a4c3f88f`.
+O nome `CN=TCG Colecao` sozinho não prova que a chave é a mesma. Se o keystore
+faltar ou o certificado mudar, o workflow falha em vez de publicar um APK que
+não atualiza instalações existentes.
 
 ## Versão
 
@@ -107,9 +110,10 @@ APK divergente. O workflow falha fechado e também verifica a assinatura com
 
 ## Conceitos de segurança (não confundir)
 
-- **Assinatura do APK:** a chave `CN=TCG Colecao` usada no `release.yml`. Deve
-  ser a mesma de sempre; trocar quebra a atualização de um app já instalado. O
-  Android exige assinatura igual para atualizar o mesmo `applicationId`.
+- **Assinatura do APK:** o `release.yml` fixa o SHA-256 do certificado usado
+  pelos APKs `v0.1.1` e `v0.2.0`. A rotação da chave não é suportada pelo OTA
+  atual. O Android exige assinatura compatível para atualizar o mesmo
+  `applicationId`.
 - **Permissão "permitir apps desta fonte":** ajuste do Android para **este app**
   instalar um APK. O OTA pede isso só na primeira atualização. É diferente de
   assinatura e de verificação de desenvolvedor.

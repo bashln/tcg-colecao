@@ -346,6 +346,12 @@
       "solucao": "asserção corrigida para Authorization nulo + Accept != application/vnd.github+json (intencao de seguranca: nenhum cabecalho de API/credencial ao host de asset)"
     },
     {
+      "erro": "revisao OTA encontrou colisao de versionCode para minor/patch acima de 99 e workflow aceitava certificado com CN correto mas chave diferente",
+      "tentativas": 0,
+      "abordagens_falhas": [],
+      "solucao": "testes RED adicionados; parser limita minor/patch a 0..99; apksigner dos APKs publicos v0.1.1/v0.2.0 confirmou fingerprint SHA-256 d31a9c98580212663993b2ee7ea757e05fa284ccd2b54ad3b38e6b92a4c3f88f; workflow compara exatamente certificado e rejeita zero ou multiplos signers"
+    },
+    {
       "erro": "FileProvider.getUriForFile lancou 'Failed to find configured root' sob Robolectric (parse do file_paths.xml / cache estatico inconsistente entre contexts de teste)",
       "tentativas": 1,
       "abordagens_falhas": [

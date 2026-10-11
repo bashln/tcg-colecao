@@ -21,6 +21,7 @@ object ReleaseParser {
     private val STABLE_TAG = Regex("""^v(\d+)\.(\d+)\.(\d+)$""")
     private const val APK_CONTENT_TYPE = "application/vnd.android.package-archive"
     private val MAX_VERSION_CODE = BigInteger.valueOf(Int.MAX_VALUE.toLong())
+    private val MAX_MINOR_OR_PATCH = BigInteger.valueOf(99)
 
     fun parse(raw: String): ReleaseSelection {
         val root = runCatching { json.parseToJsonElement(raw) }.getOrNull()
@@ -60,6 +61,9 @@ object ReleaseParser {
         val major = BigInteger(majorText)
         val minor = BigInteger(minorText)
         val patch = BigInteger(patchText)
+        if (minor > MAX_MINOR_OR_PATCH || patch > MAX_MINOR_OR_PATCH) {
+            return Built.Error(OtaError.MalformedTag)
+        }
         val code = major.multiply(BigInteger.valueOf(10_000))
             .add(minor.multiply(BigInteger.valueOf(100)))
             .add(patch)

@@ -20,6 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Testes dos guards de release
+        run: |
+          ./scripts/validate-release.test.sh
+          ./scripts/verify-release-signature.test.sh
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

@@ -15,6 +15,7 @@ jobs:
     # guard can gate on it. Missing secrets must fail the run, never publish a debug build.
     env:
       KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      EXPECTED_SIGNING_CERT_SHA256: d31a9c98580212663993b2ee7ea757e05fa284ccd2b54ad3b38e6b92a4c3f88f
     steps:
       - uses: actions/checkout@v4
 
@@ -75,9 +76,8 @@ jobs:
             exit 1
           fi
           certs="$("$apksigner" verify --print-certs "$apk")"
-          echo "$certs"
-          if ! grep -q "CN=TCG Colecao" <<< "$certs"; then
-            echo "::error::O APK nao esta assinado com a chave de release (CN=TCG Colecao). Nada e publicado."
+          if ! printf '%s\n' "$certs" | ./scripts/verify-release-signature.sh "$EXPECTED_SIGNING_CERT_SHA256"; then
+            echo "::error::O APK nao esta assinado com o certificado de release fixado. Nada e publicado."
             exit 1
           fi
 

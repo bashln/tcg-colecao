@@ -191,7 +191,8 @@
           "OTA Tarefa 4: UpdateCoordinator (check→Ready→download→InstallReady handoff; serializado; cancel→Ready; incompatible rejeitado antes do instalador; offline/erro tipados). Verde: coordinator 11/11, app 205/205, core 65/65.",
           "OTA Tarefa 5a: UpdateInstaller (handoff FileProvider ACTION_VIEW read-only, gate de origem, so APK validado em cache; manifest REQUEST_INSTALL_PACKAGES + provider). Verde: installer 7/7, app 212/212, core 65/65.",
           "OTA Tarefa 5b: UpdateViewModel + UpdateScreen + DI (source/downloader/coordinator/installer) + rota UPDATE + entrada Perfil. Verde: VM 9/9, app 221/221, core 65/65.",
-          "OTA Tarefa 6: guard de release testado (tag/versão/ativo, fail-closed) + release.yml (guard+digest) + docs (OTA in-app + verificação dev Android Brasil, conceitos distinguidos). Verde: guard 14/14, YAML OK."
+          "OTA Tarefa 6: guard de release testado (tag/versão/ativo, fail-closed) + release.yml (guard+digest) + docs (OTA in-app + verificação dev Android Brasil, conceitos distinguidos). Verde: guard 14/14, YAML OK.",
+          "Review independente OTA encontrou colisão potencial em minor/patch>99 e verificação de assinatura por CN apenas; parser agora rejeita componentes >99, workflow fixa SHA-256 do certificado confirmado nos APKs públicos v0.1.1/v0.2.0, com seis casos de teste do verificador. Limitação de rotação de chave documentada."
         ],
         "pending_steps": [
           "Especificar fase integrada: projeto novo isolado + migrations/RLS/RPC + Auth/login + cliente remoto e acionadores automáticos + recuperação/conflitos",

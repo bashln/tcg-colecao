@@ -22,8 +22,10 @@ Testes (`ReleaseParserTest`):
 - `stable releases are kept and drafts and prereleases are excluded` (chave `prerelease`)
 - `highest stable version wins when several exist`
 - `versionCode is derived from the tag using major*10000+minor*100+patch`
+- `minor and patch above 99 are rejected to prevent versionCode collisions`
 - `strict stable tag format rejects pre-release suffixes`
 - `malformed tag is rejected with a typed error`
+- `out-of-range minor or patch is rejected with a typed error`
 - `missing apk asset is a typed error`
 - `multiple apk assets are a typed error`
 - `apk asset is matched by file name and android package content type`
@@ -167,7 +169,7 @@ Play Protect sem avisos; não afirma que developer verification está tratada). 
 Arquivos:
 - `docs/releasing.md` (seção "Atualização em app" — Obtainium continua + OTA in-app)
 - `.github/workflows/release.yml` (asserção extra: nome do asset `tcg-colecao-v<versão>.apk`
-  e `versionCode` não-decrescente; mantém falha fechada de assinatura)
+  e `versionCode` não-decrescente; fixa SHA-256 do certificado de release)
 
 Commit: `docs+ci: document in-app OTA and assert release asset/version contract`.
 
