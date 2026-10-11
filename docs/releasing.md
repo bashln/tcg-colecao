@@ -84,3 +84,59 @@ build local; a tag no CI sempre usa a chave de release e a versão da tag.
 
 No Obtainium, adicione o app com a URL do repositório, por exemplo
 `https://github.com/<owner>/<repo>`. Ele lê as releases e instala o APK.
+
+## Atualização no app (OTA)
+
+O app também oferece atualização opcional a partir das releases estáveis do
+GitHub (Perfil → Atualizações → Procurar atualização). É manual: não há verificação
+automática a cada início para não gastar a cota da API do GitHub.
+
+- O app só considera tags estáveis exatos `vMAJOR.MINOR.PATCH` (rascunhos e
+  pré-releases são ignorados) e só oferece se o `versionCode` for maior que o
+  atual. O `versionCode` é `major*10000 + minor*100 + patch`, com `minor`/`patch`
+  em 0..99.
+- O APK é baixado por HTTPS, conferido tamanho e SHA-256, e entregue ao
+  instalador do sistema. A instalação é sempre confirmada por você.
+- O Obtainium continua funcionando; o OTA do app é um caminho adicional, não substitui.
+
+O guard `scripts/validate-release.sh` (testado por
+`scripts/validate-release.test.sh`) roda no workflow de release e recusa tag
+fora do formato, `versionCode` duplicado/menor que o último publicado e nome de
+APK divergente. O workflow falha fechado e também verifica a assinatura com
+`apksigner` e registra o SHA-256 do APK.
+
+## Conceitos de segurança (não confundir)
+
+- **Assinatura do APK:** a chave `CN=TCG Colecao` usada no `release.yml`. Deve
+  ser a mesma de sempre; trocar quebra a atualização de um app já instalado. O
+  Android exige assinatura igual para atualizar o mesmo `applicationId`.
+- **Permissão "permitir apps desta fonte":** ajuste do Android para **este app**
+  instalar um APK. O OTA pede isso só na primeira atualização. É diferente de
+  assinatura e de verificação de desenvolvedor.
+- **Play Protect:** verificação do Google para apps fora da Play Store. Pode
+  mostrar aviso ao instalar nosso APK. **Este app não remove esse aviso** e não
+  afirma que o pacote é "certificado" pelo Google.
+- **Verificação de desenvolvedor Android:** registro de pacote/assinatura junto
+  ao Google para distribuição fora da Play Store (ver abaixo). É externa ao app.
+
+## Verificação de desenvolvedor Android (Brasil)
+
+Desde 2026-09-30 o Android aplica proteções de verificação de desenvolvedor no
+Brasil para instalar apps fora da Play Store. Para distribuição ampla, o pacote
+`app.tcg.app` e a **impressão digital do certificado de assinatura de release**
+precisam estar registrados/verificados. Isso é feito no console do Google, é
+externo a este repositório e **não é automatizado por este projeto**.
+
+- Conta completa: US$ 25 (valor oficial atual; pode mudar). Conta "Limited" é
+  grátis para até 20 dispositivos autorizados.
+- Nenhum pagamento, documento de identidade ou conta foi criado por este projeto.
+- Registro/verificação **não** remove o aviso do Play Protect.
+
+Para obter a impressão digital do certificado de release:
+
+```bash
+apksigner verify --print-certs out/tcg-colecao-vX.Y.Z.apk
+```
+
+Guarde o SHA-256 do certificado (campo `Signer #1 certificate SHA-256 digest`)
+— é o que o registro de pacote pede.

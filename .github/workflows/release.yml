@@ -47,6 +47,17 @@ jobs:
           echo "TCG_VERSION_NAME=${major}.${minor}.${patch}" >> "$GITHUB_ENV"
           echo "TCG_VERSION_CODE=$(( major * 10000 + minor * 100 + patch ))" >> "$GITHUB_ENV"
 
+      # Guard fail-closed: tag estável exata, versionCode acima de tudo já publicado e nome de
+      # ativo correto. Testado por scripts/validate-release.test.sh; roda sem segredos.
+      - name: Buscar tags para o guard de release
+        run: git fetch --tags --force origin
+
+      - name: Guardar contrato de release (tag/versao/ativo)
+        run: |
+          mapfile -t existing < <(git tag -l 'v*' | grep -xE 'v[0-9]+\.[0-9]+\.[0-9]+' | grep -vxF "$GITHUB_REF_NAME" || true)
+          version_code="$(./scripts/validate-release.sh "$GITHUB_REF_NAME" "tcg-colecao-${GITHUB_REF_NAME}.apk" "${existing[@]}")"
+          echo "release-guard: versionCode=${version_code} aceito"
+
       - name: Compilar APK de release
         env:
           TCG_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
@@ -74,6 +85,11 @@ jobs:
         run: |
           mkdir -p out
           cp app/build/outputs/apk/release/app-release.apk "out/tcg-colecao-${GITHUB_REF_NAME}.apk"
+
+      - name: Registrar digest SHA-256 do APK
+        run: |
+          digest="$(sha256sum "out/tcg-colecao-${GITHUB_REF_NAME}.apk" | cut -d' ' -f1)"
+          echo "SHA-256 (tcg-colecao-${GITHUB_REF_NAME}.apk): ${digest}" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Publicar release
         uses: softprops/action-gh-release@v2
