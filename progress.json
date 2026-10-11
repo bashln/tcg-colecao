@@ -182,7 +182,8 @@
           "Android SupabaseSyncTransport (TDD RED->GREEN) fala o contrato RPC já commitado: push/pull via /rest/v1/rpc, assinatura SHA-256 canônica igual à web, mapeamento applied/already-applied/conflict, erros tipados UNAUTHORIZED/DEVICE_REVOKED/UNAVAILABLE, recusa de sessão anônima antes de qualquer chamada e cursor de pull por serverSequence. Verde: teste focado 5/5, app 109/109, core 65/65, assembleDebug.",
           "Room SyncLocalStore (TDD RED->GREEN): outbox->SyncOperation, ack por identity, aplicação remota autoritativa e atômica (item + cursor na mesma transação), cursor monotônico por identidade (tabela sync_cursor, migração 4->5), colisão de configuração retorna false sem perda silenciosa. Verde: store 8/8, DaoTest 6/6 (incl. migração 4->5), app 118/118, core 65/65, assembleDebug.",
           "Auth core Android (TDD RED->GREEN): AuthController (start restaura/renova sessão expirada, signUp auto-confirm vs aguardando verificação, signIn, signOut best-effort sem tocar a coleção) + SupabaseAuthClient (GoTrue /auth/v1 signup|token?grant=password|refresh_token|logout, erros não-revelatórios). Sessão via SessionStore (boundary). Verde: AuthController 10/10, SupabaseAuthClient 8/8, app 136/136, assembleDebug.",
-          "Secure SessionStore (TDD RED->GREEN): SessionCipher + AndroidKeystoreSessionCipher (AES-256-GCM, chave não-exportável AndroidKeyStore) + EncryptedSessionStore (SharedPreferences privado, token sempre cifrado; valor corrompido é descartado => signed-out limpo). Verde: store 5/5, app 141/141. android.yml CI (38168777497) verde: testes Android agora em CI."
+          "Secure SessionStore (TDD RED->GREEN): SessionCipher + AndroidKeystoreSessionCipher (AES-256-GCM, chave não-exportável AndroidKeyStore) + EncryptedSessionStore (SharedPreferences privado, token sempre cifrado; valor corrompido é descartado => signed-out limpo). Verde: store 5/5, app 141/141. android.yml CI (38168777497) verde: testes Android agora em CI.",
+          "Account UI wired: AccountScreen (todos estados + dialog de preview), SyncLinkRepository (binding identity+deviceId), DI auth graph, BuildConfig SUPABASE_URL/KEY via env, rota ACCOUNT + entrada Perfil. Verde: Compose 4/4, VM 12/12, app 157/157."
         ],
         "pending_steps": [
           "Especificar fase integrada: projeto novo isolado + migrations/RLS/RPC + Auth/login + cliente remoto e acionadores automáticos + recuperação/conflitos",
@@ -191,8 +192,7 @@
           "Acionadores automáticos: sync após edição local, ao retomar e ao restaurar rede com app ativo",
           "Reconciliar representação de dinheiro: web/kotlin Double vs bigint do servidor (evitar truncamento silencioso)",
           "Migração/RLS/RPC aplicadas ao projeto isolado fwzzwqakrvogafqiatgo e teste real de roundtrip entre dois clientes",
-          "Prévia explícita + confirmação de vínculo primeiro-antes de enviar dados; desvincular/trocar conta preserva local e exige nova prévia",
-          "Wiring DI (Hilt) do SessionStore/Keystore + AuthController + UI de conta com prévia de vínculo (próxima unidade)"
+          "Prévia explícita + confirmação de vínculo primeiro-antes de enviar dados; desvincular/trocar conta preserva local e exige nova prévia"
         ]
       }
     },

@@ -22,11 +22,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -38,6 +40,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.tcg.app.R
+import app.tcg.app.auth.AuthController
+import app.tcg.app.data.sync.SyncLinkRepository
+import app.tcg.app.ui.account.AccountScreen
+import app.tcg.app.ui.account.AccountViewModel
 import app.tcg.app.ui.card.CardDetailScreen
 import app.tcg.app.ui.card.CardDetailViewModel
 import app.tcg.app.ui.card.CollectionItemEditScreen
@@ -55,12 +61,14 @@ import app.tcg.app.ui.scan.ScanViewModel
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.domain.model.Card
+import kotlinx.coroutines.launch
 
 private object Routes {
     const val HOME = "home"
     const val SCAN = "scan"
     const val COLLECTION = "collection"
     const val PROFILE = "profile"
+    const val ACCOUNT = "account"
     const val CARD_ID = "cardId"
     const val CARD_DETAIL = "card/{$CARD_ID}"
     const val COLLECTION_ITEM_ID = "itemId"
@@ -76,8 +84,13 @@ private object Routes {
 fun AppNav(
     cardRepository: CardRepository,
     collectionRepository: CollectionRepository,
+    authController: AuthController,
+    syncLinkRepository: SyncLinkRepository,
     navController: NavHostController = rememberNavController(),
 ) {
+    // Restore any persisted session once so a returning signed-in user sees their state.
+    LaunchedEffect(Unit) { authController.start() }
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val topLevelRoute = currentRoute in Routes.topLevel
@@ -171,6 +184,31 @@ fun AppNav(
                 ProfileScreen(
                     viewModel = viewModel,
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
+                    onAccountClick = { navController.navigate(Routes.ACCOUNT) },
+                )
+            }
+            composable(Routes.ACCOUNT) {
+                val scope = rememberCoroutineScope()
+                val viewModel: AccountViewModel = viewModel(
+                    factory = viewModelFactory {
+                        initializer {
+                            AccountViewModel(
+                                auth = authController,
+                                onLinkConfirmed = { identity -> scope.launch { syncLinkRepository.link(identity) } },
+                                onLinkUnlinked = { scope.launch { syncLinkRepository.unlink() } },
+                            )
+                        }
+                    },
+                )
+                AccountScreen(
+                    state = viewModel.state.collectAsStateWithLifecycle().value,
+                    onSignIn = viewModel::submitSignIn,
+                    onSignUp = viewModel::submitSignUp,
+                    onRequestLink = viewModel::requestLink,
+                    onConfirmLink = viewModel::confirmLink,
+                    onCancelLink = viewModel::cancelLink,
+                    onSignOut = viewModel::signOut,
+                    onDismissError = viewModel::dismissError,
                 )
             }
             composable(

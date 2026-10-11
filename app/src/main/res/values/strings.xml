@@ -183,4 +183,28 @@
     <string name="profile_empty_title">Ainda não há estatísticas</string>
     <string name="profile_empty_body">Escaneie uma carta para acompanhar valor, quantidade e detalhes da sua coleção.</string>
     <string name="profile_empty_action">Escanear uma carta</string>
+
+    <string name="account_title">Sua conta</string>
+    <string name="account_intro">A conta é opcional. Sua coleção fica salva neste aparelho e funciona offline. Entre ou crie uma conta para poder sincronizar depois.</string>
+    <string name="account_email">E-mail</string>
+    <string name="account_password">Senha</string>
+    <string name="account_sign_in">Entrar</string>
+    <string name="account_sign_up">Criar conta</string>
+    <string name="account_switch_to_sign_up">Novo por aqui? Criar conta</string>
+    <string name="account_switch_to_sign_in">Já tenho conta. Entrar</string>
+    <string name="account_verification_sent">Enviamos um e-mail de confirmação para %1$s. Confirme para ativar a conta.</string>
+    <string name="account_local_only">Sua coleção está apenas neste aparelho. Ative a sincronização para guardar uma cópia na sua conta.</string>
+    <string name="account_activate_sync">Ativar sincronização</string>
+    <string name="account_linked">Sincronização ativada. Sua coleção é salva na conta e neste aparelho.</string>
+    <string name="account_sign_out">Sair da conta</string>
+    <string name="account_link_preview_title">Sincronizar com sua conta?</string>
+    <string name="account_link_preview_body">Vamos enviar uma cópia da sua coleção para a conta e buscá-la em outros aparelhos. Nada é enviado agora sem a sua confirmação. Você pode cancelar e continuar só no aparelho.</string>
+    <string name="account_link_confirm">Confirmar e sincronizar</string>
+    <string name="account_link_cancel">Cancelar</string>
+    <string name="account_dismiss_error">Fechar</string>
+    <string name="account_error_invalid_credentials">E-mail ou senha incorretos.</string>
+    <string name="account_error_email_registered">Já existe uma conta com este e-mail.</string>
+    <string name="account_error_email_not_confirmed">Confirme o e-mail antes de entrar.</string>
+    <string name="account_error_network">Sem conexão. Tente de novo.</string>
+    <string name="account_error_unknown">Não foi possível continuar. Tente de novo.</string>
 </resources>

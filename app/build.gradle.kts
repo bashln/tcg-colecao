@@ -17,6 +17,14 @@ android {
         targetSdk = 35
         versionCode = System.getenv("TCG_VERSION_CODE")?.toIntOrNull() ?: 1
         versionName = System.getenv("TCG_VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.0"
+        // Alvo Supabase opcional. A chave publishable é um identificador público de cliente
+        // (protegido por RLS), lida do ambiente e nunca commitada; vazio = sync desativado.
+        buildConfigField("String", "SUPABASE_URL", "\"${System.getenv("TCG_SUPABASE_URL") ?: ""}\"")
+        buildConfigField(
+            "String",
+            "SUPABASE_PUBLISHABLE_KEY",
+            "\"${System.getenv("TCG_SUPABASE_PUBLISHABLE_KEY") ?: ""}\"",
+        )
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -48,6 +56,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {
@@ -104,4 +113,6 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
     testImplementation(libs.ktor.client.mock)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
 }
