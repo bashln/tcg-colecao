@@ -30,3 +30,12 @@ sealed interface UpdateCheck {
     data class Available(val release: GitHubRelease) : UpdateCheck
     data object NoUpdate : UpdateCheck
 }
+
+/** Result of a metadata fetch. `NotModified` carries the cached body so a 304 never strands the caller. */
+sealed interface ReleaseFetch {
+    data class Fetched(val etag: String?, val releasesJson: String) : ReleaseFetch
+    data class NotModified(val cachedReleasesJson: String) : ReleaseFetch
+    data object Offline : ReleaseFetch
+    data class RateLimited(val resetEpochSeconds: Long?) : ReleaseFetch
+    data class Invalid(val error: OtaError) : ReleaseFetch
+}

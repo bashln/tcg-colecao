@@ -185,7 +185,8 @@
           "Secure SessionStore (TDD RED->GREEN): SessionCipher + AndroidKeystoreSessionCipher (AES-256-GCM, chave não-exportável AndroidKeyStore) + EncryptedSessionStore (SharedPreferences privado, token sempre cifrado; valor corrompido é descartado => signed-out limpo). Verde: store 5/5, app 141/141. android.yml CI (38168777497) verde: testes Android agora em CI.",
           "Account UI wired: AccountScreen (todos estados + dialog de preview), SyncLinkRepository (binding identity+deviceId), DI auth graph, BuildConfig SUPABASE_URL/KEY via env, rota ACCOUNT + entrada Perfil. Verde: Compose 4/4, VM 12/12, app 157/157.",
           "OTA (GitHub Releases) spec + plano escritos e auto-revisados; canal único, sem token, PackageInstaller autoritativo, sem bypass Play Protect, Obtainium compatível. Fontes oficiais Android developer verification consultadas: Brasil sob enforcement regional desde 2026-09-30; assinatura não substitui registro do pacote/chave. Full Distribution: identidade + US$25; Limited: gratuita/20 dispositivos. Spec e plano atualizados com gate de registro público, sem assumir que Play Protect deixará de alertar.",
-          "OTA Tarefa 1: ReleaseParser (stable/estrict-tag/versionCode-sem-overflow/APK-unico, erros tipados) + UpdateChecker (só versionCode, nunca downgrade). Verde: parser 12/12, checker 5/5, app 174/174, core 65/65."
+          "OTA Tarefa 1: ReleaseParser (stable/estrict-tag/versionCode-sem-overflow/APK-unico, erros tipados) + UpdateChecker (só versionCode, nunca downgrade). Verde: parser 12/12, checker 5/5, app 174/174, core 65/65.",
+          "OTA Tarefa 2: GitHubReleaseSource (sem token, ETag+corpo juntos, 304 NotModified carrega cache, offline/429 tipados). Verde: source 7/7, app 181/181, core 65/65."
         ],
         "pending_steps": [
           "Especificar fase integrada: projeto novo isolado + migrations/RLS/RPC + Auth/login + cliente remoto e acionadores automáticos + recuperação/conflitos",

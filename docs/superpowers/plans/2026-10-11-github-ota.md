@@ -51,12 +51,19 @@ Arquivos:
 RED: `GitHubReleaseSource` ausente.
 
 Testes (MockEngine):
-- `fetch parses a releases page into the parser input`
+- `fetch hits the public releases endpoint with accept and user agent and no token`
+- `fetch maps a 200 body to Fetched with the etag`
+- `malformed json maps to a typed failure`
 - `offline network failure maps to Offline`
 - `rate limit 429 with reset header maps to RateLimited`
-- `etag 304 returns NotModified without a body`
-- `malformed json maps to a typed error`
-- `no token is sent and the user agent is set`
+- `etag 304 returns NotModified carrying the cached body`
+- `no conditional header is sent before a body has been cached`
+
+Decisão de cache: a fonte guarda `ETag` + corpo juntos, em memória (vida do
+processo), e só envia `If-None-Match` quando já tem corpo — assim um `304`
+devolve o corpo em `NotModified.cachedReleasesJson` e nunca deixa o chamador
+sem metadados. Persistência em disco (se vier) deve guardar corpo junto ao
+ETag; nunca um ETag órfão.
 
 Commit: `feat(app): GitHub release metadata source with ETag and rate-limit handling (TDD)`.
 
