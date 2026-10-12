@@ -89,6 +89,24 @@ test('failed push keeps local operation pending for retry', async () => {
   assert.equal((await transport.pull('account-a', 0)).highWaterMark, 1)
 })
 
+test('pending-count read failure is unknown rather than falsely zero and recovers on next sync', async () => {
+  const transport = createMemoryTransport({ failNextPush: true })
+  const operation = createOperation('10000000-0000-4000-8000-000000000034', '20000000-0000-4000-8000-000000000001')
+  const local = localStore(operation)
+  let pendingReads = 0
+  const readPending = local.listPendingOperations
+  local.listPendingOperations = async (identity) => {
+    pendingReads += 1
+    if (pendingReads === 2) throw new Error('storage temporarily unavailable')
+    return readPending(identity)
+  }
+  const device = createSyncCoordinator({ transport, local })
+  device.bindIdentity('account-a')
+
+  assert.deepEqual(await device.syncOnce(), { kind: 'error', pending: null })
+  assert.deepEqual(await device.syncOnce(), { kind: 'complete', applied: 1, pending: 0 })
+})
+
 test('account switch never sends operations owned by previous identity', async () => {
   const transport = createMemoryTransport()
   const operation = createOperation('10000000-0000-4000-8000-000000000004', '20000000-0000-4000-8000-000000000001')

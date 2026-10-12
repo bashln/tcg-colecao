@@ -165,10 +165,10 @@ Expected: all lifecycle/account tests pass with no RPC under prior identity.
 - Consumes: authoritative `pending(identity)`/`listPendingOperations(identity)` after every exception path.
 - Produces: error/conflict/offline status uses actual pending count; failure to query pending is represented as unavailable count (not zero).
 
-- [ ] **Step 1: Add RED tests** with one pending operation and injected transport/store failure; assert status never reports zero; add refresh test after recovery.
-- [ ] **Step 2: Run focused tests and observe current false-zero behavior.**
-- [ ] **Step 3: Implement actual-count refresh** after exceptions and model an unavailable count distinctly from zero on Web/Android UI.
-- [ ] **Step 4: Rerun tests GREEN** and verify linked status can recover on a later successful sync.
+- [x] **Step 1: Add RED tests** with one pending operation and injected transport/store failure; assert status never reports zero; add refresh test after recovery.
+- [x] **Step 2: Run focused tests and observe current false-zero behavior.** Web coordinator/runner returned `pending: 0`; Android tests rejected null as impossible.
+- [x] **Step 3: Implement actual-count refresh** after exceptions and model an unavailable count distinctly from zero on Web/Android UI.
+- [x] **Step 4: Rerun tests GREEN** and verify linked status can recover on a later successful sync.
 - [ ] **Step 5: Commit** as `fix(sync): report authoritative pending counts`.
 
 ### Task 7: Full gates, review, process records, commit, and push

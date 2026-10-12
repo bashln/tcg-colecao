@@ -58,7 +58,7 @@ class SyncLifecycle(
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                SyncResult.Error(0)
+                SyncResult.Error(null)
             }
             _status.value = _status.value.copy(running = false, result = result)
             result
@@ -192,7 +192,7 @@ class SyncLifecycle(
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                SyncResult.Error(pending = 0)
+                SyncResult.Error(pending = null)
             }
             _status.value = _status.value.copy(running = false, result = result)
             covered.forEach { it.complete(result) }

@@ -38,9 +38,9 @@ export type RemoteApplyResult = { kind: 'applied' } | { kind: 'conflict'; detail
 
 export type SyncResult =
   | { kind: 'complete'; applied: number; pending: number }
-  | { kind: 'conflicts'; conflicts: number; pending: number; details: SyncConflictDetail[] }
-  | { kind: 'offline'; pending: number }
-  | { kind: 'error'; pending: number }
+  | { kind: 'conflicts'; conflicts: number; pending: number | null; details: SyncConflictDetail[] }
+  | { kind: 'offline'; pending: number | null }
+  | { kind: 'error'; pending: number | null }
 
 export interface SyncCoordinator {
   bindIdentity(identity: string | null): void
@@ -107,10 +107,8 @@ export function createSyncCoordinator(input: {
           ? { kind: 'conflicts', conflicts: conflictDetails.length + storedConflicts.length, pending: remaining, details: [...conflictDetails, ...storedConflicts] }
           : { kind: 'complete', applied, pending: remaining }
       } catch {
-        if (identity !== boundIdentity) return { kind: 'offline', pending: 0 }
-        const pending = identity === boundIdentity
-          ? (await input.local.listPendingOperations(boundIdentity).catch(() => [])).length
-          : 0
+        if (identity !== boundIdentity) return { kind: 'offline', pending: null }
+        const pending = await input.local.listPendingOperations(boundIdentity).then((operations) => operations.length).catch(() => null)
         return { kind: 'error', pending }
       }
     },
@@ -146,7 +144,8 @@ export function createSyncCoordinator(input: {
         }
         return this.syncOnce()
       } catch {
-        return { kind: 'error', pending: (await input.local.listPendingOperations(requestedIdentity).catch(() => [])).length }
+        const pending = await input.local.listPendingOperations(requestedIdentity).then((operations) => operations.length).catch(() => null)
+        return { kind: 'error', pending }
       }
     },
   }

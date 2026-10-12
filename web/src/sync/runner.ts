@@ -39,7 +39,8 @@ export function createSyncRunner(coordinator: SyncCoordinator): SyncRunner {
         try {
           result = await coordinator.syncOnce()
         } catch {
-          result = { kind: 'error', pending: 0 }
+          const status = await coordinator.status().catch(() => null)
+          result = { kind: 'error', pending: status?.pending ?? null }
         }
         publish({ running: false, result })
         for (const resolve of covered) resolve(result)

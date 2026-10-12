@@ -186,6 +186,21 @@ class AccountScreenTest {
     }
 
     @Test
+    fun unavailable_pending_count_is_not_presented_as_zero() {
+        screen(
+            state = AccountUiState(
+                signedIn = true,
+                email = "a@example.com",
+                linkState = LinkState.Linked("user-a"),
+                syncStatus = SyncStatusView.Failed(pending = null),
+            ),
+        )
+
+        compose.onNodeWithText("Não foi possível verificar quantas alterações aguardam envio. Sua coleção local permanece segura; tente sincronizar novamente.")
+            .assertExists()
+    }
+
+    @Test
     fun offline_and_error_states_are_distinguishable() {
         screen(
             state = AccountUiState(

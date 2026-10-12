@@ -671,6 +671,22 @@
         "Resolve script paths under the previously printed skill installation directory"
       ],
       "solucao": "Resume protocol applied manually: read exact plan section, ledgered task, captured RED/GREEN command output, and will verify/commit task as specified"
+    },
+    {
+      "erro": "Task 6 RED: Web coordinator converted failed pending-outbox read to pending=0 and runner converted thrown coordinator failure to pending=0",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Assumir zero quando estado de fila não pôde ser lido"
+      ],
+      "solucao": "Modelar pending como number|null; contar autoritativamente após falha, null quando leitura também falha; runner tenta coordinator.status antes de declarar indisponível"
+    },
+    {
+      "erro": "Task 6 Android RED tests não compilavam porque SyncResult.Error só aceitava contagem Int não nula",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Representar falha de leitura como zero ou descartar o teste de contrato"
+      ],
+      "solucao": "Permitir pending=null em Offline/Conflicts/Error, manter Int em resultado Complete e renderizar aviso acessível/localizado quando contagem é desconhecida"
     }
   ]
 }

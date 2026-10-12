@@ -49,6 +49,19 @@ class SyncLifecycleTest {
         assertEquals(SyncResult.Complete(applied = 0, pending = 0), lifecycle.status.value.result)
     }
 
+    @Test
+    fun unexpected_sync_exception_marks_pending_count_unavailable() = runTest {
+        val lifecycle = SyncLifecycle(
+            scope = this,
+            syncAction = { throw IllegalStateException("coordinator failed unexpectedly") },
+        )
+        lifecycle.bindIdentity("user-a")
+        val run = lifecycle.request()
+        advanceUntilIdle()
+
+        assertEquals(SyncResult.Error(pending = null), run.await())
+    }
+
 
     @Test
     fun `concurrent request producers resolve every queued request`() = runBlocking {

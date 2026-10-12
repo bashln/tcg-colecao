@@ -182,11 +182,15 @@ function SyncStatusPanel({ state, entries, onSyncNow, onResolveConflict }: {
             : `Sincronizado. ${result.pending === 1 ? '1 alteração aguardando envio' : `${result.pending} alterações aguardando envio`}.`)
         : result.kind === 'conflicts'
           ? (result.conflicts === 1
-            ? '1 conflito de sincronização precisa da sua atenção. A posse continuou local e pendente.'
-            : `${result.conflicts} conflitos de sincronização precisam da sua atenção. As posses continuaram locais e pendentes.`)
+            ? `1 conflito de sincronização precisa da sua atenção. ${result.pending === null ? 'A contagem de alterações pendentes está indisponível.' : 'A posse continuou local e pendente.'}`
+            : `${result.conflicts} conflitos de sincronização precisam da sua atenção. ${result.pending === null ? 'A contagem de alterações pendentes está indisponível.' : 'As posses continuaram locais e pendentes.'}`)
         : result.kind === 'offline'
-          ? 'Sem conexão agora. As alterações ficam pendentes e serão enviadas quando a conexão voltar.'
-          : 'Não foi possível sincronizar agora. Suas alterações continuam pendentes e nada foi perdido.'}
+          ? result.pending === null
+            ? 'Sem conexão agora. Não foi possível verificar a fila de envio; sua coleção local permanece segura. Tente novamente quando a conexão voltar.'
+            : 'Sem conexão agora. As alterações ficam pendentes e serão enviadas quando a conexão voltar.'
+          : result.pending === null
+            ? 'Não foi possível verificar a fila de envio. Sua coleção local permanece segura; tente sincronizar novamente.'
+            : 'Não foi possível sincronizar agora. Suas alterações continuam pendentes e nada foi perdido.'}
     </p>
     {result !== null && result.kind === 'conflicts' ? <ul className="link-summary">
       {result.details.map((detail) => <li key={detail.id ?? detail.itemId}>

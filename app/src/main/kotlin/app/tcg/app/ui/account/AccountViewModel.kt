@@ -52,9 +52,9 @@ enum class AccountError {
 sealed interface SyncStatusView {
     data object Running : SyncStatusView
     data class Synced(val pending: Int) : SyncStatusView
-    data class Conflicts(val count: Int, val pending: Int, val details: List<SyncConflictDetail>) : SyncStatusView
-    data class Offline(val pending: Int) : SyncStatusView
-    data class Failed(val pending: Int) : SyncStatusView
+    data class Conflicts(val count: Int, val pending: Int?, val details: List<SyncConflictDetail>) : SyncStatusView
+    data class Offline(val pending: Int?) : SyncStatusView
+    data class Failed(val pending: Int?) : SyncStatusView
 }
 
 data class AccountUiState(

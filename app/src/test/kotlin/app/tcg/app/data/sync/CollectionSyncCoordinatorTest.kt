@@ -157,6 +157,23 @@ class CollectionSyncCoordinatorTest {
         assertTrue(local.finishedConflict)
         assertEquals(3L, local.lastSequence("user-a"))
     }
+
+    @Test
+    fun pending_count_read_failure_is_unknown_then_recovers_after_successful_retry() = runTest {
+        val transport = InMemorySyncTransport(failNextPush = true)
+        val local = TestLocalSyncStore()
+        local.enqueue(SyncOperation.Create(
+            "op-pending-count", "device-a",
+            SyncItem("item-pending-count", "card-a", 2, CardVariant.NORMAL, Condition.NEAR_MINT, null, 1L),
+        ))
+        local.failPendingOnCall = 2
+        val coordinator = CollectionSyncCoordinator(transport, local)
+        coordinator.bindIdentity("user-a")
+
+        assertEquals(SyncResult.Error(pending = null), coordinator.syncOnce())
+        local.failPendingOnCall = null
+        assertEquals(SyncResult.Complete(applied = 1, pending = 0), coordinator.syncOnce())
+    }
 }
 
 private class TestLocalSyncStore : SyncLocalStore {
@@ -169,6 +186,8 @@ private class TestLocalSyncStore : SyncLocalStore {
     var resolutionOperation: SyncOperation? = null
     var finishResolution = false
     var finishedConflict = false
+    var pendingCalls = 0
+    var failPendingOnCall: Int? = null
 
     fun blockNextPending() {
         pendingStarted = CompletableDeferred()
@@ -180,6 +199,8 @@ private class TestLocalSyncStore : SyncLocalStore {
     }
 
     override suspend fun pending(identity: String): List<SyncOperation> {
+        pendingCalls++
+        if (pendingCalls == failPendingOnCall) error("local outbox unavailable")
         pendingStarted?.complete(Unit)
         releasePending?.await()
         pendingStarted = null

@@ -260,13 +260,17 @@ private fun SyncStatusPanel(
                 } else {
                     pluralStringResource(R.plurals.account_sync_pending, status.pending, status.pending)
                 }
-                is SyncStatusView.Conflicts -> pluralStringResource(
+                is SyncStatusView.Conflicts -> if (status.pending == null) {
+                    stringResource(R.string.account_sync_count_unavailable)
+                } else pluralStringResource(
                     R.plurals.account_sync_conflicts,
                     status.count,
                     status.count,
                 )
-                is SyncStatusView.Offline -> stringResource(R.string.account_sync_offline, status.pending)
-                is SyncStatusView.Failed -> stringResource(R.string.account_sync_error, status.pending)
+                is SyncStatusView.Offline -> status.pending?.let { stringResource(R.string.account_sync_offline, it) }
+                    ?: stringResource(R.string.account_sync_count_unavailable)
+                is SyncStatusView.Failed -> status.pending?.let { stringResource(R.string.account_sync_error, it) }
+                    ?: stringResource(R.string.account_sync_count_unavailable)
             },
             style = MaterialTheme.typography.bodyMedium,
             color = when (status) {

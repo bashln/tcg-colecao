@@ -93,6 +93,23 @@ test('a thrown sync keeps the runner usable and reports an error result', async 
   assert.deepEqual(recovering, { kind: 'complete', applied: 1, pending: 0 })
 })
 
+test('runner reports authoritative pending count after thrown coordinator failure', async () => {
+  let calls = 0
+  const coordinator: SyncCoordinator = {
+    bindIdentity() {},
+    async status() { return { identity: 'account-a', pending: 2, lastSequence: 0 } },
+    async syncOnce() {
+      calls += 1
+      if (calls === 1) throw new Error('unexpected coordinator failure')
+      return { kind: 'complete', applied: 2, pending: 0 }
+    },
+  }
+  const runner = createSyncRunner(coordinator)
+
+  assert.deepEqual(await runner.request(), { kind: 'error', pending: 2 })
+  assert.deepEqual(await runner.request(), { kind: 'complete', applied: 2, pending: 0 })
+})
+
 test('observers receive running and result states', async () => {
   const gate = deferred<SyncResult>()
   const coordinator: SyncCoordinator = {

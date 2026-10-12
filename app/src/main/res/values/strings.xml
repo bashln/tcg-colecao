@@ -217,6 +217,7 @@
     <string name="account_sync_now">Sincronizar agora</string>
     <string name="account_sync_offline">Sem conexão agora. %1$d alterações ficam pendentes e serão enviadas quando a conexão voltar. Nada foi perdido.</string>
     <string name="account_sync_error">Não foi possível sincronizar agora. %1$d alterações continuam pendentes e nada foi perdido.</string>
+    <string name="account_sync_count_unavailable">Não foi possível verificar quantas alterações aguardam envio. Sua coleção local permanece segura; tente sincronizar novamente.</string>
     <string name="account_sync_conflict_row">• %1$s: %2$s</string>
     <string name="account_sync_conflict_values">Local: %1$s. Nuvem: %2$s.</string>
     <string name="account_sync_value_absent">sem posse</string>

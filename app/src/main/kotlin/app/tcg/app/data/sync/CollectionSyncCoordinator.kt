@@ -33,9 +33,9 @@ sealed interface RemoteApplyResult {
 
 sealed interface SyncResult {
     data class Complete(val applied: Int, val pending: Int) : SyncResult
-    data class Conflicts(val count: Int, val pending: Int, val details: List<SyncConflictDetail> = emptyList()) : SyncResult
-    data class Offline(val pending: Int) : SyncResult
-    data class Error(val pending: Int) : SyncResult
+    data class Conflicts(val count: Int, val pending: Int?, val details: List<SyncConflictDetail> = emptyList()) : SyncResult
+    data class Offline(val pending: Int?) : SyncResult
+    data class Error(val pending: Int?) : SyncResult
 }
 
 class CollectionSyncCoordinator(
@@ -98,7 +98,7 @@ class CollectionSyncCoordinator(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            val remaining = if (identity.get() == boundIdentity) local.pending(boundIdentity).size else 0
+            val remaining = if (identity.get() == boundIdentity) runCatching { local.pending(boundIdentity).size }.getOrNull() else null
             SyncResult.Error(remaining)
         }
     }
@@ -124,7 +124,7 @@ class CollectionSyncCoordinator(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            SyncResult.Error(local.pending(boundIdentity).size)
+            SyncResult.Error(runCatching { local.pending(boundIdentity).size }.getOrNull())
         }
     }
 }
