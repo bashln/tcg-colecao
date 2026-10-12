@@ -30,10 +30,10 @@ async function push(actor, operations, deviceId = DEVICE) {
   ]);
 }
 
-async function prepare(actor, localItems, digest = `digest-${randomUUID()}`, remoteSequence = 0) {
+async function prepare(actor, localItems, digest = `digest-${randomUUID()}`) {
   const response = await actor.query(
-    'select public.prepare_collection_link($1::text, $2::jsonb, $3::bigint) as result',
-    [digest, JSON.stringify(localItems), remoteSequence],
+    'select public.prepare_collection_link($1::text, $2::jsonb) as result',
+    [digest, JSON.stringify(localItems)],
   );
   return { digest, result: response.rows[0].result };
 }
@@ -67,6 +67,17 @@ after(async () => {
 });
 
 describe('prepare_collection_link', () => {
+  test('exposes only the two-argument preview contract', async () => {
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: newUser() });
+    const signatures = await cluster.admin.query(`
+      select oid::regprocedure::text as signature
+      from pg_proc where pronamespace = 'public'::regnamespace and proname = 'prepare_collection_link'
+    `);
+    assert.deepEqual(signatures.rows.map((row) => row.signature), ['prepare_collection_link(text,jsonb)']);
+    const { result } = await prepare(actor, []);
+    assert.ok(result.planId);
+  });
+
   test('classifies local and remote items without touching the collection', async () => {
     const user = newUser();
     const actor = await cluster.connectActor({ role: 'authenticated', sub: user });

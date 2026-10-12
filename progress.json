@@ -1,7 +1,7 @@
 {
   "current_run": {
     "task": "Concluir pendências arquiteturais de sync de conta Android↔web conforme plano aprovado",
-    "status": "implementacao_task_4_validada_aguardando_commit",
+    "status": "task_5_validated_awaiting_commit",
     "definition_of_done": [
       "Web unit/E2E/build, Android unit/core/build e PostgreSQL harness passam em execução recente",
       "Review independente não deixa achados críticos/importantes abertos",
@@ -54,17 +54,11 @@
       "Task 2 concluída: Web unit focado 28/28, build, link E2E 4/4; Android transport/coordinator/AccountViewModel 43/43; commit 4fff5b6",
       "Task 2 UI mantém cópia acionável de LinkOutcome.Failed; resposta parcial não grava binding; Web E2E confirma prévia nova e retry somente de operações restantes",
       "Task 3 validada e commitada em 5370274: Web unit 73/73, build, Playwright lifecycle/account/link 11/11; Android focused 60/60. Prévia/commit presos à identidade e transições binding serializadas",
-      "Task 4 validada: PostgreSQL 38/38; Web unit 74/74/build/full Playwright 37/37; Android core 65/app 293/293/assembleDebug. Web/Android suportam escolhas explícitas, replay idempotente e cursor seguro em troca de identidade"
+      "Task 4 validada: PostgreSQL 38/38; Web unit 74/74/build/full Playwright 37/37; Android core 65/app 293/293/assembleDebug. Web/Android suportam escolhas explícitas, replay idempotente e cursor seguro em troca de identidade",
+      "Task 5 RED→GREEN: shared digest vectors exposed Android object-wrapper mismatch; canonical array shape now matches Web. Two-arg preview migration/client contract validated. Web unit 75/75 + build, Android focused vector/transport passed, PostgreSQL harness 39/39."
     ],
     "pending_steps": [
-      "Corrigir classificação pre-dispatch vs commit incerto (M3/M4), preservar mensagem acionável LinkOutcome.Failed (L2), e resetar preview se identidade Auth mudar sem signOut (L3)",
-      "Resolver recuperação de half-link F3 e findings F8/F9/F10/F11/F12/F15 sem alterações remotas arriscadas",
-      "Mitigar corrida unlink-vs-persist e device identity edge cases (M2/M5/L1) com testes de composição",
-      "Revisar diffs completos e rerodar gates após próximas correções",
-      "Validar critérios item a item e registrar bloqueio hosted round-trip por ausência de SMTP/domínio e contas confirmadas",
-      "Avaliar separadamente exposição reportada de rls_auto_enable e advisories de performance; não alterar ACL hosted nem excluir a conta Auth não classificada",
-      "Fechar relatório sem publicar release/deploy",
-      "Commit Task 4 após revisar diff e registrar ledger; em seguida Tasks 5 e 6, gates finais, revisão independente e publicação da branch sem merge/deploy/release"
+      "Commit Task 5; execute Task 6 authoritative pending counts; then Task 7 full gates/review/process records and push; hosted round-trip remains externally blocked."
     ],
     "notes": [
       "Mudanças pré-existentes continuam não commitadas e devem ser preservadas",

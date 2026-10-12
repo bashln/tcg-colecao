@@ -663,6 +663,14 @@
         "Assumir que o status atual continuaria sendo o resultado da ação manual após o drain automático"
       ],
       "solucao": "Validar resultado retornado pela Deferred da resolução e tratar status compartilhado como último resultado de lifecycle; teste focado passou"
+    },
+    {
+      "erro": "Executando-plans task-start/task-done script path was absent in this cached skill installation",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Resolve script paths under the previously printed skill installation directory"
+      ],
+      "solucao": "Resume protocol applied manually: read exact plan section, ledgered task, captured RED/GREEN command output, and will verify/commit task as specified"
     }
   ]
 }

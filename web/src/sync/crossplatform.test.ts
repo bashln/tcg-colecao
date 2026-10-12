@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import type { CollectionOperation, SyncItem } from './policy.ts'
-import { createSupabaseTransport, type SupabaseHttp } from './supabase-transport.ts'
+import { createSupabaseTransport, syncSnapshotDigest, type SupabaseHttp } from './supabase-transport.ts'
 
 /**
  * Cross-platform wire contract: the web transport must produce byte-identical canonical
@@ -22,7 +22,7 @@ interface VectorCase {
 
 const vectors = JSON.parse(
   readFileSync(fileURLToPath(new URL('../../../testdata/sync-wire-vectors.json', import.meta.url)), 'utf8'),
-) as { cases: VectorCase[]; itemWire: Record<string, unknown>; priceVector: { major: number; minor: number; rejected: { amount: number }[] } }
+) as { cases: VectorCase[]; digestCases: { name: string; items: SyncItem[]; digest: string }[]; itemWire: Record<string, unknown>; priceVector: { major: number; minor: number; rejected: { amount: number }[] } }
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical)
@@ -116,4 +116,10 @@ test('web serializes price to the shared minor-unit wire form', async () => {
   assert.equal(sent.item?.pricePaid?.amount, vectors.priceVector.minor, 'web must write integer minor units')
   assert.equal(sent.item?.pricePaid?.currency, 'USD')
   assert.deepEqual(vectors.priceVector.major, 12.34)
+})
+
+test('web snapshot digest matches shared canonical digest vectors', async () => {
+  for (const vector of vectors.digestCases) {
+    assert.equal(await syncSnapshotDigest(vector.items as SyncItem[]), vector.digest, vector.name)
+  }
 })

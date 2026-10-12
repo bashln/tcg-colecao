@@ -256,7 +256,7 @@ test('prepareLink sends a canonical local snapshot in minor units and parses the
   const plan = await transport.prepareLink(snapshot)
 
   assert.equal(record[0]?.fn, 'prepare_collection_link')
-  assert.equal(record[0]?.body.p_remote_sequence, 0)
+  assert.deepEqual(Object.keys(record[0]?.body ?? {}).sort(), ['p_local_digest', 'p_local_items'])
   assert.equal(record[1]?.fn, 'read_collection_link_snapshot')
   assert.equal(record[1]?.body.p_expected_high_water, 12)
   const bodyItems = record[0]?.body.p_local_items as Array<Record<string, unknown>>

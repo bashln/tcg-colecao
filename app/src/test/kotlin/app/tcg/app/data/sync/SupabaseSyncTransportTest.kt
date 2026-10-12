@@ -22,6 +22,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -286,7 +287,7 @@ class SupabaseSyncTransportTest {
         val preview = transport(engine).prepareLink(listOf(item("item-1")), "account-a")
 
         assertTrue(bodies[0].contains("\"p_local_digest\":\""))
-        assertTrue(bodies[0].contains("\"p_remote_sequence\":0"))
+        assertFalse(bodies[0].contains("p_remote_sequence"))
         assertEquals("9f86d081-884c-4d65-9c67-41b405d56001", preview.planId)
         assertEquals(7L, preview.remoteHighWater)
         assertEquals(listOf("item-1"), preview.localOnly)

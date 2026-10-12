@@ -134,7 +134,7 @@ async function signatureFor(operation: CollectionOperation): Promise<string> {
 export async function syncSnapshotDigest(items: readonly SyncItem[]): Promise<string> {
   if (items.length > 5000) throw new SupabaseSyncError('unavailable', 'A prévia aceita até 5.000 posses')
   const localItems = items.map(serializeSyncItem).sort((left, right) =>
-    String(left.id).localeCompare(String(right.id)))
+    String(left.id) < String(right.id) ? -1 : String(left.id) > String(right.id) ? 1 : 0)
   return sha256Hex(JSON.stringify(canonical(localItems)))
 }
 
@@ -175,12 +175,11 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
 
     async prepareLink(items: readonly SyncItem[], expectedIdentity?: string): Promise<LinkPreview> {
       const localItems = items.map(serializeSyncItem).sort((left, right) =>
-        String(left.id).localeCompare(String(right.id)))
+        String(left.id) < String(right.id) ? -1 : String(left.id) > String(right.id) ? 1 : 0)
       const digest = await syncSnapshotDigest(items)
       const response = await call('prepare_collection_link', {
         p_local_digest: digest,
         p_local_items: localItems,
-        p_remote_sequence: 0,
       }, expectedIdentity)
       const preview = asRecord(response.preview)
       const planId = response.planId

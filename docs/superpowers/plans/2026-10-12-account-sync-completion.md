@@ -149,10 +149,10 @@ Expected: all lifecycle/account tests pass with no RPC under prior identity.
 **Interfaces:**
 - Produces: identical `syncSnapshotDigest(items)` SHA-256 over canonical JSON array bytes on Web and Android; `prepare_collection_link(text,jsonb)` has no caller-supplied remote sequence.
 
-- [ ] **Step 1: Add RED shared digest vectors** for empty input, reversed item order, Unicode IDs, null and populated price, and 0.01/maximum accepted minor units; consume same fixture in Kotlin and TypeScript.
-- [ ] **Step 2: Run cross-platform tests and observe digest mismatches.**
-- [ ] **Step 3: Implement one canonical shape**: array wrapper (no Kotlin-only object wrapper), deterministic code-unit ordering, fixed monetary integer serialization, locale-independent bytes. Add migration replacing the three-argument preview function with two-argument signature and revoke/drop old signature safely.
-- [ ] **Step 4: Update both clients and RPC harness tests**, then rerun Web/Kotlin vector tests and focused PostgreSQL preview tests. Expected same SHA-256 on both platforms and no `p_remote_sequence` field/signature remains.
+- [x] **Step 1: Add RED shared digest vectors** for empty input, reversed item order, Unicode IDs, null and populated price, and 0.01/maximum accepted minor units; consume same fixture in Kotlin and TypeScript.
+- [x] **Step 2: Run cross-platform tests and observe digest mismatches.** Android failed against existing object-wrapped digest; SQL signature test failed against existing three-argument function. Web fixture initially was absent, then its vectors passed.
+- [x] **Step 3: Implement one canonical shape**: array wrapper (no Kotlin-only object wrapper), deterministic code-unit ordering, fixed monetary integer serialization, locale-independent bytes. Add migration replacing the three-argument preview function with two-argument signature and revoke/drop old signature safely.
+- [x] **Step 4: Update both clients and RPC harness tests**, then rerun Web/Kotlin vector tests and focused PostgreSQL preview tests. Expected same SHA-256 on both platforms and no `p_remote_sequence` field/signature remains.
 - [ ] **Step 5: Commit** as `fix(sync): align snapshot digests and preview rpc`.
 
 ### Task 6: Truthful pending counts and status recovery

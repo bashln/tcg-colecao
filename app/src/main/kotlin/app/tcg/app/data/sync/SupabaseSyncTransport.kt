@@ -96,7 +96,7 @@ private const val MAX_LINK_ITEMS = 5_000
 fun syncSnapshotDigest(items: List<SyncItem>): String {
     if (items.size > MAX_LINK_ITEMS) throw SupabaseSyncException(SyncErrorKind.UNAVAILABLE, "A prévia aceita até $MAX_LINK_ITEMS posses")
     val sorted = items.sortedBy { it.id }.map { encodeSyncItem(it) }
-    val canonical = canonicalizeJson(JsonObject(mapOf("items" to JsonArray(sorted))))
+    val canonical = canonicalizeJson(JsonArray(sorted))
     val digest = MessageDigest.getInstance("SHA-256")
     val bytes = digest.digest(canonical.toString().toByteArray(Charsets.UTF_8))
     return bytes.joinToString(separator = "") { byte -> "%02x".format(byte) }
@@ -217,7 +217,6 @@ class SupabaseSyncTransport(
                 mapOf(
                     "p_local_digest" to JsonPrimitive(digest),
                     "p_local_items" to localItems,
-                    "p_remote_sequence" to JsonPrimitive(0L),
                 ),
             ),
             expectedIdentity = expectedIdentity,

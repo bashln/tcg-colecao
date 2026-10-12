@@ -32,6 +32,38 @@ import java.io.File
  */
 class CrossPlatformSignatureTest {
 
+    @Test
+    fun `android snapshot digest matches shared canonical digest vectors`() {
+        val json = Json { ignoreUnknownKeys = true }
+        val root = json.parseToJsonElement(vectorsFile().readText()).jsonObject
+        val cases = root.getValue("digestCases").jsonArray
+        for (element in cases) {
+            val testCase = element.jsonObject
+            val name = testCase.getValue("name").jsonPrimitive.content
+            val items = testCase.getValue("items").jsonArray.map { value ->
+                val item = value.jsonObject
+                val price = item["pricePaid"]
+                val money = if (price == null || price is kotlinx.serialization.json.JsonNull) null else {
+                    val priceObject = price.jsonObject
+                    Money(
+                        amount = priceObject.getValue("amount").jsonPrimitive.content.toDouble(),
+                        currency = enumValueOf(priceObject.getValue("currency").jsonPrimitive.content),
+                    )
+                }
+                SyncItem(
+                    id = item.getValue("id").jsonPrimitive.content,
+                    cardId = item.getValue("cardId").jsonPrimitive.content,
+                    quantity = item.getValue("quantity").jsonPrimitive.content.toInt(),
+                    variant = enumValueOf(item.getValue("variant").jsonPrimitive.content),
+                    condition = enumValueOf(item.getValue("condition").jsonPrimitive.content),
+                    pricePaid = money,
+                    addedAt = item.getValue("addedAt").jsonPrimitive.content.toLong(),
+                )
+            }
+            assertEquals(name, testCase.getValue("digest").jsonPrimitive.content, syncSnapshotDigest(items))
+        }
+    }
+
     private fun vectorsFile(): File {
         val base = File("").absoluteFile
         val candidates = listOf(
