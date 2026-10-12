@@ -39,8 +39,10 @@ async function seedLocalCollection(page: import('@playwright/test').Page) {
 async function mockLinkRpc(
   page: import('@playwright/test').Page,
   calls: RpcCall[],
-  options: { conflicting?: boolean } = {},
+  options: { conflicting?: boolean; partialFirstCommit?: boolean } = {},
 ) {
+  const seeded = new Map<string, Record<string, unknown>>()
+  let returnedPartial = false
   await page.route('**/rest/v1/rpc/**', async (route) => {
     const request = route.request()
     const fn = new URL(request.url()).pathname.split('/').pop() ?? 'unknown'
@@ -53,17 +55,18 @@ async function mockLinkRpc(
     })
     if (fn === 'prepare_collection_link') {
       const items = (body.p_local_items ?? []) as SyncItem[]
-      const localOnly = items.map((item) => item.id)
+      const localOnly = items.filter((item) => !seeded.has(item.id)).map((item) => item.id)
+      const identical = items.filter((item) => seeded.has(item.id)).map((item) => item.id)
       const digest = await syncSnapshotDigest(items)
       return respond({
         planId: '9f86d081-884c-4d65-9c67-41b405d56001',
         digest,
         expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
-        remoteHighWater: 7,
+        remoteHighWater: 7 + seeded.size,
         preview: {
           localOnly,
           cloudOnly: [],
-          identical: [],
+          identical,
           conflicting: options.conflicting
             ? localOnly.map((itemId) => ({ itemId, reason: 'different-content' }))
             : [],
@@ -72,16 +75,40 @@ async function mockLinkRpc(
       })
     }
     if (fn === 'read_collection_link_snapshot') {
-      return respond({ highWater: 7, items: [] })
+      return respond({
+        highWater: 7 + seeded.size,
+        items: [...seeded.values()].map((item) => ({ ...item, revision: 1 })),
+      })
     }
     if (fn === 'commit_collection_link') {
-      const operations = (body.p_operations ?? []) as { opId: string }[]
+      const operations = (body.p_operations ?? []) as { opId: string; kind: string; item?: Record<string, unknown> }[]
+      if (options.partialFirstCommit && !returnedPartial && operations.length > 1) {
+        returnedPartial = true
+        const accepted = operations[0]
+        if (accepted?.item !== undefined) seeded.set(String(accepted.item.id), accepted.item)
+        return respond({
+          status: 'partial',
+          push: {
+            status: 'ok',
+            results: operations.map((operation, index) => ({
+              opId: operation.opId,
+              status: index === 0 ? 'applied' : 'conflict',
+              reason: index === 0 ? null : 'id-collision',
+              revision: index === 0 ? 1 : null,
+            })),
+            highWater: 7 + seeded.size,
+          },
+        })
+      }
+      for (const operation of operations) {
+        if (operation.item !== undefined) seeded.set(String(operation.item.id), operation.item)
+      }
       return respond({
         status: 'linked',
         push: {
           status: 'ok',
           results: operations.map((operation) => ({ opId: operation.opId, status: 'applied', revision: 1 })),
-          highWater: 8,
+          highWater: 7 + seeded.size,
         },
       })
     }
@@ -172,4 +199,52 @@ test('cancelling the preview leaves the collection local with no server commit',
   })
   expect(state.binding).toBeNull()
   expect(state.entries).toBe(1)
+})
+
+test('partial first link stays local and fresh preview retries only remaining items', async ({ page }) => {
+  const calls: RpcCall[] = []
+  await mockLinkRpc(page, calls, { partialFirstCommit: true })
+  await seedSignedInSession(page, 'ana@example.test', 'user-ana')
+  await page.goto('/')
+  await seedLocalCollection(page)
+  await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const domain = await import(`${location.origin}/src/domain/model.ts`)
+    const card = {
+      id: 'base2-3', name: 'Blastoise', setId: 'base2', setName: 'Jungle', collectorNumber: '3',
+      imageUrl: null, variants: ['NORMAL'], prices: [], setTotal: 64,
+    }
+    const draft = domain.parseItemDraft(domain.emptyDraft(card))
+    if (draft.kind !== 'valid') throw new Error('invalid second test draft')
+    const result = await store.addToCollection(card, draft)
+    if (result.kind !== 'saved') throw new Error(`second seed failed: ${result.kind}`)
+  })
+
+  await page.getByRole('navigation', { name: 'Seções' }).getByRole('button', { name: 'Perfil' }).click()
+  await page.getByRole('button', { name: 'Revisar vínculo' }).click()
+  await page.getByRole('button', { name: 'Confirmar vínculo' }).click()
+  await expect(page.getByText(/A nuvem recebeu parte das operações/)).toBeVisible()
+
+  const afterPartial = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    return { binding: await store.currentSyncBinding(), entries: (await store.listCollection()).length }
+  })
+  expect(afterPartial.binding).toBeNull()
+  expect(afterPartial.entries).toBe(2)
+
+  await page.getByRole('button', { name: 'Revisar vínculo' }).click()
+  await expect(page.getByText('1 posse só neste navegador e será enviada para a conta')).toBeVisible()
+  await expect(page.getByText('1 posse já existe idêntica nas duas pontas')).toBeVisible()
+  await page.getByRole('button', { name: 'Confirmar vínculo e enviar 1 posse' }).click()
+  await expect(page.getByText('Coleção vinculada a esta conta.')).toBeVisible()
+
+  const commits = calls.filter((call) => call.fn === 'commit_collection_link')
+  expect(commits).toHaveLength(2)
+  expect((commits[1]?.body.p_operations as unknown[])).toHaveLength(1)
+  const finalState = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    return { binding: await store.currentSyncBinding(), entries: (await store.listCollection()).length }
+  })
+  expect(finalState.binding?.identity).toBe('user-ana')
+  expect(finalState.entries).toBe(2)
 })

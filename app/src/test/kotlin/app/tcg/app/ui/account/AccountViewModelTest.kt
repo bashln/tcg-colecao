@@ -281,12 +281,30 @@ class AccountViewModelTest {
         vm.requestLink()
         advanceUntilIdle()
 
-        link.outcome = LinkOutcome.Partial
+        link.outcome = LinkOutcome.Partial(listOf(app.tcg.app.data.sync.PushOutcome.Conflict("id-collision")))
         vm.confirmLink()
         advanceUntilIdle()
 
         assertEquals(LinkState.LocalOnly, vm.state.value.linkState)
         assertEquals(AccountError.LINK_PARTIAL, vm.state.value.error)
+        assertTrue(vm.state.value.errorMessage.orEmpty().contains("parte das operações"))
+        assertTrue(linked.isEmpty())
+    }
+
+    @Test
+    fun `a link failure keeps its actionable message in account state`() = runTest {
+        remote.signInSession = userA
+        signInAs("a@example.com")
+        link.summary = LinkPreviewSummary(linkPlan(), 1, 0, 0, 0, 0)
+        vm.requestLink()
+        advanceUntilIdle()
+        link.outcome = LinkOutcome.Failed("Resposta inválida; a nuvem pode já ter recebido os itens.")
+
+        vm.confirmLink()
+        advanceUntilIdle()
+
+        assertEquals(AccountError.NETWORK, vm.state.value.error)
+        assertEquals("Resposta inválida; a nuvem pode já ter recebido os itens.", vm.state.value.errorMessage)
         assertTrue(linked.isEmpty())
     }
 

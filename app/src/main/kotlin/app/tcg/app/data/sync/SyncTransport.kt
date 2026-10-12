@@ -44,9 +44,9 @@ data class SequencedOperation(val sequence: Long, val operation: SyncOperation)
 data class PullPage(val operations: List<SequencedOperation>, val highWaterMark: Long)
 
 sealed interface PushOutcome {
-    data class Applied(val sequence: Long) : PushOutcome
-    data class AlreadyApplied(val sequence: Long) : PushOutcome
-    data class Conflict(val reason: String) : PushOutcome
+    data class Applied(val sequence: Long, val opId: String? = null) : PushOutcome
+    data class AlreadyApplied(val sequence: Long, val opId: String? = null) : PushOutcome
+    data class Conflict(val reason: String, val opId: String? = null) : PushOutcome
 }
 
 interface SyncTransport {

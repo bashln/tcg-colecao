@@ -281,6 +281,7 @@ class SupabaseSyncTransportTest {
         val responses = ArrayDeque(listOf(
             """{"status":"linked","push":{"status":"ok","results":[{"opId":"op-1","status":"applied","reason":null,"revision":1}],"highWater":9}}""",
             """{"status":"stale-preview"}""",
+            """{"status":"partial","push":{"status":"ok","results":[{"opId":"op-1","status":"conflict","reason":"id-collision","revision":null}],"highWater":10}}""",
         ))
         lateinit var lastBody: String
         val engine = MockEngine { request ->
@@ -317,6 +318,51 @@ class SupabaseSyncTransportTest {
 
         val refused = transport(engine).commitLink(plan, deviceId, listOf(operation))
         assertEquals(LinkCommitResult.StalePreview, refused)
+
+        val partial = transport(engine).commitLink(plan, deviceId, listOf(operation))
+        assertTrue(partial is LinkCommitResult.Partial)
+        assertEquals(10L, (partial as LinkCommitResult.Partial).highWater)
+        assertEquals(PushOutcome.Conflict("id-collision", "op-1"), partial.outcomes.single())
+    }
+
+    @Test
+    fun `commitLink classifies local serialization failure before dispatch`() = runTest {
+        val engine = MockEngine { error("must not dispatch invalid money") }
+        val plan = LinkPreview(
+            planId = "9f86d081-884c-4d65-9c67-41b405d56001", digest = "digest-12345678",
+            expiresAt = "2026-10-12T20:00:00Z", remoteHighWater = 7L,
+            localOnly = listOf("item-1"), cloudOnly = emptyList(), identical = emptyList(),
+            conflicting = emptyList(), duplicateConfigurations = emptyList(), remoteItems = emptyList(),
+        )
+        val invalid = item("item-1").copy(pricePaid = Money(12.345, Currency.USD))
+        val failure = runCatching {
+            transport(engine).commitLink(plan, "device-0001", listOf(SyncOperation.Create("op-1", "device-0001", invalid)))
+        }.exceptionOrNull()
+
+        assertTrue(failure is SupabaseSyncException)
+        assertEquals(SyncErrorKind.PRE_DISPATCH, (failure as SupabaseSyncException).kind)
+    }
+
+    @Test
+    fun `commitLink distinguishes invalid response from uncertain network failure`() = runTest {
+        val plan = LinkPreview(
+            planId = "9f86d081-884c-4d65-9c67-41b405d56001", digest = "digest-12345678",
+            expiresAt = "2026-10-12T20:00:00Z", remoteHighWater = 7L,
+            localOnly = emptyList(), cloudOnly = emptyList(), identical = emptyList(),
+            conflicting = emptyList(), duplicateConfigurations = emptyList(), remoteItems = emptyList(),
+        )
+        val invalidEngine = MockEngine {
+            respond(content = "{bad", status = HttpStatusCode.OK, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val invalid = runCatching { transport(invalidEngine).commitLink(plan, "device-0001", emptyList()) }.exceptionOrNull()
+        assertTrue(invalid is SupabaseSyncException)
+        assertEquals(SyncErrorKind.INVALID_RESPONSE, (invalid as SupabaseSyncException).kind)
+
+        val lostEngine = MockEngine { throw java.io.IOException("connection lost") }
+        val lost = runCatching { transport(lostEngine).commitLink(plan, "device-0001", emptyList()) }.exceptionOrNull()
+        assertTrue(lost is SupabaseSyncException)
+        assertEquals(SyncErrorKind.COMMIT_UNCERTAIN, (lost as SupabaseSyncException).kind)
+        assertTrue(lost.message.orEmpty().contains("pode já ter recebido"))
     }
 
     @Test

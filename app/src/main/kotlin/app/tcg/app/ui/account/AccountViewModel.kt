@@ -60,6 +60,7 @@ data class AccountUiState(
     val linking: Boolean = false,
     val awaitingVerificationEmail: String? = null,
     val error: AccountError? = null,
+    val errorMessage: String? = null,
     val linkState: LinkState = LinkState.LocalOnly,
     val syncStatus: SyncStatusView? = null,
 )
@@ -83,6 +84,7 @@ class AccountViewModel(
     private val submitting = MutableStateFlow(false)
     private val linking = MutableStateFlow(false)
     private val error = MutableStateFlow<AccountError?>(null)
+    private val errorMessage = MutableStateFlow<String?>(null)
     private val linkState = MutableStateFlow<LinkState>(LinkState.LocalOnly)
 
     private val baseState: StateFlow<AccountUiState> = combine(
@@ -109,8 +111,8 @@ class AccountViewModel(
         if (identity == null || status.identity != identity) null else status.toView()
     }
 
-    val state: StateFlow<AccountUiState> = combine(baseState, accountScopedStatus) { base, status ->
-        base.copy(syncStatus = status)
+    val state: StateFlow<AccountUiState> = combine(baseState, accountScopedStatus, errorMessage) { base, status, message ->
+        base.copy(syncStatus = status, errorMessage = message)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, AccountUiState())
 
     fun syncNow() = onSyncNow()
@@ -125,6 +127,7 @@ class AccountViewModel(
         viewModelScope.launch {
             linking.value = true
             error.value = null
+            errorMessage.value = null
             linkState.value = try {
                 LinkState.Preview(link.preparePreview())
             } catch (cancelled: CancellationException) {
@@ -144,6 +147,7 @@ class AccountViewModel(
         viewModelScope.launch {
             linking.value = true
             error.value = null
+            errorMessage.value = null
             try {
                 when (val outcome = link.confirm(session.session.userId, preview.summary.plan)) {
                     is LinkOutcome.Linked -> {
@@ -152,6 +156,7 @@ class AccountViewModel(
                         } else {
                             linkState.value = LinkState.LocalOnly
                             error.value = AccountError.LINK_PARTIAL
+                            errorMessage.value = null
                         }
                     }
                     LinkOutcome.Blocked -> error.value = AccountError.LINK_BLOCKED
@@ -159,20 +164,31 @@ class AccountViewModel(
                         linkState.value = LinkState.LocalOnly
                         error.value = AccountError.LINK_STALE
                     }
-                    LinkOutcome.Partial -> {
+                    is LinkOutcome.Partial -> {
                         linkState.value = LinkState.LocalOnly
                         error.value = AccountError.LINK_PARTIAL
+                        val rejected = outcome.outcomes.filterIsInstance<app.tcg.app.data.sync.PushOutcome.Conflict>()
+                        val details = rejected.mapNotNull { conflict -> conflict.opId?.let { "$it: ${conflict.reason}" } }
+                        errorMessage.value = buildString {
+                            append("A nuvem recebeu parte das operações e o vínculo local não foi concluído.")
+                            if (details.isNotEmpty()) append(" Operações recusadas: ${details.joinToString()}. ")
+                            append("Gere uma nova prévia e confira os conflitos antes de tentar novamente.")
+                        }
                     }
                     is LinkOutcome.Refused -> {
                         linkState.value = LinkState.LocalOnly
                         error.value = AccountError.LINK_STALE
                     }
-                    is LinkOutcome.Failed -> error.value = AccountError.NETWORK
+                    is LinkOutcome.Failed -> {
+                        error.value = AccountError.NETWORK
+                        errorMessage.value = outcome.message
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 error.value = AccountError.NETWORK
+                errorMessage.value = null
             } finally {
                 linking.value = false
             }
@@ -183,6 +199,7 @@ class AccountViewModel(
         if (linkState.value is LinkState.Preview) {
             linkState.value = LinkState.LocalOnly
             error.value = null
+            errorMessage.value = null
         }
     }
 
@@ -191,18 +208,21 @@ class AccountViewModel(
             auth.signOut()
             linkState.value = LinkState.LocalOnly
             error.value = null
+            errorMessage.value = null
             onLinkUnlinked()
         }
     }
 
     fun dismissError() {
         error.value = null
+        errorMessage.value = null
     }
 
     private fun submit(block: suspend () -> AuthResult) {
         viewModelScope.launch {
             submitting.value = true
             error.value = null
+            errorMessage.value = null
             when (val result = block()) {
                 is AuthResult.Success -> Unit
                 is AuthResult.Failure -> error.value = result.error.toAccountError()

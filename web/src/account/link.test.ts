@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { parseCardId, parseItemId } from '../domain/model.ts'
 import type { CardSummary, CollectionEntry, CollectionItem } from '../domain/model.ts'
 import type { CollectionOperation, SyncItem } from '../sync/policy.ts'
-import { syncSnapshotDigest, type LinkCommitResult, type LinkPreview, type PushOutcome } from '../sync/supabase-transport.ts'
+import { SupabaseSyncError, syncSnapshotDigest, type LinkCommitResult, type LinkPreview, type PushOutcome } from '../sync/supabase-transport.ts'
 import {
   confirmLink, linkBlockers, prepareLinkPreview, snapshotForLink,
   type LinkTransport,
@@ -297,6 +297,38 @@ test('confirmLink treats a lost commit response as an uncertain cloud write', as
 
   assert.equal(result.kind, 'error')
   assert.match((result as { message: string }).message, /pode já ter recebido/i)
+})
+
+test('confirmLink reports structured partial commit and never binds locally', async () => {
+  const localId = '00000000-0000-4000-8000-000000000001'
+  const plan = await previewFor([entry(localItem(localId))], { localOnly: [localId] })
+  const spy = completeSpy(true)
+  const result = await confirmLink({
+    transport: transport({
+      prepare: plan,
+      commit: { kind: 'partial', highWater: 4, outcomes: [{ kind: 'conflict', reason: 'id-collision', opId: 'op-1' }] },
+    }),
+    identity: 'user-1', deviceId: 'device-1', preview: plan,
+    readEntries: async () => [entry(localItem(localId))], resolveCard: async () => cloudCard,
+    completeLink: spy.complete as never,
+  })
+
+  assert.equal(result.kind, 'partial')
+  assert.equal(spy.calls.length, 0)
+})
+
+test('confirmLink distinguishes malformed server response from a lost response', async () => {
+  const plan = await previewFor([])
+  const result = await confirmLink({
+    transport: transport({ prepare: plan, commitError: new SupabaseSyncError('invalid-response', 'Resposta inválida do servidor') }),
+    identity: 'user-1', deviceId: 'device-1', preview: plan,
+    readEntries: async () => [], resolveCard: async () => cloudCard,
+    completeLink: completeSpy(false).complete as never,
+  })
+
+  assert.equal(result.kind, 'error')
+  assert.match((result as { message: string }).message, /resposta.*inválida/i)
+  assert.doesNotMatch((result as { message: string }).message, /resposta.*não chegou/i)
 })
 
 test('confirmLink maps a stale server preview to an explicit rejection', async () => {

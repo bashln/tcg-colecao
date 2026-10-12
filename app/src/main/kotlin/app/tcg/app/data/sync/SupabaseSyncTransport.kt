@@ -35,6 +35,9 @@ enum class SyncErrorKind {
     UNAUTHORIZED,
     DEVICE_REVOKED,
     UNAVAILABLE,
+    PRE_DISPATCH,
+    INVALID_RESPONSE,
+    COMMIT_UNCERTAIN,
 }
 
 class SupabaseSyncException(
@@ -63,11 +66,13 @@ data class RemoteLinkItem(val item: SyncItem, val revision: Long)
 
 sealed interface LinkCommitResult {
     data class Linked(val highWater: Long, val outcomes: List<PushOutcome>) : LinkCommitResult
+    data class Partial(val highWater: Long, val outcomes: List<PushOutcome>) : LinkCommitResult
     data object StalePreview : LinkCommitResult
     data object DigestMismatch : LinkCommitResult
     data object Expired : LinkCommitResult
     data object Consumed : LinkCommitResult
     data object NotFound : LinkCommitResult
+    data object PayloadMismatch : LinkCommitResult
 }
 
 /**
@@ -271,39 +276,68 @@ class SupabaseSyncTransport(
             throw SupabaseSyncException(SyncErrorKind.UNAUTHORIZED, "Sem sessão de conta para vincular")
         }
         if (deviceId.length < 8 || operations.any { it.deviceId != deviceId }) {
-            throw unavailable("Dispositivo inválido para confirmar o vínculo")
+            throw SupabaseSyncException(SyncErrorKind.PRE_DISPATCH, "Nada foi enviado. Dispositivo inválido para confirmar o vínculo")
         }
-        val response = call(
-            "commit_collection_link",
-            JsonObject(
-                mapOf(
-                    "p_plan_id" to JsonPrimitive(plan.planId),
-                    "p_digest" to JsonPrimitive(plan.digest),
-                    "p_device_id" to JsonPrimitive(deviceId),
-                    "p_operations" to JsonArray(operations.map { encodeOperation(it, deviceId) }),
+        val encodedOperations = try {
+            JsonArray(operations.map { encodeOperation(it, deviceId) })
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            throw SupabaseSyncException(SyncErrorKind.PRE_DISPATCH, "Nada foi enviado. ${error.message ?: "Operação local inválida"}")
+        }
+        val response = try {
+            call(
+                "commit_collection_link",
+                JsonObject(
+                    mapOf(
+                        "p_plan_id" to JsonPrimitive(plan.planId),
+                        "p_digest" to JsonPrimitive(plan.digest),
+                        "p_device_id" to JsonPrimitive(deviceId),
+                        "p_operations" to encodedOperations,
+                    ),
                 ),
-            ),
-        )
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: SupabaseSyncException) {
+            if (error.kind == SyncErrorKind.UNAUTHORIZED || error.kind == SyncErrorKind.INVALID_RESPONSE) throw error
+            throw SupabaseSyncException(
+                SyncErrorKind.COMMIT_UNCERTAIN,
+                "A resposta da nuvem não chegou e ela pode já ter recebido itens da prévia. Gere uma nova prévia e confira qualquer conflito.",
+            )
+        }
         return when (val status = response.string("status")) {
-            "linked" -> {
+            "linked", "partial" -> {
                 val push = response["push"] as? JsonObject ?: throw unavailable("Vínculo sem confirmação de push")
                 val pushStatus = push.string("status")
                 val highWater = push.jsonPrimitiveOrNull("highWater")
-                if (pushStatus != "ok" || highWater == null) {
-                    throw unavailable("O servidor não confirmou todas as operações do vínculo")
+                if ((pushStatus != "ok" && !(status == "partial" && pushStatus == "device-revoked")) || highWater == null) {
+                    throw invalidResponse("O servidor retornou um resultado de vínculo inválido")
                 }
-                val results = push["results"] as? JsonArray ?: JsonArray(emptyList())
-                LinkCommitResult.Linked(
-                    highWater = highWater,
-                    outcomes = results.map { mapPushOutcome(it as? JsonObject ?: throw unavailable("Resultado de push inválido")) },
-                )
+                val results = push["results"] as? JsonArray ?: throw invalidResponse("Resultado de operações ausente")
+                if (pushStatus != "device-revoked" && results.size != operations.size) {
+                    throw invalidResponse("O resultado não corresponde às operações enviadas")
+                }
+                val outcomes = try {
+                    results.map { mapPushOutcome(it as? JsonObject ?: throw invalidResponse("Resultado de push inválido")) }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    if (error is SupabaseSyncException && error.kind == SyncErrorKind.INVALID_RESPONSE) throw error
+                    throw invalidResponse("O servidor retornou resultados de operação inválidos")
+                }
+                if (status == "linked" && outcomes.any { it is PushOutcome.Conflict }) {
+                    throw invalidResponse("O servidor marcou como concluído um vínculo com operações recusadas")
+                }
+                if (status == "linked") LinkCommitResult.Linked(highWater, outcomes) else LinkCommitResult.Partial(highWater, outcomes)
             }
             "stale-preview" -> LinkCommitResult.StalePreview
             "digest-mismatch" -> LinkCommitResult.DigestMismatch
             "expired" -> LinkCommitResult.Expired
             "consumed" -> LinkCommitResult.Consumed
             "not-found" -> LinkCommitResult.NotFound
-            else -> throw unavailable("Vínculo recusado: ${status ?: "resposta inválida"}")
+            "payload-mismatch" -> LinkCommitResult.PayloadMismatch
+            else -> throw invalidResponse("O servidor retornou um status de vínculo inválido: ${status ?: "desconhecido"}")
         }
     }
 
@@ -337,7 +371,7 @@ class SupabaseSyncTransport(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            throw SupabaseSyncException(SyncErrorKind.UNAVAILABLE, "Resposta inválida do servidor")
+            throw SupabaseSyncException(SyncErrorKind.INVALID_RESPONSE, "Resposta inválida do servidor")
         }
 
         val message = body.string("message").orEmpty()
@@ -350,11 +384,12 @@ class SupabaseSyncTransport(
     private fun mapPushOutcome(row: JsonObject): PushOutcome {
         val status = row.string("status")
         val reason = row.string("reason")
+        val opId = row.string("opId")
         val sequence = row.jsonPrimitiveOrNull("revision")
         return when (status) {
-            "applied" -> PushOutcome.Applied(sequence ?: throw unavailable("Applied sem revisão"))
-            "already-applied" -> PushOutcome.AlreadyApplied(sequence ?: throw unavailable("AlreadyApplied sem revisão"))
-            else -> PushOutcome.Conflict(reason ?: "rejected")
+            "applied" -> PushOutcome.Applied(sequence ?: throw unavailable("Applied sem revisão"), opId)
+            "already-applied" -> PushOutcome.AlreadyApplied(sequence ?: throw unavailable("AlreadyApplied sem revisão"), opId)
+            else -> PushOutcome.Conflict(reason ?: "rejected", opId)
         }
     }
 
@@ -489,6 +524,8 @@ class SupabaseSyncTransport(
     }
 
     private fun unavailable(message: String) = SupabaseSyncException(SyncErrorKind.UNAVAILABLE, message)
+
+    private fun invalidResponse(message: String) = SupabaseSyncException(SyncErrorKind.INVALID_RESPONSE, message)
 
     private fun toMinorUnits(amount: Double): Long = try {
         BigDecimal.valueOf(amount)

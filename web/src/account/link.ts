@@ -31,6 +31,7 @@ export type LinkBlocker =
 
 export type LinkConfirmation =
   | { kind: 'linked'; highWater: number }
+  | { kind: 'partial'; message: string }
   | { kind: 'blocked'; message: string }
   | { kind: 'local-changed'; message: string }
   | { kind: 'rejected'; message: string }
@@ -116,7 +117,20 @@ export async function confirmLink(input: {
     if (error instanceof SupabaseSyncError && error.kind === 'unauthorized') {
       return { kind: 'error', message: error.message }
     }
+    if (error instanceof SupabaseSyncError && error.kind === 'preflight') {
+      return { kind: 'error', message: `Nada foi enviado. ${error.message}` }
+    }
+    if (error instanceof SupabaseSyncError && error.kind === 'invalid-response') {
+      return { kind: 'error', message: `A resposta do servidor foi inválida; a nuvem pode já ter recebido itens da prévia. Gere uma nova prévia e confira qualquer conflito antes de confirmar novamente.` }
+    }
     return { kind: 'error', message: LINK_COMMIT_UNCERTAIN_MESSAGE }
+  }
+  if (commit.kind === 'partial') {
+    const reasons = [...new Set(commit.outcomes.filter((outcome) => outcome.kind === 'conflict').map((outcome) => outcome.reason).filter(Boolean))]
+    return {
+      kind: 'partial',
+      message: `A nuvem recebeu parte das operações; o vínculo local não foi concluído${reasons.length === 0 ? '' : ` (${reasons.join(', ')})`}. Gere uma nova prévia e confira qualquer conflito antes de confirmar novamente.`,
+    }
   }
   if (commit.kind !== 'linked') return { kind: 'rejected', message: rejectionMessage(commit.kind) }
 
@@ -156,7 +170,7 @@ export function linkBlockerMessage(blocker: LinkBlocker): string {
     : `${blocker.count} posses locais repetiriam configurações que já existem na nuvem. Ajuste a coleção local antes de vincular; nada foi enviado.`
 }
 
-function rejectionMessage(kind: Exclude<LinkCommitResult, { kind: 'linked' }>['kind']): string {
+function rejectionMessage(kind: Exclude<LinkCommitResult, { kind: 'linked' | 'partial' }>['kind']): string {
   switch (kind) {
     case 'stale-preview':
       return 'A coleção na nuvem mudou depois da prévia. Nada foi enviado. Gere uma nova prévia.'
@@ -168,6 +182,8 @@ function rejectionMessage(kind: Exclude<LinkCommitResult, { kind: 'linked' }>['k
       return 'Esta prévia já foi usada. Gere uma nova prévia para confirmar o vínculo.'
     case 'not-found':
       return 'A prévia não foi encontrada no servidor. Gere uma nova prévia para confirmar o vínculo.'
+    case 'payload-mismatch':
+      return 'Esta prévia já foi confirmada com operações diferentes. Gere uma nova prévia para revisar o estado atual.'
   }
 }
 

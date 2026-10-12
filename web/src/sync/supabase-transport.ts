@@ -43,7 +43,8 @@ export interface LinkPreview {
 
 export type LinkCommitResult =
   | { kind: 'linked'; highWater: number; outcomes: PushOutcome[] }
-  | { kind: 'stale-preview' | 'digest-mismatch' | 'expired' | 'consumed' | 'not-found' }
+  | { kind: 'partial'; highWater: number; outcomes: PushOutcome[] }
+  | { kind: 'stale-preview' | 'digest-mismatch' | 'expired' | 'consumed' | 'not-found' | 'payload-mismatch' }
 
 /**
  * Minimal authenticated boundary the transport needs. Web injects a GoTrue-backed
@@ -56,9 +57,9 @@ export interface SupabaseHttp {
 }
 
 export class SupabaseSyncError extends Error {
-  readonly kind: 'unauthorized' | 'device-revoked' | 'unavailable'
+  readonly kind: 'unauthorized' | 'device-revoked' | 'unavailable' | 'preflight' | 'invalid-response' | 'commit-uncertain'
 
-  constructor(kind: 'unauthorized' | 'device-revoked' | 'unavailable', message: string) {
+  constructor(kind: 'unauthorized' | 'device-revoked' | 'unavailable' | 'preflight' | 'invalid-response' | 'commit-uncertain', message: string) {
     super(message)
     this.kind = kind
   }
@@ -138,7 +139,7 @@ export async function syncSnapshotDigest(items: readonly SyncItem[]): Promise<st
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  if (value === null || typeof value !== 'object') throw new SupabaseSyncError('unavailable', 'Resposta inválida do servidor')
+  if (value === null || typeof value !== 'object') throw new SupabaseSyncError('invalid-response', 'Resposta inválida do servidor')
   return value as Record<string, unknown>
 }
 
@@ -210,33 +211,56 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
 
     async commitLink(plan: LinkPreview, deviceId: string, operations: readonly CollectionOperation[]): Promise<LinkCommitResult> {
       if (deviceId.length < 8 || operations.some((operation) => operation.deviceId !== deviceId)) {
-        throw new SupabaseSyncError('unavailable', 'Dispositivo inválido para confirmar o vínculo')
+        throw new SupabaseSyncError('preflight', 'Dispositivo inválido para confirmar o vínculo')
       }
-      const serialized = await Promise.all(operations.map(async (operation) => ({
-        ...toSerializable(operation),
-        deviceId,
-        signature: await signatureFor(operation),
-      })))
-      const response = await call('commit_collection_link', {
-        p_plan_id: plan.planId,
-        p_digest: plan.digest,
-        p_device_id: deviceId,
-        p_operations: serialized,
-      })
-      if (response.status === 'linked') {
-        const push = asRecord(response.push)
-        if (push.status !== 'ok' || typeof push.highWater !== 'number' ||
-          !Number.isSafeInteger(push.highWater) || push.highWater < 0) {
-          throw new SupabaseSyncError('unavailable', 'O servidor não confirmou todas as operações do vínculo')
+      let serialized: Record<string, unknown>[]
+      try {
+        serialized = await Promise.all(operations.map(async (operation) => ({
+          ...toSerializable(operation),
+          deviceId,
+          signature: await signatureFor(operation),
+        })))
+      } catch (error) {
+        throw new SupabaseSyncError('preflight', error instanceof Error ? error.message : String(error))
+      }
+      let response: Record<string, unknown>
+      try {
+        response = await call('commit_collection_link', {
+          p_plan_id: plan.planId,
+          p_digest: plan.digest,
+          p_device_id: deviceId,
+          p_operations: serialized,
+        })
+      } catch (error) {
+        if (error instanceof SupabaseSyncError && (error.kind === 'unauthorized' || error.kind === 'invalid-response')) throw error
+        throw new SupabaseSyncError('commit-uncertain', 'A resposta da nuvem não chegou e ela pode já ter recebido itens da prévia.')
+      }
+      try {
+        if (response.status === 'linked' || response.status === 'partial') {
+          const push = asRecord(response.push)
+          if ((push.status !== 'ok' && !(response.status === 'partial' && push.status === 'device-revoked')) ||
+            typeof push.highWater !== 'number' || !Number.isSafeInteger(push.highWater) || push.highWater < 0) {
+            throw new SupabaseSyncError('invalid-response', 'O servidor retornou um resultado de vínculo inválido')
+          }
+          const results = Array.isArray(push.results) ? push.results : []
+          const outcomes = parsePushOutcomes(results)
+          if (push.status !== 'device-revoked' && outcomes.length !== operations.length) {
+            throw new SupabaseSyncError('invalid-response', 'O resultado não corresponde às operações enviadas')
+          }
+          if (response.status === 'linked' && outcomes.some((outcome) => outcome.kind === 'conflict')) {
+            throw new SupabaseSyncError('invalid-response', 'O servidor marcou como concluído um vínculo com operações recusadas')
+          }
+          const result = { highWater: push.highWater, outcomes }
+          return response.status === 'linked' ? { kind: 'linked', ...result } : { kind: 'partial', ...result }
         }
-        const results = Array.isArray(push.results) ? push.results : []
-        return { kind: 'linked', highWater: push.highWater, outcomes: parsePushOutcomes(results) }
+        if (response.status === 'stale-preview' || response.status === 'digest-mismatch' ||
+          response.status === 'expired' || response.status === 'consumed' || response.status === 'not-found' ||
+          response.status === 'payload-mismatch') return { kind: response.status }
+        throw new SupabaseSyncError('invalid-response', `O servidor retornou um status de vínculo inválido: ${String(response.status ?? 'desconhecido')}`)
+      } catch (error) {
+        if (error instanceof SupabaseSyncError && error.kind === 'invalid-response') throw error
+        throw new SupabaseSyncError('invalid-response', 'O servidor retornou uma resposta de vínculo inválida')
       }
-      if (response.status === 'stale-preview' || response.status === 'digest-mismatch' ||
-        response.status === 'expired' || response.status === 'consumed' || response.status === 'not-found') {
-        return { kind: response.status }
-      }
-      throw new SupabaseSyncError('unavailable', `Vínculo recusado: ${String(response.status ?? 'desconhecido')}`)
     },
 
     async push(identity: string, operations: readonly CollectionOperation[]): Promise<PushOutcome[]> {

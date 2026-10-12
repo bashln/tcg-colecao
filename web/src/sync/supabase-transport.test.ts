@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { parseCardId, parseItemId } from '../domain/model.ts'
-import { createSupabaseTransport, type SupabaseHttp } from './supabase-transport.ts'
+import { createSupabaseTransport, SupabaseSyncError, type SupabaseHttp } from './supabase-transport.ts'
 import type { CollectionOperation } from './policy.ts'
 
 const itemId = parseItemId('00000000-0000-4000-8000-000000000001')!
@@ -306,4 +306,72 @@ test('commitLink sends signed seed operations only when explicitly called and re
     kind: 'linked', highWater: 4,
     outcomes: [{ kind: 'applied', sequence: 1, opId: operation.opId }],
   })
+})
+
+test('commitLink preserves structured partial outcomes instead of reporting linked', async () => {
+  const operation = createOp('10000000-0000-4000-8000-000000000099', '20000000-0000-4000-8000-000000000099')
+  const { http } = httpStub({
+    commit_collection_link: {
+      status: 'partial',
+      push: {
+        status: 'ok',
+        results: [{ opId: operation.opId, status: 'conflict', reason: 'id-collision', revision: null }],
+        highWater: 4,
+      },
+    },
+  })
+  const plan = {
+    planId: '9f86d081-884c-4d65-9c67-41b405d56001', digest: 'digest-12345678',
+    expiresAt: '2026-10-11T20:00:00Z', remoteHighWater: 3,
+    localOnly: [itemId], cloudOnly: [], identical: [], conflicting: [], duplicateConfigurations: [], remoteItems: [],
+  }
+
+  const result = await createSupabaseTransport({ http }).commitLink(plan, operation.deviceId, [operation])
+
+  assert.deepEqual(result, {
+    kind: 'partial', highWater: 4,
+    outcomes: [{ kind: 'conflict', reason: 'id-collision', opId: operation.opId }],
+  })
+})
+
+test('commitLink rejects a linked server status that includes a refused operation', async () => {
+  const operation = createOp('10000000-0000-4000-8000-000000000099', '20000000-0000-4000-8000-000000000099')
+  const { http } = httpStub({
+    commit_collection_link: {
+      status: 'linked',
+      push: {
+        status: 'ok',
+        results: [{ opId: operation.opId, status: 'conflict', reason: 'id-collision', revision: null }],
+        highWater: 4,
+      },
+    },
+  })
+  const plan = {
+    planId: '9f86d081-884c-4d65-9c67-41b405d56001', digest: 'digest-12345678',
+    expiresAt: '2026-10-11T20:00:00Z', remoteHighWater: 3,
+    localOnly: [itemId], cloudOnly: [], identical: [], conflicting: [], duplicateConfigurations: [], remoteItems: [],
+  }
+
+  await assert.rejects(
+    () => createSupabaseTransport({ http }).commitLink(plan, operation.deviceId, [operation]),
+    (error: unknown) => error instanceof SupabaseSyncError && error.kind === 'invalid-response',
+  )
+})
+
+test('commitLink marks invalid local payload as preflight and does not dispatch', async () => {
+  const operation = createOp('10000000-0000-4000-8000-000000000099', '20000000-0000-4000-8000-000000000099')
+  if (operation.kind !== 'create') throw new Error('expected create operation')
+  operation.item.pricePaid = { amount: 12.345, currency: 'USD' }
+  const { http, record } = httpStub({ commit_collection_link: { status: 'linked' } })
+  const plan = {
+    planId: '9f86d081-884c-4d65-9c67-41b405d56001', digest: 'digest-12345678',
+    expiresAt: '2026-10-11T20:00:00Z', remoteHighWater: 3,
+    localOnly: [itemId], cloudOnly: [], identical: [], conflicting: [], duplicateConfigurations: [], remoteItems: [],
+  }
+
+  await assert.rejects(
+    () => createSupabaseTransport({ http }).commitLink(plan, operation.deviceId, [operation]),
+    (error: unknown) => error instanceof SupabaseSyncError && error.kind === 'preflight',
+  )
+  assert.equal(record.length, 0)
 })

@@ -110,7 +110,7 @@ private fun SignedOutAccount(
         }
 
         state.error?.let { error ->
-            ErrorText(text = stringResource(error.toReadableStringRes()), onDismiss = onDismissError)
+            ErrorText(text = state.errorMessage ?: stringResource(error.toReadableStringRes()), onDismiss = onDismissError)
         }
 
         OutlinedTextField(

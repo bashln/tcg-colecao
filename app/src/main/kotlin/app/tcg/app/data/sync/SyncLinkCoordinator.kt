@@ -28,7 +28,7 @@ sealed interface LinkOutcome {
     /** The local collection changed after the preview; nothing was sent. */
     data object LocalChanged : LinkOutcome
     /** Commit may have reached the server, but this device could not finish local binding. */
-    data object Partial : LinkOutcome
+    data class Partial(val outcomes: List<PushOutcome> = emptyList()) : LinkOutcome
     data class Refused(val reason: LinkCommitResult) : LinkOutcome
     data class Failed(val message: String) : LinkOutcome
 }
@@ -96,9 +96,12 @@ class RoomSyncLinkCoordinator(
             transport.commitLink(plan, deviceId, operations)
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (error: SupabaseSyncException) {
+            return LinkOutcome.Failed(error.message ?: "Não foi possível confirmar o vínculo")
         } catch (error: Exception) {
-            return LinkOutcome.Partial
+            return LinkOutcome.Failed("A resposta da nuvem não chegou e ela pode já ter recebido itens da prévia. Gere uma nova prévia e confira qualquer conflito.")
         }
+        if (commit is LinkCommitResult.Partial) return LinkOutcome.Partial(commit.outcomes)
         if (commit !is LinkCommitResult.Linked) return LinkOutcome.Refused(commit)
 
         val seeds = LinkedHashMap<String, Long>()
@@ -106,7 +109,7 @@ class RoomSyncLinkCoordinator(
             when (val outcome = commit.outcomes.getOrNull(index)) {
                 is PushOutcome.Applied -> seeds[operation.item.id] = outcome.sequence
                 is PushOutcome.AlreadyApplied -> seeds[operation.item.id] = outcome.sequence
-                else -> return LinkOutcome.Partial
+                else -> return LinkOutcome.Partial(commit.outcomes)
             }
         }
 
@@ -120,7 +123,7 @@ class RoomSyncLinkCoordinator(
                 highWater = commit.highWater,
             ),
         )
-        return if (linked) LinkOutcome.Linked(commit.highWater) else LinkOutcome.Partial
+        return if (linked) LinkOutcome.Linked(commit.highWater) else LinkOutcome.Partial(commit.outcomes)
     }
 
     private suspend fun localSyncItems(): List<SyncItem> = dao.listItems().map { it.toSyncItem() }

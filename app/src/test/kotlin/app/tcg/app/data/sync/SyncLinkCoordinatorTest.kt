@@ -271,4 +271,23 @@ class SyncLinkCoordinatorTest {
         assertTrue(outcome is LinkOutcome.Partial)
         assertNull(dao.getSyncBinding())
     }
+
+    @Test
+    fun `structured partial server result retains rejected operation details and binds nothing`() = runTest {
+        dao.upsertRemoteItem(entity("item-1"))
+        val items = localSyncItems("item-1")
+        val preview = plan(items)
+        val transport = FakeLinkTransport { syncSnapshotDigest(items) }.apply {
+            this.preview = preview
+            commit = LinkCommitResult.Partial(
+                highWater = 9L,
+                outcomes = listOf(PushOutcome.Conflict("id-collision")),
+            )
+        }
+
+        val outcome = coordinator(transport, FakeCards(emptyMap())).confirm("user-a", preview)
+
+        assertEquals(LinkOutcome.Partial(listOf(PushOutcome.Conflict("id-collision"))), outcome)
+        assertNull(dao.getSyncBinding())
+    }
 }
