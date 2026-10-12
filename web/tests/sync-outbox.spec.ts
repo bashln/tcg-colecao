@@ -477,6 +477,7 @@ test('keep-cloud applies remote conflict and advances cursor only after local wr
       entries: await store.listCollection(),
       conflicts: await store.listSyncConflicts('account-a'),
       cursor: await store.lastSyncSequence('account-a'),
+      pending: await store.listPendingOperations('account-a'),
     }
   })
 
@@ -484,6 +485,7 @@ test('keep-cloud applies remote conflict and advances cursor only after local wr
   expect(result.entries[0]?.item).toMatchObject({ id: '00000000-0000-4000-8000-000000000099', quantity: 7 })
   expect(result.conflicts).toHaveLength(0)
   expect(result.cursor).toBe(4)
+  expect(result.pending).toHaveLength(0)
 })
 
 test('keep-local queues a replacement and waits for server acknowledgment before cursor advance', async ({ page }) => {

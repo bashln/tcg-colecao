@@ -181,10 +181,10 @@ Expected: all lifecycle/account tests pass with no RPC under prior identity.
 - Consumes: all prior task outputs and the fixed list of unresolved external gates.
 - Produces: verified branch, fresh whole-branch review, documented remaining hosted/WebKit limits, commits and push to `work/collection-foundation-2026-10-11`; no release/deploy.
 
-- [ ] **Step 1: Run complete local suites:** `npm run test:unit`, `npm run build`, Chromium Playwright E2E, `npm test` in `supabase/tests`, and `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug --rerun-tasks`.
-- [ ] **Step 2: Run `git diff --check`, parse progress/errors JSON, verify no secrets staged, and inspect full diff.** Expected clean whitespace, valid JSON, no secrets.
-- [ ] **Step 3: Request one fresh-context whole-branch review.** Fix Critical/Important findings in one TDD pass; rerun affected and full gates; log deferred minors.
-- [ ] **Step 4: Update docs and process ledgers** with exact test counts, review outcomes, hosted block, and migration status.
+- [x] **Step 1: Run complete local suites:** `npm run test:unit`, `npm run build`, Chromium Playwright E2E, `npm test` in `supabase/tests`, and `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug --rerun-tasks`. Reran after review fixes.
+- [x] **Step 2: Run `git diff --check`, parse progress/errors JSON, verify no secrets staged, and inspect full diff.** Whitespace and JSON checks clean; commit hook reports no secrets.
+- [x] **Step 3: Request one fresh-context whole-branch review.** Fixed data-loss/deadlock findings in one TDD pass, reran full gates, and ledgered deferred findings/ruling.
+- [x] **Step 4: Update docs and process ledgers** with exact test counts, review outcomes, hosted block, and migration status.
 - [ ] **Step 5: Commit task changes and process records; push branch.** Do not merge, deploy, or publish a release.
 
 ## Self-Review

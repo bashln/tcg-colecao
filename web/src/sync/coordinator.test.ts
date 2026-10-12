@@ -138,6 +138,28 @@ test('account switch never sends operations owned by previous identity', async (
   assert.equal((await transport.pull('account-b', 0)).highWaterMark, 0)
 })
 
+test('status marks pending count unavailable when identity changes during outbox read', async () => {
+  const transport = createMemoryTransport()
+  let release!: (operations: CollectionOperation[]) => void
+  const pendingRead = new Promise<CollectionOperation[]>((resolve) => { release = resolve })
+  const local = {
+    async listPendingOperations() { return pendingRead },
+    async acknowledgeOperation() { return true },
+    async applyRemoteOperation() { return { kind: 'applied' as const } },
+    async listConflicts() { return [] },
+    async lastSequence() { return 0 },
+    async saveSequence() { return true },
+  }
+  const device = createSyncCoordinator({ transport, local })
+  device.bindIdentity('account-a')
+
+  const status = device.status()
+  device.bindIdentity('account-b')
+  release([])
+
+  assert.deepEqual(await status, { identity: 'account-b', pending: null, lastSequence: 0 })
+})
+
 test('conflicting operation stays pending while sync reports conflict', async () => {
   const transport = createMemoryTransport()
   const remoteOperation = createOperation('10000000-0000-4000-8000-000000000005', '20000000-0000-4000-8000-000000000002')

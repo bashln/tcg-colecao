@@ -286,6 +286,28 @@ class RoomSyncLocalStoreTest {
     }
 
     @Test
+    fun remote_create_with_existing_id_and_different_content_is_a_conflict() = runTest {
+        db.collectionDao().insertIfAbsent(
+            CollectionItemEntity(
+                id = "same-remote-id", cardId = "base1-4", quantity = 2, condition = Condition.NEAR_MINT,
+                variant = CardVariant.NORMAL, pricePaidAmount = null, pricePaidCurrency = null,
+                addedAt = 1L, revision = 3,
+            ),
+        )
+        val operation = SyncOperation.Create("remote-colliding-id", "device-0002", syncItem(
+            id = "same-remote-id", cardId = "base1-5", quantity = 9,
+        ))
+
+        val result = store.applyRemote("acct", SequencedOperation(8L, operation))
+
+        assertTrue(result is RemoteApplyResult.Conflict)
+        assertEquals("id-collision", (result as RemoteApplyResult.Conflict).detail.reason)
+        assertEquals("base1-4", db.collectionDao().getById("same-remote-id")?.cardId)
+        assertEquals(2, db.collectionDao().getById("same-remote-id")?.quantity)
+        assertEquals(0L, store.lastSequence("acct"))
+    }
+
+    @Test
     fun cursor_is_monotonic_and_never_regresses() = runTest {
         store.saveSequence("acct", 10L)
         assertEquals(10L, store.lastSequence("acct"))

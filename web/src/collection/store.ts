@@ -479,9 +479,7 @@ export async function resolveSyncConflict(
   const database = await openDatabase()
   let queued: CollectionOperation | null = null
   await new Promise<void>((resolve, reject) => {
-    const stores = resolution === 'keep-local'
-      ? ['items', 'sync', 'syncConflicts', 'outbox', 'outboxOrder']
-      : ['items', 'cards', 'sync', 'syncConflicts']
+    const stores = ['items', 'cards', 'sync', 'syncConflicts', 'outbox', 'outboxOrder']
     const transaction = database.transaction(stores, 'readwrite')
     const items = transaction.objectStore('items')
     const sync = transaction.objectStore('sync')
@@ -520,6 +518,7 @@ export async function resolveSyncConflict(
             configurationKey: configurationKey(remoteItem.cardId, remoteItem.variant, remoteItem.condition) })
           transaction.objectStore('cards').put(card)
         }
+        removeQueuedOperations(transaction, identity, [localId, remoteItem?.id].filter((id): id is ItemId => id !== undefined), '')
         advanceLocalCursor(sync, identity, current.sequence ?? 0)
         conflicts.put({ ...conflictRow, resolvedAt: Date.now(), resolution })
       } else {
@@ -598,13 +597,13 @@ function advanceLocalCursor(sync: IDBObjectStore, identity: string, sequence: nu
   }
 }
 
-function removeQueuedOperations(transaction: IDBTransaction, identity: string, itemIds: string[], exceptOpId: string) {
+function removeQueuedOperations(transaction: IDBTransaction, identity: string, itemIds: string[], exceptOpId?: string) {
   const outbox = transaction.objectStore('outbox')
   const request = outbox.index('identity').getAll(identity)
   request.onsuccess = () => {
     for (const row of request.result as OutboxEntry[]) {
       const operationItemId = row.operation.kind === 'delete' ? row.operation.itemId : row.operation.item.id
-      if (row.opId === exceptOpId || !itemIds.includes(operationItemId)) continue
+      if ((exceptOpId !== undefined && row.opId === exceptOpId) || !itemIds.includes(operationItemId)) continue
       outbox.delete(row.opId)
       transaction.objectStore('outboxOrder').index('opId').openCursor(row.opId).onsuccess = (event) => {
         (event.target as IDBRequest<IDBCursorWithValue | null>).result?.delete()

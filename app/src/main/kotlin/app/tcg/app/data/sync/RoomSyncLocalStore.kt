@@ -205,14 +205,17 @@ class RoomSyncLocalStore(private val db: TcgDatabase) : SyncLocalStore {
     private suspend fun writeRemote(operation: SyncOperation): RemoteWrite {
         return when (operation) {
         is SyncOperation.Create -> {
-            val owner = dao.getByKey(operation.item.cardId, operation.item.variant, operation.item.condition)
-            if (owner != null && owner.id != operation.item.id) {
-                RemoteWrite.Conflict("duplicate-configuration", owner)
-            } else if (owner?.id == operation.item.id && !sameContent(owner, operation.item)) {
-                RemoteWrite.Conflict("id-collision", owner)
+            val existing = dao.getById(operation.item.id)
+            if (existing != null && !sameContent(existing, operation.item)) {
+                RemoteWrite.Conflict("id-collision", existing)
             } else {
-                dao.upsertRemoteItem(operation.item.toRemoteEntity(revision = 1))
-                RemoteWrite.Applied
+                val owner = dao.getByKey(operation.item.cardId, operation.item.variant, operation.item.condition)
+                if (owner != null && owner.id != operation.item.id) {
+                    RemoteWrite.Conflict("duplicate-configuration", owner)
+                } else {
+                    dao.upsertRemoteItem(operation.item.toRemoteEntity(revision = 1))
+                    RemoteWrite.Applied
+                }
             }
         }
 

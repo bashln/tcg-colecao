@@ -45,7 +45,7 @@ export type SyncResult =
 export interface SyncCoordinator {
   bindIdentity(identity: string | null): void
   syncOnce(): Promise<SyncResult>
-  status(): Promise<{ identity: string | null; pending: number; lastSequence: number }>
+  status(): Promise<{ identity: string | null; pending: number | null; lastSequence: number }>
   resolveConflict?(identity: string, conflictId: string, resolution: 'keep-local' | 'keep-cloud'): Promise<SyncResult>
 }
 
@@ -121,7 +121,7 @@ export function createSyncCoordinator(input: {
       ])
       return identity === currentIdentity
         ? { identity: currentIdentity, pending: pending.length, lastSequence }
-        : { identity, pending: 0, lastSequence: 0 }
+        : { identity, pending: null, lastSequence: 0 }
     },
     async resolveConflict(requestedIdentity, conflictId, resolution) {
       if (identity !== requestedIdentity) return { kind: 'offline', pending: 0 }

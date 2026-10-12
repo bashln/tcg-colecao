@@ -687,6 +687,30 @@
         "Representar falha de leitura como zero ou descartar o teste de contrato"
       ],
       "solucao": "Permitir pending=null em Offline/Conflicts/Error, manter Int em resultado Complete e renderizar aviso acessível/localizado quando contagem é desconhecida"
+    },
+    {
+      "erro": "Independent review found Web keep-cloud resolution left the local item outbox op queued, causing repeat push conflicts after accepting cloud version",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Assume resolving the conflict record/cursor also supersedes related outbox entries"
+      ],
+      "solucao": "Add outbox and ordering stores to the keep-cloud transaction; remove pending ops for local and remote item IDs atomically. Playwright test failed on pending length 1, then passed with length 0"
+    },
+    {
+      "erro": "Independent review found Android remote CREATE could overwrite an existing same-ID local row when config key differed",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Look up config owner only; that misses an existing row with same item ID but different configuration"
+      ],
+      "solucao": "Read by item ID first; divergent content produces durable id-collision and holds cursor. Room test RED showed overwrite, then GREEN verified original row and cursor preserved"
+    },
+    {
+      "erro": "Independent review noticed Web status() reported pending=0 for new identity when identity switched during previous account outbox read",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Return zero as fallback despite not reading the newly bound identity"
+      ],
+      "solucao": "Return pending=null on identity mismatch; unit RED verified false zero and GREEN verified unavailable count"
     }
   ]
 }

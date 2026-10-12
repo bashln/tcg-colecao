@@ -165,3 +165,11 @@
 - [x] TDD RED/GREEN: reject sync RPC when captured AuthSession user differs from the coordinator identity.
 - [ ] Inspect remaining review findings and fix confirmed high-risk issues one by one; M3/M4/L2/L3 and F8/F9/F10/F11/F12/F15 remain.
 - [x] Run focused and full regression gates; update progress/errors and audit ledger.
+
+# Phase 8: Account sync completion plan (2026-10-12)
+
+- [x] Complete Tasks 4–6: durable conflict choices, shared digest/RPC contract, authoritative pending counts.
+- [x] Run final local gates after one independent-review fix pass: Web unit 78/78 + build, Chromium 37/37, PostgreSQL 39/39, Android app 298/core 65 + assembleDebug (`--rerun-tasks`).
+- [x] Review findings: fixed Web keep-cloud outbox residue, Android same-ID overwrite, and status false-zero on identity switch; one-pass rule honored.
+- [x] Record hosted round-trip block (no SMTP/domain and two confirmed isolated accounts), WebKit/iPhone limit, low-priority findings, and push-side conflict ruling.
+- [ ] Commit task 7 records and fixes; push authorized branch only. No merge, deploy, or release.
