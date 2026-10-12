@@ -126,6 +126,29 @@ describe('prepare_collection_link', () => {
     await assert.rejects(() => prepare(anon, []), /permission denied/);
     await anon.end();
   });
+
+  test('preview cleanup removes only the caller’s expired plans and is repeatable', async () => {
+    const user = newUser();
+    const otherUser = newUser();
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: user });
+    const otherActor = await cluster.connectActor({ role: 'authenticated', sub: otherUser });
+    const { result: ownPlan } = await prepare(actor, [], 'digest-cleanup-own');
+    const { result: foreignPlan } = await prepare(otherActor, [], 'digest-cleanup-foreign');
+    await cluster.admin.query(
+      `update public.link_plans set expires_at = now() - interval '2 days' where id = any($1::uuid[])`,
+      [[ownPlan.planId, foreignPlan.planId]],
+    );
+
+    await prepare(actor, [], 'digest-cleanup-next');
+    await prepare(actor, [], 'digest-cleanup-repeat');
+    const remaining = await cluster.admin.query(
+      'select id from public.link_plans where id = any($1::uuid[]) order by id',
+      [[ownPlan.planId, foreignPlan.planId]],
+    );
+    assert.deepEqual(remaining.rows.map((row) => row.id), [foreignPlan.planId]);
+    await actor.end();
+    await otherActor.end();
+  });
 });
 
 describe('commit_collection_link', () => {
@@ -157,8 +180,56 @@ describe('commit_collection_link', () => {
     assert.equal(consumed.rows[0].consumed, true);
 
     const replayed = await commit(actor, plan.planId, digest, seed);
-    assert.equal(replayed.status, 'consumed', 'a consumed plan must not re-apply');
+    assert.deepEqual(replayed, first, 'a retry must replay its durable terminal result');
+    assert.equal(replayed.status, 'linked');
+    const changed = await commit(actor, plan.planId, digest, [createOp(item('item-different-seed-01'))]);
+    assert.equal(changed.status, 'payload-mismatch', 'a terminal plan cannot be rebound to another request');
     await actor.end();
+  });
+
+  test('returns partial when any seed operation is rejected and replays that result', async () => {
+    const user = newUser();
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: user });
+    const existing = createOp(item('item-link-partial-01'));
+    await push(actor, [existing]);
+    const { digest, result: plan } = await prepare(actor, [item('item-link-partial-01', { quantity: 9 })]);
+    const conflicting = {
+      ...existing,
+      signature: randomUUID(),
+      item: item('item-link-partial-01', { quantity: 9 }),
+    };
+
+    const first = await commit(actor, plan.planId, digest, [conflicting]);
+    assert.equal(first.status, 'partial');
+    assert.equal(first.push.results[0].status, 'conflict');
+    assert.equal(first.push.results[0].reason, 'id-collision');
+    assert.deepEqual(await commit(actor, plan.planId, digest, [conflicting]), first);
+    await actor.end();
+  });
+
+  test('concurrent identical commits return one shared terminal result', async () => {
+    const user = newUser();
+    const actorA = await cluster.connectActor({ role: 'authenticated', sub: user });
+    const actorB = await cluster.connectActor({ role: 'authenticated', sub: user });
+    const local = [item('item-link-race-0001')];
+    const { digest, result: plan } = await prepare(actorA, local);
+    const seed = [createOp(local[0])];
+
+    const [first, concurrent] = await Promise.all([
+      commit(actorA, plan.planId, digest, seed),
+      commit(actorB, plan.planId, digest, seed),
+    ]);
+    assert.equal(first.status, 'linked');
+    assert.deepEqual(concurrent, first);
+    const count = await cluster.admin.query(
+      `select count(*)::int as count from public.collection_operations o
+       join public.collections c on c.id = o.collection_id
+       where c.owner = $1::uuid and o.item_id = 'item-link-race-0001'`,
+      [user],
+    );
+    assert.equal(count.rows[0].count, 1);
+    await actorA.end();
+    await actorB.end();
   });
 
   test('rejects digest mismatch, expiry and stale remote without writes', async () => {
