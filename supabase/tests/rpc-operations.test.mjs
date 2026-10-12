@@ -57,6 +57,43 @@ function outcome(result, opId) {
   return result.results.find((row) => row.opId === opId);
 }
 
+async function readPushConflicts(actor) {
+  const response = await actor.query('select public.read_collection_push_conflicts() as result');
+  return response.rows[0].result;
+}
+
+async function resolvePushConflict(actor, conflictId, choice, deviceId = DEVICE_A1) {
+  const response = await actor.query(
+    'select public.resolve_collection_push_conflict($1::uuid, $2::text, $3::text) as result',
+    [conflictId, choice, deviceId],
+  );
+  return response.rows[0].result;
+}
+
+async function ackPushConflict(actor, conflictId, resolutionId) {
+  const response = await actor.query(
+    'select public.ack_collection_push_conflict_resolution($1::uuid, $2::uuid) as result',
+    [conflictId, resolutionId],
+  );
+  return response.rows[0].result;
+}
+
+async function remoteSequence(owner) {
+  const rows = await cluster.admin.query(
+    'select remote_sequence::int as sequence from public.collections where owner = $1::uuid',
+    [owner],
+  );
+  return rows.rows[0]?.sequence ?? 0;
+}
+
+async function conflictRowCount(opId) {
+  const rows = await cluster.admin.query(
+    'select count(*)::int as n from public.sync_conflicts where op_id = $1::uuid',
+    [opId],
+  );
+  return rows.rows[0].n;
+}
+
 before(async () => {
   cluster = await startCluster();
 });
@@ -368,5 +405,443 @@ describe('sync conflict listing and resolution', () => {
     assert.deepEqual(otherList.rows[0].result.map((row) => row.id), [foreignId]);
     await actor.end();
     await other.end();
+  });
+});
+
+describe('durable push conflict resolution protocol', () => {
+  test('durable push conflict keeps one stable row and id when the same operation is retried', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c001';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-stable-0001' }) })]);
+    await push(actor, [
+      op({ kind: 'replace', item: item({ id: 'item-stable-0001', quantity: 3 }), baseRevision: 1 }),
+    ]);
+    const stale = op({
+      kind: 'replace',
+      item: item({ id: 'item-stable-0001', quantity: 9 }),
+      baseRevision: 1,
+    });
+
+    const first = (await push(actor, [stale])).rows[0].result;
+    const firstOutcome = outcome(first, stale.opId);
+    assert.equal(firstOutcome.status, 'conflict');
+    assert.equal(firstOutcome.reason, 'stale');
+    assert.ok(firstOutcome.conflictId, 'a content conflict must return its durable conflict id');
+    assert.deepEqual(firstOutcome.rejectedOperation, stale, 'the rejected payload must echo back verbatim');
+    assert.deepEqual(firstOutcome.cloudItem, {
+      itemId: 'item-stable-0001',
+      cardId: 'card-item-stable-0001',
+      variant: 'NORMAL',
+      condition: 'NEAR_MINT',
+      quantity: 3,
+      pricePaid: null,
+      addedAt: 1_700_000_000_000,
+      revision: 2,
+      deleted: false,
+    });
+    assert.equal(firstOutcome.conflictingItem, null, 'a same-item conflict has no separate configuration owner');
+    assert.equal(firstOutcome.highWater, await remoteSequence(owner), 'highWater labels the observed snapshot');
+
+    const second = (await push(actor, [stale])).rows[0].result;
+    const secondOutcome = outcome(second, stale.opId);
+    assert.equal(
+      secondOutcome.conflictId,
+      firstOutcome.conflictId,
+      'a retried operation must reuse its open conflict row',
+    );
+    assert.deepEqual(secondOutcome.cloudItem, firstOutcome.cloudItem, 'a retry must refresh the same snapshot');
+    assert.equal(await conflictRowCount(stale.opId), 1, 'the open conflict row must not duplicate');
+    await actor.end();
+  });
+
+  test('durable push conflict returns a tombstone snapshot and never advances the remote sequence', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c002';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-tombstone-01' }) })]);
+    await push(actor, [op({ kind: 'delete', itemId: 'item-tombstone-01', baseRevision: 1 })]);
+    const before = await remoteSequence(owner);
+    const replace = op({
+      kind: 'replace',
+      item: item({ id: 'item-tombstone-01', quantity: 5 }),
+      baseRevision: 2,
+    });
+
+    const first = (await push(actor, [replace])).rows[0].result;
+    const firstOutcome = outcome(first, replace.opId);
+    assert.equal(firstOutcome.status, 'conflict');
+    assert.equal(firstOutcome.reason, 'deleted');
+    assert.equal(firstOutcome.highWater, before, 'highWater is the snapshot label, not an advance');
+    assert.equal(firstOutcome.cloudItem.deleted, true, 'a tombstone is authoritative cloud state');
+    assert.equal(firstOutcome.cloudItem.revision, 2);
+    assert.equal(firstOutcome.conflictingItem, null);
+
+    const second = (await push(actor, [replace])).rows[0].result;
+    assert.equal(
+      outcome(second, replace.opId).conflictId,
+      firstOutcome.conflictId,
+      'the tombstone conflict must keep one stable id across retries',
+    );
+
+    assert.equal(await remoteSequence(owner), before, 'a rejected operation must not advance the remote sequence');
+    const logged = await cluster.admin.query(
+      `select count(*)::int as n from public.collection_operations where op_id = $1::uuid`,
+      [replace.opId],
+    );
+    assert.equal(logged.rows[0].n, 0, 'a rejected operation must stay out of the log');
+    const page = (await pull(actor, 0)).rows[0].result;
+    assert.equal(page.highWater, before, 'the pull high water must ignore rejected work');
+    await actor.end();
+  });
+
+  test('durable push conflict reports the duplicate configuration owner as the conflicting item', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c003';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-dupcloud-01', cardId: 'dupcloud-card-01' }) })]);
+    const duplicate = op({ item: item({ id: 'item-dupcloud-02', cardId: 'dupcloud-card-01' }) });
+
+    const result = (await push(actor, [duplicate])).rows[0].result;
+    const conflict = outcome(result, duplicate.opId);
+    assert.equal(conflict.status, 'conflict');
+    assert.equal(conflict.reason, 'duplicate-configuration');
+    assert.ok(conflict.conflictId);
+    assert.equal(conflict.cloudItem, null, 'the rejected item id has no server row yet');
+    assert.deepEqual(conflict.conflictingItem, {
+      itemId: 'item-dupcloud-01',
+      cardId: 'dupcloud-card-01',
+      variant: 'NORMAL',
+      condition: 'NEAR_MINT',
+      quantity: 1,
+      pricePaid: null,
+      addedAt: 1_700_000_000_000,
+      revision: 1,
+      deleted: false,
+    });
+    await actor.end();
+  });
+
+  test('push conflict resolution applies keep-local once and replays the same receipt', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c004';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-keep-local-01' }) })]);
+    await push(actor, [
+      op({ kind: 'replace', item: item({ id: 'item-keep-local-01', quantity: 3 }), baseRevision: 1 }),
+    ]);
+    const stale = op({
+      kind: 'replace',
+      item: item({ id: 'item-keep-local-01', quantity: 9 }),
+      baseRevision: 1,
+    });
+    const pushed = (await push(actor, [stale])).rows[0].result;
+    const conflictId = outcome(pushed, stale.opId).conflictId;
+    const before = await remoteSequence(owner);
+
+    const resolved = await resolvePushConflict(actor, conflictId, 'keep-local');
+    assert.equal(resolved.status, 'resolved');
+    assert.equal(resolved.choice, 'keep-local');
+    assert.ok(resolved.resolutionId, 'a resolution must return a durable receipt id');
+    assert.equal(resolved.result.kind, 'keep-local');
+    assert.equal(resolved.result.itemId, 'item-keep-local-01');
+    assert.equal(resolved.result.localItemId, 'item-keep-local-01');
+    assert.equal(resolved.result.operation.kind, 'replace');
+    assert.equal(resolved.result.operation.baseRevision, 2, 'keep-local applies against the current cloud revision');
+    assert.equal(resolved.result.revision, 3);
+
+    const stored = await cluster.admin.query(
+      `select quantity::int as quantity, revision::int as revision
+       from public.collection_items where item_id = 'item-keep-local-01'`,
+    );
+    assert.deepEqual(stored.rows, [{ quantity: 9, revision: 3 }]);
+
+    assert.equal(
+      await remoteSequence(owner),
+      before + 1,
+      'only the recorded keep-local operation may advance the sequence',
+    );
+    const page = (await pull(actor, before)).rows[0].result;
+    assert.deepEqual(
+      page.operations.map((row) => ({ opId: row.opId, kind: row.kind, itemId: row.itemId })),
+      [{ opId: resolved.result.operationId, kind: 'replace', itemId: 'item-keep-local-01' }],
+      'the new operation must be pullable by every device',
+    );
+
+    const replay = await resolvePushConflict(actor, conflictId, 'keep-local');
+    assert.equal(replay.status, 'resolved');
+    assert.equal(replay.resolutionId, resolved.resolutionId, 'a same-choice retry must return the same receipt');
+    assert.deepEqual(replay.result, resolved.result, 'the recorded result must stay immutable');
+    const operations = await cluster.admin.query(
+      `select count(*)::int as n from public.collection_operations where op_id = $1::uuid`,
+      [resolved.result.operationId],
+    );
+    assert.equal(operations.rows[0].n, 1, 'a replayed resolution must not duplicate the operation');
+
+    const listed = await readPushConflicts(actor);
+    const entry = listed.find((row) => row.id === conflictId);
+    assert.ok(entry, 'the conflict stays listed until the owner acknowledges it');
+    assert.equal(entry.resolution.id, resolved.resolutionId);
+    assert.equal(entry.resolution.choice, 'keep-local');
+    await actor.end();
+  });
+
+  test('push conflict resolution refuses a different choice after recording a receipt', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c005';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-keep-local-02' }) })]);
+    await push(actor, [
+      op({ kind: 'replace', item: item({ id: 'item-keep-local-02', quantity: 3 }), baseRevision: 1 }),
+    ]);
+    const stale = op({
+      kind: 'replace',
+      item: item({ id: 'item-keep-local-02', quantity: 9 }),
+      baseRevision: 1,
+    });
+    const pushed = (await push(actor, [stale])).rows[0].result;
+    const conflictId = outcome(pushed, stale.opId).conflictId;
+
+    const resolved = await resolvePushConflict(actor, conflictId, 'keep-local');
+    assert.equal(resolved.status, 'resolved');
+    const sequenceAfterFirst = await remoteSequence(owner);
+
+    const refused = await resolvePushConflict(actor, conflictId, 'keep-cloud');
+    assert.equal(refused.status, 'already-resolved', 'a second, different choice must never apply');
+    assert.equal(refused.choice, 'keep-local', 'the recorded choice must be reported back');
+    assert.equal(refused.resolutionId, resolved.resolutionId);
+    assert.deepEqual(refused.result, resolved.result);
+    assert.equal(
+      await remoteSequence(owner),
+      sequenceAfterFirst,
+      'a refused second choice must not add server operations',
+    );
+
+    const stored = await cluster.admin.query(
+      `select quantity::int as quantity, revision::int as revision
+       from public.collection_items where item_id = 'item-keep-local-02'`,
+    );
+    assert.deepEqual(stored.rows, [{ quantity: 9, revision: 3 }], 'the first choice stands');
+    const listed = await readPushConflicts(actor);
+    assert.equal(listed.find((row) => row.id === conflictId).resolution.choice, 'keep-local');
+    await actor.end();
+  });
+
+  test('push conflict resolution stays replayable until an idempotent local acknowledgment', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c006';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-keep-cloud-01' }) })]);
+    await push(actor, [
+      op({ kind: 'replace', item: item({ id: 'item-keep-cloud-01', quantity: 3 }), baseRevision: 1 }),
+    ]);
+    const stale = op({
+      kind: 'replace',
+      item: item({ id: 'item-keep-cloud-01', quantity: 9 }),
+      baseRevision: 1,
+    });
+    const pushed = (await push(actor, [stale])).rows[0].result;
+    const conflictId = outcome(pushed, stale.opId).conflictId;
+    const before = await remoteSequence(owner);
+
+    const listedBefore = await readPushConflicts(actor);
+    const entryBefore = listedBefore.find((row) => row.id === conflictId);
+    assert.ok(entryBefore, 'a lost push response is recoverable through the owner-scoped read');
+    assert.equal(entryBefore.resolution, null);
+    assert.deepEqual(entryBefore.rejectedOperation, stale);
+    assert.equal(entryBefore.cloudItem.quantity, 3, 'the read refreshes authoritative cloud state');
+    assert.equal(entryBefore.highWater, before, 'the refreshed high water is a snapshot label only');
+
+    const wrongAck = await ackPushConflict(actor, conflictId, randomUUID());
+    assert.equal(wrongAck.status, 'stale-conflict', 'an acknowledgment must bind to the recorded receipt');
+
+    const resolved = await resolvePushConflict(actor, conflictId, 'keep-cloud');
+    assert.equal(resolved.status, 'resolved');
+    assert.equal(resolved.result.kind, 'keep-cloud');
+    assert.equal(resolved.result.localItemId, 'item-keep-cloud-01');
+    assert.equal(resolved.result.operationId, null, 'keep-cloud records no server operation');
+    assert.equal(resolved.result.cloudItem.quantity, 3);
+    assert.equal(resolved.result.cloudItem.revision, 2);
+
+    const stored = await cluster.admin.query(
+      `select quantity::int as quantity, revision::int as revision
+       from public.collection_items where item_id = 'item-keep-cloud-01'`,
+    );
+    assert.deepEqual(stored.rows, [{ quantity: 3, revision: 2 }], 'keep-cloud never rewrites cloud state');
+    assert.equal(await remoteSequence(owner), before, 'keep-cloud must not advance the sequence');
+
+    const listedDuring = await readPushConflicts(actor);
+    const entryDuring = listedDuring.find((row) => row.id === conflictId);
+    assert.ok(entryDuring, 'an unacknowledged resolution keeps the conflict listed');
+    assert.equal(entryDuring.resolution.id, resolved.resolutionId, 'the receipt replays for local recovery');
+    assert.equal(entryDuring.resolution.choice, 'keep-cloud');
+    assert.deepEqual(entryDuring.resolution.result, resolved.result);
+
+    const acked = await ackPushConflict(actor, conflictId, resolved.resolutionId);
+    assert.equal(acked.status, 'resolved');
+    const ackedAgain = await ackPushConflict(actor, conflictId, resolved.resolutionId);
+    assert.equal(ackedAgain.status, 'resolved', 'acknowledgment must be idempotent');
+    assert.equal(ackedAgain.resolutionId, resolved.resolutionId);
+
+    const listedAfter = await readPushConflicts(actor);
+    assert.equal(
+      listedAfter.find((row) => row.id === conflictId),
+      undefined,
+      'an acknowledged conflict leaves the open list',
+    );
+    const afterAck = await resolvePushConflict(actor, conflictId, 'keep-cloud');
+    assert.equal(afterAck.status, 'already-resolved');
+    await actor.end();
+  });
+
+  test('push conflict resolution refuses a comparison whose cloud state changed', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c007';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-stale-cloud-01' }) })]);
+    await push(actor, [
+      op({ kind: 'replace', item: item({ id: 'item-stale-cloud-01', quantity: 3 }), baseRevision: 1 }),
+    ]);
+    const stale = op({
+      kind: 'replace',
+      item: item({ id: 'item-stale-cloud-01', quantity: 9 }),
+      baseRevision: 1,
+    });
+    const pushed = (await push(actor, [stale])).rows[0].result;
+    const conflictId = outcome(pushed, stale.opId).conflictId;
+
+    const newer = op({
+      kind: 'replace',
+      item: item({ id: 'item-stale-cloud-01', quantity: 5 }),
+      baseRevision: 2,
+    });
+    await push(actor, [newer], 'device-b1-0000000000000000000000');
+    const sequenceAfterRival = await remoteSequence(owner);
+
+    const refused = await resolvePushConflict(actor, conflictId, 'keep-local');
+    assert.equal(refused.status, 'stale-conflict', 'changed cloud state invalidates the old comparison');
+    assert.equal(refused.cloudItem.quantity, 5, 'the refusal returns the fresh snapshot');
+    assert.equal(refused.cloudItem.revision, 3);
+    assert.equal(refused.highWater, sequenceAfterRival);
+    assert.equal(
+      await remoteSequence(owner),
+      sequenceAfterRival,
+      'a refused comparison must not apply or advance anything',
+    );
+    const unrecorded = await readPushConflicts(actor);
+    assert.equal(unrecorded.find((row) => row.id === conflictId).resolution, null);
+
+    const recovery = await resolvePushConflict(actor, conflictId, 'keep-local');
+    assert.equal(recovery.status, 'resolved', 'a refreshed comparison lets the owner choose again');
+    assert.equal(recovery.result.revision, 4);
+    const stored = await cluster.admin.query(
+      `select quantity::int as quantity, revision::int as revision
+       from public.collection_items where item_id = 'item-stale-cloud-01'`,
+    );
+    assert.deepEqual(stored.rows, [{ quantity: 9, revision: 4 }]);
+    await actor.end();
+  });
+
+  test('push conflict resolution and acknowledgment stay scoped to the owning account', async () => {
+    const ownerA = '00000000-0000-0000-0000-00000000c008';
+    const ownerB = '00000000-0000-0000-0000-00000000c009';
+    const actorA = await cluster.connectActor({ role: 'authenticated', sub: ownerA });
+    const actorB = await cluster.connectActor({ role: 'authenticated', sub: ownerB });
+    await push(actorA, [op({ item: item({ id: 'item-owner-scope-1' }) })]);
+    await push(actorA, [
+      op({ kind: 'replace', item: item({ id: 'item-owner-scope-1', quantity: 3 }), baseRevision: 1 }),
+    ]);
+    const stale = op({
+      kind: 'replace',
+      item: item({ id: 'item-owner-scope-1', quantity: 9 }),
+      baseRevision: 1,
+    });
+    const pushed = (await push(actorA, [stale])).rows[0].result;
+    const conflictId = outcome(pushed, stale.opId).conflictId;
+    const resolved = await resolvePushConflict(actorA, conflictId, 'keep-cloud');
+    assert.equal(resolved.status, 'resolved');
+
+    const listedB = await readPushConflicts(actorB);
+    assert.deepEqual(listedB, [], 'another account must never see the conflict');
+    const foreignResolve = await resolvePushConflict(actorB, conflictId, 'keep-local');
+    assert.equal(foreignResolve.status, 'not-found', 'another account must not resolve it');
+    const foreignAck = await ackPushConflict(actorB, conflictId, resolved.resolutionId);
+    assert.equal(foreignAck.status, 'not-found', 'another account must not acknowledge it');
+
+    const anon = await cluster.connectActor({ role: 'anon', sub: null });
+    await assert.rejects(() => readPushConflicts(anon), /permission denied/);
+    await assert.rejects(
+      () => resolvePushConflict(anon, conflictId, 'keep-local'),
+      /permission denied/,
+    );
+    await assert.rejects(
+      () => ackPushConflict(anon, conflictId, resolved.resolutionId),
+      /permission denied/,
+    );
+    await anon.end();
+
+    const noClaims = await cluster.connectActor({ role: 'authenticated', sub: null });
+    await assert.rejects(() => readPushConflicts(noClaims), /not authenticated/);
+    await assert.rejects(
+      () => resolvePushConflict(noClaims, conflictId, 'keep-local'),
+      /not authenticated/,
+    );
+    await assert.rejects(
+      () => ackPushConflict(noClaims, conflictId, resolved.resolutionId),
+      /not authenticated/,
+    );
+    await noClaims.end();
+    await actorA.end();
+    await actorB.end();
+  });
+
+  test('push conflict resolution keeps invalid payloads and revoked devices out of resolvable choices', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c00a';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    const bad = op({ item: item({ id: 'item-badpayload-01', quantity: 1_000_001 }) });
+    const badPush = (await push(actor, [bad])).rows[0].result;
+    const badOutcome = outcome(badPush, bad.opId);
+    assert.equal(badOutcome.status, 'rejected');
+    assert.equal(badOutcome.reason, 'invalid-payload');
+    assert.ok(badOutcome.conflictId, 'permanent errors keep their visible conflict record');
+    assert.equal(badOutcome.cloudItem, null);
+
+    assert.equal(
+      (await resolvePushConflict(actor, badOutcome.conflictId, 'keep-local')).status,
+      'invalid-resolution',
+      'an invalid payload must never offer a resolvable choice',
+    );
+    assert.equal(
+      (await resolvePushConflict(actor, badOutcome.conflictId, 'dismiss')).status,
+      'invalid-resolution',
+      'unknown choices are refused as statuses, not applied',
+    );
+
+    const deviceId = 'device-rv1-000000000000000000';
+    await push(actor, [op({ item: item({ id: 'item-revoke-push-01' }) })], deviceId);
+    await push(actor, [
+      op({ kind: 'replace', item: item({ id: 'item-revoke-push-01', quantity: 2 }), baseRevision: 1 }),
+    ]);
+    const stale = op({
+      kind: 'replace',
+      item: item({ id: 'item-revoke-push-01', quantity: 7 }),
+      baseRevision: 1,
+    });
+    const conflictPush = (await push(actor, [stale], deviceId)).rows[0].result;
+    const conflictId = outcome(conflictPush, stale.opId).conflictId;
+    await cluster.admin.query(
+      `update public.sync_devices set revoked_at = now()
+       where device_id = $1
+         and collection_id = (select id from public.collections where owner = $2::uuid)`,
+      [deviceId, owner],
+    );
+
+    const revoked = await resolvePushConflict(actor, conflictId, 'keep-local', deviceId);
+    assert.equal(revoked.status, 'device-revoked', 'a revoked device must reauthorize instead of choosing');
+    const listed = await readPushConflicts(actor);
+    assert.equal(
+      listed.find((row) => row.id === conflictId).resolution,
+      null,
+      'a revoked device must not record a choice',
+    );
+    const stored = await cluster.admin.query(
+      `select quantity::int as quantity, revision::int as revision
+       from public.collection_items where item_id = 'item-revoke-push-01'`,
+    );
+    assert.deepEqual(stored.rows, [{ quantity: 2, revision: 2 }], 'cloud state stays untouched');
+    await actor.end();
   });
 });
