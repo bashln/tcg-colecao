@@ -4,7 +4,7 @@ import {
 import type { CardSummary, CollectionEntry, CollectionItem, ItemId, ParsedDraft } from '../domain/model.ts'
 import { importSignature, parseCollectionBackup, parseImportMarkers } from './backup.ts'
 import { isSyncBinding, recordCollectionDelete, recordCollectionWrite, type OutboxEntry, type SyncBinding } from '../sync/outbox.ts'
-import type { CollectionOperation } from '../sync/policy.ts'
+import type { CollectionOperation, SyncItem } from '../sync/policy.ts'
 
 const DATABASE_NAME = 'tcg-colecao-web'
 const VERSION = 4
@@ -172,6 +172,27 @@ export async function setSyncBinding(binding: SyncBinding | null): Promise<void>
   await transactionEnd(transaction)
 }
 
+export async function currentSyncBinding(): Promise<SyncBinding | null> {
+  const database = await openDatabase()
+  const transaction = database.transaction('sync', 'readonly')
+  const end = transactionEnd(transaction)
+  const raw: unknown = await requestResult(transaction.objectStore('sync').get('binding'))
+  await end
+  if (typeof raw !== 'object' || raw === null || !('binding' in raw) || !isSyncBinding(raw.binding)) return null
+  return raw.binding
+}
+
+export async function getCachedCard(cardId: string): Promise<CardSummary | null> {
+  const database = await openDatabase()
+  const transaction = database.transaction('cards', 'readonly')
+  const end = transactionEnd(transaction)
+  const raw: unknown = await requestResult(transaction.objectStore('cards').get(cardId))
+  await end
+  if (raw === undefined) return null
+  if (!isCard(raw)) throw new Error('Carta local inválida')
+  return raw
+}
+
 export async function listPendingOperations(identity: string): Promise<CollectionOperation[]> {
   const database = await openDatabase()
   const transaction = database.transaction(['outbox', 'sync'], 'readonly')
@@ -247,6 +268,264 @@ export async function saveSyncSequence(identity: string, sequence: number): Prom
   cursorRequest.onsuccess = () => { cursorRow = cursorRequest.result; cursorReady = true; saveWhenReady() }
   await end
   return saved
+}
+
+export async function applyRemoteOperation(
+  identity: string,
+  sequence: number,
+  operation: CollectionOperation,
+  card?: CardSummary,
+): Promise<boolean> {
+  if (!Number.isSafeInteger(sequence) || sequence < 1) return false
+  const remoteItem = operation.kind === 'delete' ? null : operation.item
+  if (remoteItem !== null && card !== undefined && card.id !== remoteItem.cardId) return false
+  const database = await openDatabase()
+  return new Promise<boolean>((resolve) => {
+    const transaction = database.transaction(['items', 'cards', 'sync'], 'readwrite')
+    const items = transaction.objectStore('items')
+    const sync = transaction.objectStore('sync')
+    const bindingRequest = sync.get('binding')
+    const cursorRequest = sync.get(`cursor:${identity}`)
+    const itemId = operation.kind === 'delete' ? operation.itemId : operation.item.id
+    const itemRequest = items.get(itemId)
+    let binding: unknown
+    let cursor: unknown
+    let current: unknown
+    let bindingReady = false
+    let cursorReady = false
+    let itemReady = false
+    let applied = false
+    let changed = false
+    let complete = false
+
+    const abort = () => {
+      try { transaction.abort() } catch { /* The transaction already completed. */ }
+    }
+    const applyWhenReady = () => {
+      if (!bindingReady || !cursorReady || !itemReady || complete) return
+      if (!isCurrentBinding(binding, identity)) { complete = true; abort(); return }
+      const existing = current === undefined ? undefined : isItem(current) ? current : null
+      if (existing === null) { complete = true; abort(); return }
+
+      const remote = remoteItem
+      const isSameItem = (item: CollectionItem, value: NonNullable<typeof remote>) =>
+        item.id === value.id && item.cardId === value.cardId && item.quantity === value.quantity &&
+        item.variant === value.variant && item.condition === value.condition && item.addedAt === value.addedAt &&
+        JSON.stringify(item.pricePaid) === JSON.stringify(value.pricePaid)
+
+      if (operation.kind === 'delete') {
+        if (existing !== undefined && existing.revision !== operation.baseRevision) {
+          complete = true
+          abort()
+          return
+        }
+        if (existing !== undefined) {
+          items.delete(operation.itemId)
+          changed = true
+        }
+      } else {
+        const remote = operation.item
+        const key = configurationKey(remote.cardId, remote.variant, remote.condition)
+        if (operation.kind === 'create' && existing !== undefined) {
+          if (existing.revision !== 1 || !isSameItem(existing, remote)) {
+            complete = true
+            abort()
+            return
+          }
+        } else if (operation.kind === 'replace' && existing !== undefined &&
+          existing.revision === operation.baseRevision + 1 && isSameItem(existing, remote)) {
+          // The local write already reflects this server operation; advance only cursor.
+        } else {
+          const expectedRevision = operation.kind === 'create' ? null : operation.baseRevision
+          if ((expectedRevision === null && existing !== undefined) ||
+            (expectedRevision !== null && (existing === undefined || existing.revision !== expectedRevision)) ||
+            card === undefined) {
+            complete = true
+            abort()
+            return
+          }
+          const queueItem = () => {
+            const incoming: CollectionItem = {
+              ...remote,
+              revision: operation.kind === 'create' ? 1 : operation.baseRevision + 1,
+              configurationKey: key,
+            }
+            items.put(incoming)
+            transaction.objectStore('cards').put(card)
+            changed = true
+            saveCursor()
+          }
+          if (existing?.configurationKey === key) {
+            queueItem()
+            return
+          }
+          const duplicateRequest = items.index('configurationKey').get(key)
+          duplicateRequest.onsuccess = () => {
+            const duplicate: unknown = duplicateRequest.result
+            if (duplicate !== undefined && (!isItem(duplicate) || duplicate.id !== itemId)) {
+              complete = true
+              abort()
+              return
+            }
+            queueItem()
+          }
+          duplicateRequest.onerror = abort
+          return
+        }
+      }
+      saveCursor()
+    }
+
+    const saveCursor = () => {
+      const storedSequence = typeof cursor === 'object' && cursor !== null && 'sequence' in cursor &&
+        typeof cursor.sequence === 'number' && Number.isSafeInteger(cursor.sequence) && cursor.sequence >= 0
+        ? cursor.sequence
+        : 0
+      if (sequence > storedSequence) sync.put({ key: `cursor:${identity}`, sequence })
+      applied = true
+      complete = true
+    }
+
+    bindingRequest.onsuccess = () => { binding = bindingRequest.result; bindingReady = true; applyWhenReady() }
+    cursorRequest.onsuccess = () => { cursor = cursorRequest.result; cursorReady = true; applyWhenReady() }
+    itemRequest.onsuccess = () => { current = itemRequest.result; itemReady = true; applyWhenReady() }
+    bindingRequest.onerror = cursorRequest.onerror = itemRequest.onerror = abort
+    transaction.oncomplete = () => {
+      if (changed) announceChange()
+      resolve(applied)
+    }
+    transaction.onabort = transaction.onerror = () => resolve(false)
+  })
+}
+
+export async function completeSyncLink(input: {
+  identity: string
+  deviceId: string
+  expectedItems: readonly CollectionItem[]
+  remoteItems: readonly (SyncItem & { revision: number })[]
+  remoteCards: readonly CardSummary[]
+  seedRevisions: ReadonlyMap<string, number>
+  highWater: number
+}): Promise<boolean> {
+  if (!isSyncBinding({ identity: input.identity, deviceId: input.deviceId }) ||
+    !Number.isSafeInteger(input.highWater) || input.highWater < 0) return false
+
+  const expectedById = new Map(input.expectedItems.map((item) => [item.id, item]))
+  if (expectedById.size !== input.expectedItems.length) return false
+  const cardsById = new Map<string, CardSummary>()
+  for (const card of input.remoteCards) {
+    if (!isCard(card)) return false
+    cardsById.set(card.id, card)
+  }
+
+  const nextItems = new Map(expectedById)
+  const incomingIds = new Set<string>()
+  for (const remote of input.remoteItems) {
+    if (incomingIds.has(remote.id) || !Number.isSafeInteger(remote.revision) || remote.revision < 1) return false
+    incomingIds.add(remote.id)
+    const existing = expectedById.get(remote.id)
+    if (existing !== undefined) {
+      if (!sameSyncValue(existing, remote)) return false
+      nextItems.set(remote.id, { ...existing, revision: remote.revision })
+    } else {
+      const card = cardsById.get(remote.cardId)
+      if (card === undefined || card.id !== remote.cardId) return false
+      nextItems.set(remote.id, {
+        ...remote,
+        revision: remote.revision,
+        configurationKey: configurationKey(remote.cardId, remote.variant, remote.condition),
+      })
+    }
+  }
+
+  const configurations = new Set<string>()
+  for (const item of nextItems.values()) {
+    if (configurations.has(item.configurationKey)) return false
+    configurations.add(item.configurationKey)
+    if (!incomingIds.has(item.id)) {
+      const revision = input.seedRevisions.get(item.id)
+      if (revision === undefined || !Number.isSafeInteger(revision) || revision < 1) return false
+      nextItems.set(item.id, { ...item, revision })
+    }
+  }
+
+  const database = await openDatabase()
+  let linked = false
+  const transaction = database.transaction(['items', 'cards', 'sync'], 'readwrite')
+  const end = transactionEnd(transaction)
+  const sync = transaction.objectStore('sync')
+  const bindingRequest = sync.get('binding')
+  const items = transaction.objectStore('items')
+  const allItemsRequest = items.getAll()
+  let bindingRow: unknown
+  let currentRows: unknown[] = []
+  let bindingReady = false
+  let rowsReady = false
+  const writeWhenReady = () => {
+    if (!bindingReady || !rowsReady || linked) return
+    if (bindingRow !== undefined) {
+      const currentBinding = typeof bindingRow === 'object' && bindingRow !== null && 'binding' in bindingRow
+        ? bindingRow.binding
+        : null
+      if (!isSyncBinding(currentBinding) || currentBinding.identity !== input.identity || currentBinding.deviceId !== input.deviceId) {
+        transaction.abort()
+        return
+      }
+    }
+    if (!currentRows.every(isItem) || !sameLocalSnapshot(currentRows, input.expectedItems)) {
+      transaction.abort()
+      return
+    }
+
+    for (const [itemId, item] of nextItems) {
+      items.put(item)
+      const card = cardsById.get(item.cardId)
+      if (card !== undefined) transaction.objectStore('cards').put(card)
+      else if (!expectedById.has(itemId)) {
+        transaction.abort()
+        return
+      }
+    }
+    sync.put({ key: 'binding', binding: { identity: input.identity, deviceId: input.deviceId } })
+    const cursorKey = `cursor:${input.identity}`
+    const cursorRequest = sync.get(cursorKey)
+    cursorRequest.onsuccess = () => {
+      const raw: unknown = cursorRequest.result
+      const previous = typeof raw === 'object' && raw !== null && 'sequence' in raw &&
+        typeof raw.sequence === 'number' && Number.isSafeInteger(raw.sequence) && raw.sequence >= 0
+        ? raw.sequence
+        : 0
+      sync.put({ key: cursorKey, sequence: Math.max(previous, input.highWater) })
+      linked = true
+    }
+    cursorRequest.onerror = () => transaction.abort()
+  }
+  bindingRequest.onsuccess = () => { bindingRow = bindingRequest.result; bindingReady = true; writeWhenReady() }
+  allItemsRequest.onsuccess = () => { currentRows = allItemsRequest.result; rowsReady = true; writeWhenReady() }
+  bindingRequest.onerror = allItemsRequest.onerror = () => transaction.abort()
+  try {
+    await end
+  } catch {
+    return false
+  }
+  if (linked) announceChange()
+  return linked
+}
+
+function sameSyncValue(item: CollectionItem, remote: SyncItem): boolean {
+  return item.id === remote.id && item.cardId === remote.cardId && item.quantity === remote.quantity &&
+    item.variant === remote.variant && item.condition === remote.condition && item.addedAt === remote.addedAt &&
+    JSON.stringify(item.pricePaid) === JSON.stringify(remote.pricePaid)
+}
+
+function sameLocalSnapshot(current: readonly unknown[], expected: readonly CollectionItem[]): boolean {
+  if (current.length !== expected.length) return false
+  const currentItems = current.filter(isItem).sort((left, right) => left.id.localeCompare(right.id))
+  const expectedItems = [...expected].sort((left, right) => left.id.localeCompare(right.id))
+  return currentItems.length === expectedItems.length && currentItems.every((item, index) => {
+    const expectedItem = expectedItems[index]
+    return expectedItem !== undefined && JSON.stringify(item) === JSON.stringify(expectedItem)
+  })
 }
 
 function isCurrentBinding(value: unknown, identity: string): boolean {

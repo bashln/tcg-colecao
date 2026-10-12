@@ -24,6 +24,7 @@ node_modules/
 # fica ignorado ate ser removido sem destrutivo.
 supabase/config.toml
 supabase/supabase/
+supabase/.temp/
 
 ## Nada de config de agente ou IA entra no repo.
 .opencode/
@@ -36,4 +37,3 @@ AGENTS.md
 CLAUDE.md
 GEMINI.md
 .aider*
-

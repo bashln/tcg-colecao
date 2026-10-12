@@ -3,7 +3,7 @@ import type { KeyboardEvent } from 'react'
 import { getCatalogCard, getSetCoverage, listSets, searchCatalog } from '../catalog/tcgdex.ts'
 import type { CatalogResult, SetOption } from '../catalog/tcgdex.ts'
 import { isCollectionBackupSizeAllowed } from '../collection/backup.ts'
-import { addToCollection, editCollectionItem, importCollectionBackup, listCollection, observeCollectionChanges, removeCollectionItem } from '../collection/store.ts'
+import { addToCollection, currentSyncBinding, editCollectionItem, importCollectionBackup, listCollection, observeCollectionChanges, removeCollectionItem, setSyncBinding } from '../collection/store.ts'
 import {
   CONDITIONS, CURRENCIES, VARIANTS, collectionEstimate, conditionLabels, draftFromItem, emptyDraft,
   formatMoney, missingFromCompleteCatalog, parseItemDraft, quoteFor, variantLabels,
@@ -12,6 +12,15 @@ import type { CardSummary, CardVariant, CollectionEntry, Condition, Currency, It
 import { rankCandidates, recognizePhoto } from '../scan/recognition.ts'
 import { CardArtwork, Icon, ItemFields, QuantityControl } from '../ui/components.tsx'
 import type { IconName } from '../ui/components.tsx'
+import { browserAuthStorage, SupabaseWebAuth, type AuthState } from '../account/auth.ts'
+import { LinkPanel } from '../account/LinkPanel.tsx'
+import type { SyncBinding } from '../sync/outbox.ts'
+import { browserDeviceId } from '../sync/device.ts'
+import { resolveCardForSync } from '../sync/cards.ts'
+import { createSyncCoordinator } from '../sync/coordinator.ts'
+import { createIndexedDbSyncLocalStore } from '../sync/indexeddb-local.ts'
+import { createSyncRunner, type SyncRunnerState } from '../sync/runner.ts'
+import { createSupabaseTransport } from '../sync/supabase-transport.ts'
 
 type Screen =
   | { kind: 'home' }
@@ -40,6 +49,22 @@ const navigation: { kind: 'home' | 'collection' | 'scan' | 'profile'; label: str
   { kind: 'profile', label: 'Perfil', icon: 'profile' },
 ]
 
+const supabaseAuth = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+  ? new SupabaseWebAuth({
+    url: import.meta.env.VITE_SUPABASE_URL,
+    publishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    storage: browserAuthStorage(),
+  })
+  : null
+
+const syncCoordinator = supabaseAuth === null
+  ? null
+  : createSyncCoordinator({
+    transport: createSupabaseTransport({ http: supabaseAuth }),
+    local: createIndexedDbSyncLocalStore({ resolveCard: resolveCardForSync }),
+  })
+const syncRunner = syncCoordinator === null ? null : createSyncRunner(syncCoordinator)
+
 function screenNavKind(screen: Screen): (typeof navigation)[number]['kind'] {
   if (screen.kind === 'catalog' || screen.kind === 'confirm') return 'scan'
   if (screen.kind === 'edit') return 'collection'
@@ -60,7 +85,72 @@ export function App() {
   const [notice, setNotice] = useState('')
   const [currency, setCurrency] = useState<Currency>('USD')
   const [online, setOnline] = useState(() => navigator.onLine)
+  const [authState, setAuthState] = useState<AuthState>({ kind: 'signed-out' })
+  const [deviceId] = useState(() => browserDeviceId())
+  const [syncBinding, setSyncBindingState] = useState<SyncBinding | null>(null)
+  const [syncState, setSyncState] = useState<SyncRunnerState>({ running: false, result: null })
   const photoUrl = useRef<string | null>(null)
+
+  const refreshBinding = useCallback(async () => {
+    try {
+      setSyncBindingState(await currentSyncBinding())
+    } catch {
+      setSyncBindingState(null)
+    }
+  }, [])
+
+  useEffect(() => { void refreshBinding() }, [refreshBinding])
+
+  // Keep account binding while signed out so a browser restart or logout does not force
+  // a destructive re-link. Sync still requires a live session for the same identity;
+  // signing in to another account clears the old binding and requires a fresh preview.
+  useEffect(() => {
+    let active = true
+    void (async () => {
+      const binding = await currentSyncBinding().catch(() => null)
+      if (!active || binding === null) return
+      if (authState.kind === 'signed-in') {
+        if (binding.identity === authState.session.userId) {
+          setSyncBindingState(binding)
+        } else {
+          await setSyncBinding(null).catch(() => {})
+          if (active) setSyncBindingState(null)
+        }
+      } else if (authState.kind === 'signed-out' && active) {
+        setSyncBindingState(binding)
+      }
+    })()
+    return () => { active = false }
+  }, [authState])
+
+  // Sync lifecycle: while the signed-in account owns the binding, sync runs on link,
+  // after every local write, when the tab returns to the foreground, and when the
+  // network comes back. Unbinding cancels identity-scoped syncing without touching data.
+  useEffect(() => {
+    if (syncCoordinator === null || syncRunner === null) return
+    const bound = authState.kind === 'signed-in' && syncBinding !== null && syncBinding.identity === authState.session.userId
+      ? syncBinding.identity
+      : null
+    syncCoordinator.bindIdentity(bound)
+    if (bound === null) return
+    const request = () => { void syncRunner.request() }
+    const unsubscribe = syncRunner.subscribe((state) => setSyncState(state))
+    request()
+    const stopObserving = observeCollectionChanges(request)
+    window.addEventListener('online', request)
+    window.addEventListener('focus', request)
+    const onVisibility = () => { if (document.visibilityState === 'visible') request() }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      unsubscribe()
+      stopObserving()
+      window.removeEventListener('online', request)
+      window.removeEventListener('focus', request)
+      document.removeEventListener('visibilitychange', onVisibility)
+      syncCoordinator.bindIdentity(null)
+      setSyncState({ running: false, result: null })
+    }
+  }, [authState, syncBinding])
 
   const refreshCollection = useCallback(async () => {
     try {
@@ -83,6 +173,26 @@ export function App() {
       window.removeEventListener('online', updateConnection)
       window.removeEventListener('offline', updateConnection)
     }
+  }, [])
+
+  useEffect(() => {
+    if (supabaseAuth === null) return
+    let active = true
+    const fragment = window.location.hash
+    if (fragment.includes('access_token=')) {
+      void supabaseAuth.consumeConfirmation(fragment).then(async (callbackState) => {
+        const state = callbackState.kind === 'signed-in' ? callbackState : await supabaseAuth.start()
+        if (!active) return
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`)
+        setAuthState(state)
+        setNotice(callbackState.kind === 'signed-in'
+          ? 'E-mail confirmado. Sua coleção continua local até você revisar e confirmar o vínculo.'
+          : 'O link de confirmação expirou ou não é válido. Entre novamente ou solicite outra confirmação.')
+      })
+    } else {
+      void supabaseAuth.start().then((state) => { if (active) setAuthState(state) })
+    }
+    return () => { active = false }
   }, [])
 
   useEffect(() => () => { if (photoUrl.current !== null) URL.revokeObjectURL(photoUrl.current) }, [])
@@ -170,7 +280,7 @@ export function App() {
             await refreshCollection()
           }} /> : null}
         {screen.kind === 'home' ? <HomeScreen entries={entries} currency={currency} onCurrency={setCurrency} onCollection={() => navigate({ kind: 'collection' })} onScan={() => navigate({ kind: 'scan' })} /> : null}
-        {screen.kind === 'profile' ? <ProfileScreen entries={entries} onRetry={refreshCollection} onNotice={setNotice} onImport={async (file) => {
+        {screen.kind === 'profile' ? <ProfileScreen entries={entries} onRetry={refreshCollection} onNotice={setNotice} syncBinding={syncBinding} deviceId={deviceId} onLinked={() => { void refreshBinding() }} syncState={syncState} onSyncNow={() => { void syncRunner?.request() }} onImport={async (file) => {
           if (!isCollectionBackupSizeAllowed(file.size)) {
             setNotice('Este arquivo é maior que 50 MB. Escolha uma cópia menor.')
             return
@@ -189,7 +299,7 @@ export function App() {
           } catch {
             setNotice('Não foi possível ler este arquivo. Escolha uma cópia JSON válida e tente novamente.')
           }
-        }} /> : null}
+        }} authState={authState} auth={supabaseAuth} onAuthState={setAuthState} /> : null}
         {screen.kind === 'scan' ? <ScanScreen onBack={() => navigate({ kind: 'collection' })} onPhoto={(file) => { void handlePhoto(file) }} onCatalog={() => navigate({ kind: 'catalog', photoUrl: null })} /> : null}
         {screen.kind === 'catalog' ? <CatalogScreen photoUrl={screen.photoUrl} onBack={() => navigate({ kind: 'scan' })} onSelect={(card) => { void selectCatalogCard(card, [], screen.photoUrl) }} /> : null}
         {screen.kind === 'confirm' ? <ConfirmScreen key={screen.card.id} card={screen.card} alternatives={screen.alternatives} photoUrl={screen.photoUrl}
@@ -307,10 +417,15 @@ function StatePanel({ title, description, action, onAction }: { title: string; d
 
 function HomeScreen({ entries, currency, onCurrency, onCollection, onScan }: { entries: CollectionEntry[]; currency: Currency; onCurrency: (currency: Currency) => void; onCollection: () => void; onScan: () => void }) {
   const estimate = collectionEstimate(entries, currency)
-  return <><h1>Início</h1><div className="home-panel"><p>Sua coleção neste navegador</p><strong>{entries.reduce((sum, entry) => sum + entry.item.quantity, 0)} cartas</strong><span>{estimate.amount === null ? 'Sem cotação de mercado' : `${formatMoney(estimate.amount, currency)} estimados`}</span><label className="summary-currency"><span className="sr-only">Moeda da estimativa</span><select value={currency} onChange={(event) => onCurrency(event.target.value as Currency)}>{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label></div><div className="home-actions"><button type="button" className="primary-button" onClick={onCollection}><Icon name="cards" />Ver coleção</button><button type="button" className="secondary-button" onClick={onScan}><Icon name="camera" />Escanear carta</button></div><p className="storage-footnote">Os valores usam apenas cartas com cotação disponível. Esta coleção ainda não sincroniza com o Android.</p></>
+  return <><h1>Início</h1><div className="home-panel"><p>Sua coleção neste navegador</p><strong>{entries.reduce((sum, entry) => sum + entry.item.quantity, 0)} cartas</strong><span>{estimate.amount === null ? 'Sem cotação de mercado' : `${formatMoney(estimate.amount, currency)} estimados`}</span><label className="summary-currency"><span className="sr-only">Moeda da estimativa</span><select value={currency} onChange={(event) => onCurrency(event.target.value as Currency)}>{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label></div><div className="home-actions"><button type="button" className="primary-button" onClick={onCollection}><Icon name="cards" />Ver coleção</button><button type="button" className="secondary-button" onClick={onScan}><Icon name="camera" />Escanear carta</button></div><p className="storage-footnote">Entre na conta e vincule a coleção para sincronizar entre seus aparelhos.</p></>
 }
 
-function ProfileScreen({ entries, onRetry, onNotice, onImport }: { entries: CollectionEntry[]; onRetry: () => void; onNotice: (message: string) => void; onImport: (file: File) => void }) {
+function ProfileScreen({ entries, onRetry, onNotice, onImport, authState, auth, onAuthState, syncBinding, deviceId, onLinked, syncState, onSyncNow }: {
+  entries: CollectionEntry[]; onRetry: () => void; onNotice: (message: string) => void; onImport: (file: File) => void;
+  authState: AuthState; auth: SupabaseWebAuth | null; onAuthState: (state: AuthState) => void;
+  syncBinding: SyncBinding | null; deviceId: string; onLinked: () => void;
+  syncState: SyncRunnerState; onSyncNow: () => void;
+}) {
   const exportCopy = () => {
     const blob = new Blob([JSON.stringify({ format: 'tcg-colecao-web-1', exportedAt: new Date().toISOString(), entries }, null, 2)], { type: 'application/json' })
     if (!isCollectionBackupSizeAllowed(blob.size)) {
@@ -324,7 +439,56 @@ function ProfileScreen({ entries, onRetry, onNotice, onImport }: { entries: Coll
     link.click()
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
-  return <><h1>Perfil</h1><div className="profile-panel"><h2>Coleção local</h2><p>Suas cartas ficam neste navegador. Elas ainda não sincronizam com o Android ou outros dispositivos. O navegador pode apagar dados locais; guarde uma cópia da sua coleção.</p><button type="button" className="primary-button" onClick={exportCopy} disabled={entries.length === 0}>Baixar cópia da coleção</button><label className="secondary-button import-backup" htmlFor="collection-backup">Restaurar ou combinar cópia</label><input id="collection-backup" className="sr-only" type="file" accept="application/json,.json" aria-label="Importar cópia da coleção" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImport(file); event.target.value = '' }} /><p className="storage-footnote">Cópias de até 50 MB. Cartas repetidas são combinadas por variante e condição. Conflitos interrompem a importação sem alterar a coleção.</p><button type="button" className="text-button" onClick={onRetry}>Atualizar coleção</button></div></>
+  return <><h1>Perfil</h1><div className="profile-panel"><h2>Conta e sincronização</h2>{auth === null
+    ? <p>Login e sincronização não estão configurados neste ambiente. Sua coleção continua apenas neste navegador.</p>
+    : <>
+      <WebAccountPanel auth={auth} state={authState} onState={onAuthState} onNotice={onNotice} linked={authState.kind === 'signed-in' && syncBinding !== null && syncBinding.identity === authState.session.userId} />
+      {authState.kind === 'signed-in'
+        ? <LinkPanel auth={auth} identity={authState.session.userId} deviceId={deviceId} entries={entries} binding={syncBinding} onLinked={onLinked} syncState={syncState} onSyncNow={onSyncNow} />
+        : null}
+    </>}</div><div className="profile-panel"><h2>Coleção local</h2><p>Suas cartas ficam neste navegador. O navegador pode apagar dados locais; guarde uma cópia da sua coleção.</p><button type="button" className="primary-button" onClick={exportCopy} disabled={entries.length === 0}>Baixar cópia da coleção</button><label className="secondary-button import-backup" htmlFor="collection-backup">Restaurar ou combinar cópia</label><input id="collection-backup" className="sr-only" type="file" accept="application/json,.json" aria-label="Importar cópia da coleção" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImport(file); event.target.value = '' }} /><p className="storage-footnote">Cópias de até 50 MB. Cartas repetidas são combinadas por variante e condição. Conflitos interrompem a importação sem alterar a coleção.</p><button type="button" className="text-button" onClick={onRetry}>Atualizar coleção</button></div></>
+}
+
+function WebAccountPanel({ auth, state, onState, onNotice, linked }: {
+  auth: SupabaseWebAuth; state: AuthState; onState: (state: AuthState) => void; onNotice: (message: string) => void; linked: boolean;
+}) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
+  const submit = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      if (mode === 'sign-up') {
+        const result = await auth.signUp(email.trim(), password)
+        onState(result.kind === 'signed-in'
+          ? { kind: 'signed-in', session: result.session }
+          : { kind: 'awaiting-verification', email: result.email })
+        if (result.kind === 'verification-required') setPassword('')
+      } else {
+        const session = await auth.signIn(email.trim(), password)
+        onState({ kind: 'signed-in', session })
+        setPassword('')
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível acessar a conta.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  if (state.kind === 'signed-in') return <><p>Conectado como <strong>{state.session.email}</strong>.</p>{linked ? null : <p className="storage-footnote">A coleção ainda não foi vinculada. Entrar não envia suas cartas.</p>}<button type="button" className="secondary-button" disabled={busy} onClick={() => {
+    setBusy(true)
+    void auth.signOut().finally(() => { onState({ kind: 'signed-out' }); setBusy(false); onNotice('Sessão encerrada. Sua coleção local foi preservada.') })
+  }}>{busy ? 'Saindo...' : 'Sair da conta'}</button></>
+  if (state.kind === 'awaiting-verification') return <><p>Enviamos uma mensagem de confirmação para <strong>{state.email}</strong>. Confirme o endereço e depois entre.</p><button type="button" className="text-button" onClick={() => onState({ kind: 'signed-out' })}>Voltar para entrar</button></>
+  return <><p>Entre ou crie uma conta. Isso não envia nem combina sua coleção local.</p><form className="account-form" onSubmit={(event) => { event.preventDefault(); void submit() }}>
+    <label>E-mail<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+    <label>Senha<input type="password" autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+    {error !== '' ? <p className="form-error" role="alert">{error}</p> : null}
+    <button type="submit" className="primary-button" disabled={busy}>{busy ? 'Conectando...' : mode === 'sign-in' ? 'Entrar' : 'Criar conta'}</button>
+  </form><button type="button" className="text-button" disabled={busy} onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setError('') }}>{mode === 'sign-in' ? 'Ainda não tenho conta' : 'Já tenho conta'}</button></>
 }
 
 function ScanScreen({ onBack, onPhoto, onCatalog }: { onBack: () => void; onPhoto: (file: File) => void; onCatalog: () => void }) {

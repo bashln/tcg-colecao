@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test:unit": "node --experimental-strip-types --test src/domain/model.test.ts src/scan/recognition.test.ts src/collection/backup.test.ts src/sync/policy.test.ts src/sync/coordinator.test.ts src/sync/memory-transport.test.ts src/sync/supabase-transport.test.ts",
+    "test:unit": "node --experimental-strip-types --test src/domain/model.test.ts src/scan/recognition.test.ts src/collection/backup.test.ts src/sync/policy.test.ts src/sync/coordinator.test.ts src/sync/memory-transport.test.ts src/sync/supabase-transport.test.ts src/account/auth.test.ts src/account/link.test.ts src/sync/device.test.ts src/sync/runner.test.ts src/sync/crossplatform.test.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {

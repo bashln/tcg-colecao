@@ -16,7 +16,15 @@ import app.tcg.app.data.local.CollectionDao
 import app.tcg.app.data.local.TcgDatabase
 import app.tcg.app.data.repository.RoomCardRepository
 import app.tcg.app.data.repository.RoomCollectionRepository
+import app.tcg.app.data.sync.CollectionSyncCoordinator
+import app.tcg.app.data.sync.RoomSyncLinkCoordinator
+import app.tcg.app.data.sync.RoomSyncLocalStore
+import app.tcg.app.data.sync.SupabaseSyncTransport
+import app.tcg.app.data.sync.SyncLinkCoordinator
 import app.tcg.app.data.sync.SyncLinkRepository
+import app.tcg.app.data.sync.SyncLifecycle
+import app.tcg.app.data.sync.SyncTriggerSources
+import app.tcg.app.data.sync.SyncTriggerBinder
 import app.tcg.app.update.ApkDownloader
 import app.tcg.app.update.GitHubReleaseSource
 import app.tcg.app.update.InstalledAppInfo
@@ -39,6 +47,10 @@ import io.ktor.serialization.kotlinx.json.json
 import java.io.File
 import java.util.UUID
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
 @Module
@@ -87,9 +99,18 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideDeviceId(@ApplicationContext context: Context): String =
-        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+    fun provideDeviceId(@ApplicationContext context: Context): String {
+        val preferences = context.getSharedPreferences("tcg_sync_device", Context.MODE_PRIVATE)
+        val stored = preferences.getString("device_id", null)
+        if (!stored.isNullOrBlank()) return stored
+        val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+            ?.takeIf { it.isNotBlank() }
             ?: UUID.randomUUID().toString()
+        check(preferences.edit().putString("device_id", deviceId).commit()) {
+            "Não foi possível salvar a identificação deste aparelho"
+        }
+        return deviceId
+    }
 
     @Provides
     @Singleton
@@ -122,6 +143,101 @@ object AppModule {
     @Singleton
     fun provideSyncLinkRepository(dao: CollectionDao, deviceId: String): SyncLinkRepository =
         SyncLinkRepository(dao, deviceId)
+
+    @Provides
+    @Singleton
+    fun provideSyncTransport(httpClient: HttpClient, authController: AuthController): SupabaseSyncTransport =
+        SupabaseSyncTransport(
+            baseUrl = BuildConfig.SUPABASE_URL,
+            apiKey = BuildConfig.SUPABASE_PUBLISHABLE_KEY,
+            httpClient = httpClient,
+            sessionProvider = { (authController.state.value as? app.tcg.app.auth.AuthState.SignedIn)?.session },
+        )
+
+    @Provides
+    @Singleton
+    fun provideRoomSyncLocalStore(database: TcgDatabase): RoomSyncLocalStore =
+        RoomSyncLocalStore(database)
+
+    @Provides
+    @Singleton
+    fun provideCollectionSyncCoordinator(
+        transport: SupabaseSyncTransport,
+        store: RoomSyncLocalStore,
+    ): CollectionSyncCoordinator = CollectionSyncCoordinator(transport, store)
+
+    @Provides
+    @Singleton
+    fun provideSyncLifecycleScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+@Provides
+    @Singleton
+    fun provideSyncTriggerBinder(
+        @ApplicationContext context: android.content.Context,
+        collectionRepository: app.tcg.core.data.repository.CollectionRepository,
+        lifecycle: SyncLifecycle,
+    ): SyncTriggerBinder = SyncTriggerBinder(
+        collectionWrites = collectionRepository.observe(),
+        isForeground = SyncTriggerSources.foreground(),
+        networkAvailable = SyncTriggerSources.networkAvailable(context),
+        onLocalWrite = lifecycle::onLocalWrite,
+        onForeground = lifecycle::onForeground,
+        onNetworkAvailable = lifecycle::onNetworkAvailable,
+    )
+
+    @Provides
+    @Singleton
+    fun provideSyncLifecycle(
+        scope: CoroutineScope,
+        coordinator: CollectionSyncCoordinator,
+        authController: AuthController,
+        linkRepository: SyncLinkRepository,
+    ): SyncLifecycle {
+        val lifecycle = SyncLifecycle(
+            scope = scope,
+            syncAction = { _ -> coordinator.syncOnce() },
+            onIdentityChanged = coordinator::bindIdentity,
+        )
+        // Bind/unbind from the live session: sync runs only while signed in AND this
+        // device's stored binding belongs to that exact account. A sign-out or switch
+        // resolves to null and unbinds before any further trigger can run.
+        scope.launch {
+            authController.state.collect { auth ->
+                try {
+                    val linkedIdentity = linkRepository.currentIdentity()
+                    val signedInIdentity = (auth as? app.tcg.app.auth.AuthState.SignedIn)?.session?.userId
+                    if (signedInIdentity != null && linkedIdentity != null && signedInIdentity != linkedIdentity) {
+                        linkRepository.unlink()
+                        lifecycle.refreshBinding(auth, null)
+                    } else {
+                        lifecycle.refreshBinding(auth, linkedIdentity)
+                    }
+                } catch (_: Exception) {
+                    lifecycle.refreshBinding(auth, null)
+                }
+            }
+        }
+        return lifecycle
+    }
+
+    @Provides
+    @Singleton
+    fun provideSyncLinkCoordinator(
+        transport: SupabaseSyncTransport,
+        store: RoomSyncLocalStore,
+        dao: CollectionDao,
+        cardDao: CardDao,
+        cardRepository: CardRepository,
+        deviceId: String,
+    ): SyncLinkCoordinator = RoomSyncLinkCoordinator(
+        transport = transport,
+        store = store,
+        dao = dao,
+        cardDao = cardDao,
+        cards = cardRepository,
+        deviceId = deviceId,
+    )
 
     @Provides
     @Singleton

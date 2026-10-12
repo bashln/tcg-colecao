@@ -1,6 +1,30 @@
 {
   "errors": [
     {
+      "erro": "npm run build apontou parâmetros implícitos any em callbacks de novos asserts Playwright após page.evaluate",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Confiar na inferência de tipos para retorno de import dinâmico em page.evaluate"
+      ],
+      "solucao": "Anotar parâmetros dos callbacks com os campos lidos e repetir npm run build; TypeScript/Vite passou."
+    },
+    {
+      "erro": "Supabase TDD RED filter via npm test -- --test-name-pattern carregou os quatro arquivos e iniciou quatro clusters PostgreSQL; dois arquivos excederam 120s após teste alvo confirmar função ausente",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Usar script npm test padrão com filtro Node, que ainda descobre todos os arquivos de teste"
+      ],
+      "solucao": "Executar `node --test --test-name-pattern=read_collection_link_snapshot rpc-link.test.mjs` diretamente para isolar um único harness/cluster; depois executar suíte completa com timeout suficiente."
+    },
+    {
+      "erro": "Supabase config diff falhou após tentar alinhar auth.sms.twilio.enabled=true sem SID, porque parser exige auth.sms.twilio.account_sid; nenhuma configuração remota foi alterada",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Marcar localmente sms.twilio.enabled como true para refletir o remoto, sem preencher credencial ausente"
+      ],
+      "solucao": "Restaurar false local e manter fora do escopo. Remote-auth change deve usar endpoint/CLI com payload seletivo; não executar push agregado até provar que ignora este diferencial sem sobrescrevê-lo."
+    },
+    {
       "erro": "agy CLI travou esperando task do Gradle por mais de 10 minutos sem avancar",
       "tentativas": 1,
       "abordagens_falhas": [
@@ -352,12 +376,212 @@
       "solucao": "testes RED adicionados; parser limita minor/patch a 0..99; apksigner dos APKs publicos v0.1.1/v0.2.0 confirmou fingerprint SHA-256 d31a9c98580212663993b2ee7ea757e05fa284ccd2b54ad3b38e6b92a4c3f88f; workflow compara exatamente certificado e rejeita zero ou multiplos signers"
     },
     {
+      "erro": "Browser auth e2e nao enviava signup; fetch nativo invocado como metodo de instancia, causando falha de binding capturada como erro de rede",
+      "tentativas": 3,
+      "abordagens_falhas": [
+        "Ajustar somente interceptacao de URL e respostas CORS no Playwright sem observar que nenhuma requisicao era emitida"
+      ],
+      "solucao": "Vincular globalThis.fetch ao global ao capturar transporte padrão; teste Chromium agora recebe signup e confirma nenhum RPC/upload"
+    },
+    {
+      "erro": "TypeScript rejeitou mapear o resultado de cadastro (verification-required) diretamente ao estado UI (awaiting-verification)",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Reutilizar diretamente o discriminante da API no modelo de estado da tela"
+      ],
+      "solucao": "Converter explicitamente verification-required em awaiting-verification; npm run build passou"
+    },
+    {
+      "erro": "primeiro build da API applyRemoteOperation rejeitou nullable do item remoto fora do narrowing do discriminated union",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Derivar remoteItem antes do branch e esperar que TypeScript mantenha correlação com operation.kind"
+      ],
+      "solucao": "Narrow operation.kind diretamente e obter operation.item no branch create/replace; build e E2E focado passaram"
+    },
+    {
       "erro": "FileProvider.getUriForFile lancou 'Failed to find configured root' sob Robolectric (parse do file_paths.xml / cache estatico inconsistente entre contexts de teste)",
       "tentativas": 1,
       "abordagens_falhas": [
         "confiar no FileProvider real dentro do teste unitario"
       ],
       "solucao": " seam contentUri injetavel (producao usa FileProvider; teste injeta URI fake) — logica do instalador totalmente testada; declaracao do provider verificada via packageManager; URI real do FileProvider validado no aparelho (5b/device)"
+    },
+    {
+      "erro": "Testes do link usavam digest literal falso; confirmLink recusava com local-changed nos caminhos que esperavam rejected/error",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "digest literal 'digest-value' no preview falso do teste"
+      ],
+      "solucao": "Helper previewFor calcula o digest real com syncSnapshotDigest a partir das entradas de teste"
+    },
+    {
+      "erro": "tsc rejeitou ids de carta/posse por marcação brand (CardId/ItemId) nos novos arquivos",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "literais string atribuídos diretamente a CardSummary.id e SyncItem.id"
+      ],
+      "solucao": "Helpers cardId()/itemId() com parseCardId/parseItemId; Map<string, CollectionItem> explícito em confirmLink"
+    },
+    {
+      "erro": "Asserção deepEqual de commitLink falhou depois de adicionar opId ao PushOutcome",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "patch automático não encontrou o texto exato da asserção"
+      ],
+      "solucao": "Expectativa atualizada para incluir o opId ecoado pelo servidor"
+    },
+    {
+      "erro": "E2E sync-lifecycle 'signing out stops sync' falhou 1x na suíte completa mas passa isolado e em reexecução (30/30)",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "reexecutar a suíte completa"
+      ],
+      "solucao": "flake de timing entre workers; reexecução da suíte completa passou 30/30 e o teste isolado passa. Monitorar; se repetir, aumentar tolerância de espera no teste de sign-out."
+    },
+    {
+      "erro": "Sob CI=1 --trace on, 2 testes de tests/link.spec.ts falharam na primeira execução e passaram nas duas seguintes (3/3); padrão igual ao flake de sync-lifecycle",
+      "tentativas": 3,
+      "abordagens_falhas": [
+        "executar a suíte completa com 6 workers"
+      ],
+      "solucao": "flake de timing sob carga, não regressão: reexecuções individuais e a suíte completa (30/30) passaram; traces preservados em web/test-results/. Se persistir, revisar esperas de estado do preview."
+    },
+    {
+      "erro": "Primeira patch de correção do trilho falhou por usar frase de evidência que não existia exatamente em progress.json",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Aplicar contexto de patch aproximado sem reler o trecho exato"
+      ],
+      "solucao": "Reduzir patch ao contexto confirmado pelo read da linha corrente; patch subsequente aplicado"
+    },
+    {
+      "erro": "Patch para acrescentar retomada ao ledger SDD não encontrou linha final porque texto foi copiado inexatamente",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Usar resumo da linha sem conferir pontuação e conteúdo integral"
+      ],
+      "solucao": "Reler linhas 24-28 e reaplicar com a linha exata; append confirmado"
+    },
+    {
+      "erro": "Supabase harness command was not found at guessed path supabase/package.json",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Assumir que o package.json ficava na raiz de supabase"
+      ],
+      "solucao": "Localizar com glob e ler supabase/tests/package.json; script confirmado como node --test"
+    },
+    {
+      "erro": "`supabase db push --linked --dry-run` recusou seguir por versões remotas ausentes do diretório local",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Tratar as quatro migrations remotas e locais como alinhadas apenas porque seus nomes/SQL correspondem"
+      ],
+      "solucao": "Após comprovar que as quatro migrações locais já estavam no schema remoto, usar `supabase migration repair` apenas para alinhar o histórico. `migration list` passou a alinhar 4/4 e o novo `db push --dry-run` informou `Remote database is up to date`. Nenhum DDL foi reaplicado"
+    },
+    {
+      "erro": "`npx playwright install --list` não enumerou navegadores porque faltou ~/.cache/ms-playwright/.links",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Usar a saída dessa CLI para concluir se WebKit está instalado"
+      ],
+      "solucao": "Não inferir disponibilidade; verificar apenas Chromium explicitamente usado no E2E e marcar WebKit como não verificado"
+    },
+    {
+      "erro": "Patch para registrar limite WebKit usou texto desatualizado de notes em progress.json e falhou sem alteração",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Assumir que a nota ainda continha a afirmação antiga sobre nenhuma mudança remota"
+      ],
+      "solucao": "Reler current_run notes e atualizar pelo contexto exato; JSON parse validado"
+    },
+    {
+      "erro": "Teste RED F1 falhou por parâmetro de callback inexistente, conforme previsto; segunda execução após implementação também expôs que callback adicional não podia ficar após trailing lambda",
+      "tentativas": 2,
+      "abordagens_falhas": [
+        "Adicionar callback depois de syncAction e quebrar chamadas Kotlin que usam trailing lambda"
+      ],
+      "solucao": "Manter syncAction como último parâmetro construtor e callback opcional antes dele; suíte focada SyncLifecycle passou"
+    },
+    {
+      "erro": "Teste RED F2 Android apontou sessionProvider ausente como previsto; primeira execução pós-implementação falhou em 8 testes porque fixtures usavam owner UUID mas as chamadas passavam account-a",
+      "tentativas": 2,
+      "abordagens_falhas": [
+        "Deixar fixture de usuário default diferente de identidade esperada"
+      ],
+      "solucao": "Alinhar AuthSession fixture com account-a; testes focados de transporte, wire e lifecycle passaram"
+    },
+    {
+      "erro": "Teste E2E sign-out preservando binding falhou após reload porque seedSignedInSession no init script reabasteceu sessionStorage, restaurando usuário e iniciando sync",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Interpretar contagem de RPCs pós-reload como sync executado sem login"
+      ],
+      "solucao": "Simular ausência de sessão sem ativar helper de reseed, gravando JSON inválido antes do reload; teste focused passou"
+    },
+    {
+      "erro": "Teste Web half-link passou a identificar que erro server-rejected precisa usar mensagem pós-commit e não texto antigo `recusou`",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Manter asserção de mensagem incompatível com o resultado pós-commit"
+      ],
+      "solucao": "Asserir que UI avisa que nuvem pode ter recebido itens; link.test.ts 11/11 e build passaram"
+    },
+    {
+      "erro": "Update manual de errors.json deixou uma chave de objeto extra no final; parse JSON detectou SyntaxError antes de qualquer commit",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Confiar na validação anterior ao último append"
+      ],
+      "solucao": "Reler final do arquivo, remover a chave extra e validar progress.json/errors.json com JSON.parse"
+    },
+    {
+      "erro": "Teste E2E de binding Web após reload inicialmente observou duas RPCs extras porque o init script resemeou sessão; cenário ajustado para bloquear reseed",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Usar reload com helper de sessão inicial que repopula sessionStorage se vazio"
+      ],
+      "solucao": "Gravar JSON inválido antes do reload para impedir reseed, deixar Auth limpar storage e confirmar ausência de sync; teste focado passou"
+    },
+    {
+      "erro": "Teste de cancelamento Web post-commit comparou frase rígida `nuvem pode já` com copy mais natural `ela pode já`; primeira execução falhou apenas na regex",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Vincular teste à ordem exata de palavras, em vez do aviso de incerteza"
+      ],
+      "solucao": "Asserir o comportamento essencial `/pode já ter recebido/`; link/auth/transport focused tests passaram"
+    },
+    {
+      "erro": "Teste Android de corrida concorrente em SyncLifecycle reproduziu perda de deferreds, timeout e exceção do ArrayDeque compartilhado entre produtores",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "ArrayDeque e drainJob eram atualizados sem sincronização em Dispatchers.Default"
+      ],
+      "solucao": "Proteger enqueue, snapshot/clear e idle reset sob o mesmo monitor; teste concorrente de 8 produtores × 100 requisições passou"
+    },
+    {
+      "erro": "Primeira verificação do Android partial-link foi compile RED por `LinkOutcome.Partial` e `AccountError.LINK_PARTIAL` ainda ausentes, conforme contrato do teste",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Test-first apontou tipos de estado pós-commit não modelados"
+      ],
+      "solucao": "Adicionar estado Partial e cópia localizada de incerteza; testes de coordinator e AccountViewModel passaram"
+    },
+    {
+      "erro": "Review encontrou AppNav pós-vínculo usando app scope para reler binding sem persistir vínculo após mudança de callback; correção anterior tinha removido inadvertidamente a gravação do Room",
+      "tentativas": 1,
+      "abordagens_falhadas": [
+        "Assumir que link.confirm persiste o SyncBinding no Room"
+      ],
+      "solucao": "Persistência passou a ocorrer antes da releitura no lifecycle scope; teste verifica ordem persist -> read -> bind"
+    },
+    {
+      "erro": "Teste Android focado falhou por import duplicado de Deferred em SyncLifecycle.kt",
+      "tentativas": 1,
+      "abordagens_falhadas": [
+        "Adicionar import ao editar assinatura Deferred sem conferir imports existentes"
+      ],
+      "solucao": "Remover duplicata; focused tests e suite completa depois passaram. Outra chave extra foi detectada no fechamento deste ledger e removida; JSON.parse final passou"
     }
   ]
 }

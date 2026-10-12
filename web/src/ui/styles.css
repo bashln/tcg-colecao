@@ -121,6 +121,11 @@ img { display: block; max-width: 100%; }
 .profile-panel p { max-width: 650px; margin: 0; color: #c3ced8; line-height: 1.55; }
 .profile-panel .primary-button { justify-self: start; margin-top: 18px; }
 .profile-panel .text-button { justify-self: start; }
+.account-form { display: grid; gap: 14px; max-width: 460px; }
+.account-form label { display: grid; gap: 7px; color: #d8e0e7; font-weight: 600; }
+.account-form input { min-height: 48px; padding: 10px 12px; border: 1px solid #64717d; border-radius: 9px; background: #0d1114; color: #f4f7f9; font: inherit; }
+.account-form input:focus-visible { outline: 3px solid #73d9d0; outline-offset: 2px; }
+.account-form .primary-button { justify-self: start; margin-top: 4px; }
 .subpage-header { display: grid; grid-template-columns: 105px 1fr 105px; align-items: center; margin-bottom: 24px; }
 .subpage-header h1 { grid-column: 2; text-align: center; font-size: clamp(28px, 3vw, 38px); }
 .back-button { grid-column: 1; grid-row: 1; display: inline-flex; align-items: center; gap: 7px; width: fit-content; min-height: 44px; padding: 3px; border: 0; background: transparent; color: #c5ced8; font-size: 17px; }

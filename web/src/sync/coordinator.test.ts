@@ -37,6 +37,7 @@ function localStore(...operations: CollectionOperation[]) {
     async acknowledgeOperation(opId: string, _identity: string) {
       acknowledged.push(opId)
       pending.delete(opId)
+      return true
     },
     async applyRemoteOperation(operation: CollectionOperation, _identity: string, _nextSequence: number) { remoteReceived.push(operation.opId); return true },
     async lastSequence(_identity: string) { return sequence },
@@ -97,7 +98,9 @@ test('account switch never sends operations owned by previous identity', async (
       return requestedIdentity === operationIdentity ? [operation] : []
     },
     async acknowledgeOperation(opId: string, requestedIdentity: string) {
-      if (requestedIdentity === operationIdentity) acknowledged.push(opId)
+      if (requestedIdentity !== operationIdentity) return false
+      acknowledged.push(opId)
+      return true
     },
     async applyRemoteOperation() { return true },
     async lastSequence() { return 0 },
@@ -125,7 +128,12 @@ test('conflicting operation stays pending while sync reports conflict', async ()
 
   const result = await device.syncOnce()
 
-  assert.deepEqual(result, { kind: 'conflicts', conflicts: 1, pending: 1 })
+  assert.equal(result.kind, 'conflicts')
+  assert.equal(result.kind === 'conflicts' ? result.conflicts : -1, 1)
+  assert.equal(result.kind === 'conflicts' ? result.pending : -1, 1)
+  const expectedItemId = localOperation.kind === 'delete' ? localOperation.itemId : localOperation.item.id
+  assert.equal(result.kind === 'conflicts' ? result.details[0]?.itemId : '', expectedItemId)
+  assert.equal(typeof (result.kind === 'conflicts' ? result.details[0]?.reason : undefined), 'string')
   assert.equal(local.pending.has(localOperation.opId), true)
   assert.deepEqual(local.acknowledged, [])
 })
@@ -160,7 +168,7 @@ test('switching identity during remote apply does not advance its cursor', async
   let savedSequence = 0
   const local = {
     async listPendingOperations() { return [] },
-    async acknowledgeOperation() {},
+    async acknowledgeOperation() { return true },
     async applyRemoteOperation() { return await new Promise<boolean>((resolve) => { resolveApply = resolve }) },
     async lastSequence() { return 0 },
     async saveSequence(_identity: string, sequence: number) { savedSequence = sequence; return true },

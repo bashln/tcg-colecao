@@ -243,6 +243,180 @@ class RoomSyncLocalStoreTest {
     }
 
     @Test
+    fun complete_link_imports_remote_rows_rebases_revisions_and_sets_binding_atomically() = runTest {
+        val dao = db.collectionDao()
+        dao.upsertRemoteItem(
+            CollectionItemEntity(
+                id = "item-local", cardId = "base1-4", quantity = 1, condition = Condition.NEAR_MINT,
+                variant = CardVariant.NORMAL, pricePaidAmount = null, pricePaidCurrency = null,
+                addedAt = 1_791_667_200_000L, revision = 1,
+            ),
+        )
+        db.cardDao().upsert(
+            app.tcg.app.data.local.CardEntity(
+                id = "base2-3", name = "Blastoise", setId = "base2", setName = "Jungle",
+                collectorNumber = "3", rarity = null, hp = null, imageUrl = null, types = emptyList(),
+                attacks = emptyList(), variants = setOf(CardVariant.NORMAL), setTotal = 64,
+            ),
+        )
+
+        val linked = store.completeLink(
+            LinkCompletion(
+                identity = "acct",
+                deviceId = "device-0001",
+                expectedItems = listOf(syncItem("item-local", quantity = 1)),
+                remoteItems = listOf(
+                    RemoteLinkItem(syncItem("item-local", quantity = 1), revision = 4),
+                    RemoteLinkItem(syncItem("item-remote", cardId = "base2-3", quantity = 3), revision = 2),
+                ),
+                seedRevisions = mapOf("item-local" to 4L),
+                highWater = 9L,
+            ),
+        )
+
+        assertTrue(linked)
+        assertEquals(4L, dao.getById("item-local")?.revision)
+        assertEquals(2L, dao.getById("item-remote")?.revision)
+        assertEquals(3, dao.getById("item-remote")?.quantity)
+        val binding = dao.getSyncBinding()
+        assertEquals("acct", binding?.identity)
+        assertEquals("device-0001", binding?.deviceId)
+        assertEquals(9L, store.lastSequence("acct"))
+    }
+
+    @Test
+    fun complete_link_seeds_revisions_for_pushed_local_only_items() = runTest {
+        val dao = db.collectionDao()
+        dao.upsertRemoteItem(
+            CollectionItemEntity(
+                id = "item-local", cardId = "base1-4", quantity = 2, condition = Condition.NEAR_MINT,
+                variant = CardVariant.NORMAL, pricePaidAmount = null, pricePaidCurrency = null,
+                addedAt = 1_791_667_200_000L, revision = 1,
+            ),
+        )
+
+        val linked = store.completeLink(
+            LinkCompletion(
+                identity = "acct",
+                deviceId = "device-0001",
+                expectedItems = listOf(syncItem("item-local", quantity = 2)),
+                remoteItems = emptyList(),
+                seedRevisions = mapOf("item-local" to 1L),
+                highWater = 3L,
+            ),
+        )
+
+        assertTrue(linked)
+        assertEquals(1L, dao.getById("item-local")?.revision)
+        assertEquals("acct", dao.getSyncBinding()?.identity)
+    }
+
+    @Test
+    fun complete_link_refuses_a_changed_local_snapshot_without_mutating_anything() = runTest {
+        val dao = db.collectionDao()
+        dao.upsertRemoteItem(
+            CollectionItemEntity(
+                id = "item-local", cardId = "base1-4", quantity = 5, condition = Condition.NEAR_MINT,
+                variant = CardVariant.NORMAL, pricePaidAmount = null, pricePaidCurrency = null,
+                addedAt = 1_791_667_200_000L, revision = 2,
+            ),
+        )
+
+        val linked = store.completeLink(
+            LinkCompletion(
+                identity = "acct",
+                deviceId = "device-0001",
+                expectedItems = listOf(syncItem("item-local", quantity = 1)),
+                remoteItems = emptyList(),
+                seedRevisions = mapOf("item-local" to 1L),
+                highWater = 3L,
+            ),
+        )
+
+        assertFalse(linked)
+        assertEquals(5, dao.getById("item-local")?.quantity)
+        assertEquals(2L, dao.getById("item-local")?.revision)
+        assertNull(dao.getSyncBinding())
+        assertEquals(0L, store.lastSequence("acct"))
+    }
+
+    @Test
+    fun complete_link_refuses_a_remote_row_whose_card_is_not_resolvable() = runTest {
+        val dao = db.collectionDao()
+
+        val linked = store.completeLink(
+            LinkCompletion(
+                identity = "acct",
+                deviceId = "device-0001",
+                expectedItems = emptyList(),
+                remoteItems = listOf(RemoteLinkItem(syncItem("item-remote", cardId = "base9-9"), revision = 1)),
+                seedRevisions = emptyMap(),
+                highWater = 1L,
+            ),
+        )
+
+        assertFalse(linked)
+        assertNull(dao.getById("item-remote"))
+        assertNull(dao.getSyncBinding())
+    }
+
+    @Test
+    fun complete_link_refuses_a_configuration_collision_and_keeps_both_sides() = runTest {
+        val dao = db.collectionDao()
+        dao.upsertRemoteItem(
+            CollectionItemEntity(
+                id = "item-local", cardId = "base1-4", quantity = 1, condition = Condition.NEAR_MINT,
+                variant = CardVariant.NORMAL, pricePaidAmount = null, pricePaidCurrency = null,
+                addedAt = 1_791_667_200_000L, revision = 1,
+            ),
+        )
+
+        val linked = store.completeLink(
+            LinkCompletion(
+                identity = "acct",
+                deviceId = "device-0001",
+                expectedItems = listOf(syncItem("item-local", quantity = 1)),
+                remoteItems = listOf(
+                    RemoteLinkItem(syncItem("item-remote", quantity = 2), revision = 1),
+                ),
+                seedRevisions = mapOf("item-local" to 1L),
+                highWater = 1L,
+            ),
+        )
+
+        assertFalse(linked)
+        assertNull(dao.getById("item-remote"))
+        assertEquals(1L, dao.getById("item-local")?.revision)
+        assertNull(dao.getSyncBinding())
+    }
+
+    @Test
+    fun complete_link_requires_a_seed_revision_for_every_pushed_local_only_item() = runTest {
+        val dao = db.collectionDao()
+        dao.upsertRemoteItem(
+            CollectionItemEntity(
+                id = "item-local", cardId = "base1-4", quantity = 1, condition = Condition.NEAR_MINT,
+                variant = CardVariant.NORMAL, pricePaidAmount = null, pricePaidCurrency = null,
+                addedAt = 1_791_667_200_000L, revision = 1,
+            ),
+        )
+
+        val linked = store.completeLink(
+            LinkCompletion(
+                identity = "acct",
+                deviceId = "device-0001",
+                expectedItems = listOf(syncItem("item-local", quantity = 1)),
+                remoteItems = emptyList(),
+                seedRevisions = emptyMap(),
+                highWater = 1L,
+            ),
+        )
+
+        assertFalse(linked)
+        assertNull(dao.getSyncBinding())
+    }
+
+    @Test
     fun cursor_is_scoped_per_identity() = runTest {
         store.saveSequence("acct-a", 3L)
         store.saveSequence("acct-b", 8L)

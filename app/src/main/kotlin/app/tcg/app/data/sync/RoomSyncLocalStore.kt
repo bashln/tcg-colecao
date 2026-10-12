@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import app.tcg.app.data.local.CollectionDao
 import app.tcg.app.data.local.CollectionItemEntity
 import app.tcg.app.data.local.SyncCursorEntity
+import app.tcg.app.data.local.SyncBindingEntity
 import app.tcg.app.data.local.TcgDatabase
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Condition
@@ -21,6 +22,60 @@ class RoomSyncLocalStore(private val db: TcgDatabase) : SyncLocalStore {
 
     private val dao: CollectionDao
         get() = db.collectionDao()
+
+    /**
+     * Completes a confirmed first link. The caller has already pushed local-only items
+     * through `commitLink`; this writes the outcome (imported remote rows, rebased
+     * revisions, the identity binding and the pull cursor) in ONE transaction, and only
+     * after verifying that the local collection still matches the preview snapshot. Any
+     * mismatch, unresolvable card, missing seed revision, or configuration collision
+     * aborts the whole thing and leaves the local data untouched.
+     */
+    suspend fun completeLink(input: LinkCompletion): Boolean {
+        if (input.identity.isBlank() || input.deviceId.length < 8 || input.highWater < 0) return false
+        if (input.seedRevisions.values.any { it < 1 }) return false
+        val seedByItem = input.seedRevisions
+        return db.withTransaction {
+            val existingBinding = dao.getSyncBinding()
+            if (existingBinding != null && existingBinding.identity != input.identity) {
+                return@withTransaction false
+            }
+
+            val currentItems = dao.listItems()
+            if (!snapshotMatches(currentItems, input.expectedItems)) return@withTransaction false
+
+            val nextItems = LinkedHashMap<String, CollectionItemEntity>()
+            for (item in currentItems) nextItems[item.id] = item
+
+            val incomingIds = mutableSetOf<String>()
+            for (remote in input.remoteItems) {
+                if (!incomingIds.add(remote.item.id) || remote.revision < 1) return@withTransaction false
+                val local = nextItems[remote.item.id]
+                if (local != null) {
+                    if (!sameContent(local, remote.item)) return@withTransaction false
+                    nextItems[remote.item.id] = local.copy(revision = remote.revision)
+                } else {
+                    val card = db.cardDao().getById(remote.item.cardId)
+                    if (card == null || card.id != remote.item.cardId) return@withTransaction false
+                    nextItems[remote.item.id] = remote.item.toEntity(revision = remote.revision)
+                }
+            }
+
+            val seenConfigurations = mutableSetOf<String>()
+            for (item in nextItems.values) {
+                val key = configurationKeyOf(item)
+                if (!seenConfigurations.add(key)) return@withTransaction false
+                if (!incomingIds.contains(item.id) && !seedByItem.containsKey(item.id)) {
+                    return@withTransaction false
+                }
+            }
+
+            for (item in nextItems.values) dao.upsertRemoteItem(item)
+            dao.setSyncBinding(SyncBindingEntity(slot = 0, identity = input.identity, deviceId = input.deviceId))
+            advanceCursor(input.identity, input.highWater)
+            true
+        }
+    }
 
     override suspend fun pending(identity: String): List<SyncOperation> =
         dao.listPendingOperations(identity).mapNotNull { it.toSyncOperation() }
@@ -75,6 +130,60 @@ class RoomSyncLocalStore(private val db: TcgDatabase) : SyncLocalStore {
             dao.deleteById(operation.itemId)
             true
         }
+    }
+}
+
+/**
+ * Everything a confirmed first link must write locally. Mirrors the web contract: the
+ * expected local snapshot is re-checked at write time, remote-only rows are imported,
+ * local-only rows get the revision the server assigned to the pushed operation, and the
+ * binding plus pull cursor land in the same transaction.
+ */
+data class LinkCompletion(
+    val identity: String,
+    val deviceId: String,
+    /** Local items exactly as they were when the preview was generated. */
+    val expectedItems: List<SyncItem>,
+    /** Remote rows at the preview's high-water mark, each with its server revision. */
+    val remoteItems: List<RemoteLinkItem>,
+    /** itemId -> server revision for local-only items pushed during commit. */
+    val seedRevisions: Map<String, Long>,
+    val highWater: Long,
+)
+
+private fun SyncItem.toEntity(revision: Long) = CollectionItemEntity(
+    id = id,
+    cardId = cardId,
+    quantity = quantity,
+    condition = condition,
+    variant = variant,
+    pricePaidAmount = pricePaid?.amount,
+    pricePaidCurrency = pricePaid?.currency?.name,
+    addedAt = addedAt,
+    revision = revision,
+)
+
+private fun configurationKeyOf(item: CollectionItemEntity): String =
+    "${item.cardId}\u001f${item.variant.name}\u001f${item.condition.name}"
+
+/** Compares only the ownership payload, ignoring the per-side revision counter. */
+private fun sameContent(local: CollectionItemEntity, remote: SyncItem): Boolean =
+    local.id == remote.id &&
+        local.cardId == remote.cardId &&
+        local.quantity == remote.quantity &&
+        local.variant == remote.variant &&
+        local.condition == remote.condition &&
+        local.addedAt == remote.addedAt &&
+        local.pricePaidAmount == remote.pricePaid?.amount &&
+        local.pricePaidCurrency == remote.pricePaid?.currency?.name
+
+/** True when the live local rows still equal the snapshot the preview was built from. */
+private fun snapshotMatches(current: List<CollectionItemEntity>, expected: List<SyncItem>): Boolean {
+    if (current.size != expected.size) return false
+    val byId = current.associateBy { it.id }
+    return expected.all { remote ->
+        val local = byId[remote.id] ?: return false
+        sameContent(local, remote)
     }
 }
 

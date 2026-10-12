@@ -1,7 +1,10 @@
 package app.tcg.app.data.sync
 
+import app.tcg.app.auth.AuthSession
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Condition
+import app.tcg.core.domain.model.Currency
+import app.tcg.core.domain.model.Money
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -15,6 +18,9 @@ import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -44,13 +50,32 @@ class SupabaseSyncTransportTest {
 
     private fun transport(
         engine: MockEngine,
-        userId: String? = "00000000-0000-4000-8000-0000000000aa",
+        userId: String? = "account-a",
     ) = SupabaseSyncTransport(
         baseUrl = "https://example.supabase.co",
         apiKey = "publishable-key",
         httpClient = client(engine),
-        userIdProvider = { userId },
+        sessionProvider = { userId?.let { AuthSession(it, "user@example.com", "token-$it", "refresh-$it", 9_999L) } },
     )
+
+    @Test
+    fun `push refuses when current session does not match queued identity`() = runTest {
+        var requests = 0
+        val engine = MockEngine {
+            requests++
+            respond("{}", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+
+        val failure = runCatching {
+            transport(engine, userId = "account-b").push(
+                "account-a",
+                listOf(SyncOperation.Create("op-1", "dev-1", item("item-1"))),
+            )
+        }.exceptionOrNull()
+
+        assertEquals(SyncErrorKind.UNAUTHORIZED, (failure as SupabaseSyncException).kind)
+        assertEquals(0, requests)
+    }
 
     @Test
     fun `push serializes operations and maps per-operation outcomes`() = runTest {
@@ -73,6 +98,42 @@ class SupabaseSyncTransportTest {
         assertTrue("client must sign operations for replay detection", body.contains("\"signature\":"))
         assertTrue(outcomes.single() is PushOutcome.Applied)
         assertEquals(1L, (outcomes.single() as PushOutcome.Applied).sequence)
+    }
+
+    @Test
+    fun `push serializes purchase money as exact minor units`() = runTest {
+        lateinit var body: String
+        val engine = MockEngine { request ->
+            body = bodyText(request)
+            respond(
+                content = """{"status":"ok","results":[{"opId":"op-paid","status":"applied","revision":1}],"highWater":1}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val paid = item("item-paid").copy(pricePaid = Money(12.34, Currency.USD))
+
+        transport(engine).push("account-a", listOf(SyncOperation.Create("op-paid", "dev-1", paid)))
+
+        val request = Json.parseToJsonElement(body).jsonObject
+        val item = request["p_operations"]!!.jsonArray.single().jsonObject["item"]!!.jsonObject
+        assertEquals("1234", item["pricePaid"]!!.jsonObject["amount"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `pull parses minor units back to purchase money`() = runTest {
+        val engine = MockEngine {
+            respond(
+                content = """{"operations":[{"opId":"op-paid","serverSequence":1,"deviceId":"dev-1","itemId":"item-paid","kind":"create","baseRevision":null,"item":{"id":"item-paid","cardId":"base1-4","quantity":1,"variant":"NORMAL","condition":"NEAR_MINT","pricePaid":{"amount":1234,"currency":"USD"},"addedAt":1791667200000}}],"highWater":1}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+
+        val page = transport(engine).pull("account-a", 0)
+        val op = page.operations.single().operation as SyncOperation.Create
+
+        assertEquals(Money(12.34, Currency.USD), op.item.pricePaid)
     }
 
     @Test
@@ -173,5 +234,99 @@ class SupabaseSyncTransportTest {
         val delete = page.operations[1].operation
         assertTrue(delete is SyncOperation.Delete)
         assertEquals(1L, (delete as SyncOperation.Delete).baseRevision)
+    }
+
+    @Test
+    fun `prepareLink sends the local digest and parses the preview snapshot`() = runTest {
+        val bodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            bodies += bodyText(request)
+            val url = request.url.toString()
+            val content = when {
+                url.endsWith("/rpc/prepare_collection_link") ->
+                    """{"planId":"9f86d081-884c-4d65-9c67-41b405d56001","expiresAt":"2026-10-12T20:00:00Z",
+                       "remoteHighWater":7,"preview":{"localOnly":["item-1"],"cloudOnly":["item-2"],"identical":[],
+                       "conflicting":[{"itemId":"item-3","reason":"different-content"}],
+                       "duplicateConfigurations":[{"localItemId":"item-4","remoteItemId":"item-5"}]}}"""
+                url.endsWith("/rpc/read_collection_link_snapshot") ->
+                    """{"highWater":7,"items":[{"id":"item-2","cardId":"base1-4","quantity":1,"variant":"NORMAL",
+                       "condition":"NEAR_MINT","pricePaid":null,"addedAt":1791667200000,"revision":3}]}"""
+                else -> error("unexpected call $url")
+            }
+            respond(
+                content = content,
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+
+        val preview = transport(engine).prepareLink(listOf(item("item-1")))
+
+        assertTrue(bodies[0].contains("\"p_local_digest\":\""))
+        assertTrue(bodies[0].contains("\"p_remote_sequence\":0"))
+        assertEquals("9f86d081-884c-4d65-9c67-41b405d56001", preview.planId)
+        assertEquals(7L, preview.remoteHighWater)
+        assertEquals(listOf("item-1"), preview.localOnly)
+        assertEquals(listOf("item-2"), preview.cloudOnly)
+        assertEquals(1, preview.conflicting.size)
+        assertEquals("different-content", preview.conflicting[0].reason)
+        assertEquals(1, preview.duplicateConfigurations.size)
+        assertEquals(1, preview.remoteItems.size)
+        assertEquals(3L, preview.remoteItems[0].revision)
+    }
+
+    @Test
+    fun `commitLink signs operations and maps every refusal without throwing`() = runTest {
+        val deviceId = "device-0001"
+        val responses = ArrayDeque(listOf(
+            """{"status":"linked","push":{"status":"ok","results":[{"opId":"op-1","status":"applied","reason":null,"revision":1}],"highWater":9}}""",
+            """{"status":"stale-preview"}""",
+        ))
+        lateinit var lastBody: String
+        val engine = MockEngine { request ->
+            lastBody = bodyText(request)
+            respond(
+                content = responses.removeFirst(),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val plan = LinkPreview(
+            planId = "9f86d081-884c-4d65-9c67-41b405d56001",
+            digest = "digest-12345678",
+            expiresAt = "2026-10-12T20:00:00Z",
+            remoteHighWater = 7L,
+            localOnly = listOf("item-1"),
+            cloudOnly = emptyList(),
+            identical = emptyList(),
+            conflicting = emptyList(),
+            duplicateConfigurations = emptyList(),
+            remoteItems = emptyList(),
+        )
+        val operation = SyncOperation.Create(opId = "op-1", deviceId = deviceId, item = item("item-1"))
+
+        val linked = transport(engine).commitLink(plan, deviceId, listOf(operation))
+
+        assertTrue(linked is LinkCommitResult.Linked)
+        assertEquals(9L, (linked as LinkCommitResult.Linked).highWater)
+        assertTrue(linked.outcomes.single() is PushOutcome.Applied)
+        assertTrue(lastBody.contains("\"p_plan_id\":\"9f86d081-884c-4d65-9c67-41b405d56001\""))
+        assertTrue(lastBody.contains("\"p_digest\":\"digest-12345678\""))
+        assertTrue(lastBody.contains("\"p_device_id\":\"device-0001\""))
+        assertTrue(lastBody.contains("\"signature\":"))
+
+        val refused = transport(engine).commitLink(plan, deviceId, listOf(operation))
+        assertEquals(LinkCommitResult.StalePreview, refused)
+    }
+
+    @Test
+    fun `prepareLink refuses an anonymous session before any network call`() = runTest {
+        val engine = MockEngine { error("must not perform network call without a signed-in user") }
+        try {
+            transport(engine, userId = null).prepareLink(listOf(item("item-1")))
+            fail("expected unauthorized error")
+        } catch (error: SupabaseSyncException) {
+            assertEquals(SyncErrorKind.UNAUTHORIZED, error.kind)
+        }
     }
 }

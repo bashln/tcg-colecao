@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -26,11 +25,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.tcg.app.R
+import app.tcg.app.data.sync.LinkPreviewSummary
 
 /**
  * Account screen: create an account or sign in, and explicitly activate sync. The local
@@ -45,6 +46,7 @@ fun AccountScreen(
     onRequestLink: () -> Unit,
     onConfirmLink: () -> Unit,
     onCancelLink: () -> Unit,
+    onSyncNow: () -> Unit,
     onSignOut: () -> Unit,
     onDismissError: () -> Unit,
     modifier: Modifier = Modifier,
@@ -55,6 +57,7 @@ fun AccountScreen(
             onRequestLink = onRequestLink,
             onConfirmLink = onConfirmLink,
             onCancelLink = onCancelLink,
+            onSyncNow = onSyncNow,
             onSignOut = onSignOut,
             modifier = modifier,
         )
@@ -171,6 +174,7 @@ private fun SignedInAccount(
     onRequestLink: () -> Unit,
     onConfirmLink: () -> Unit,
     onCancelLink: () -> Unit,
+    onSyncNow: () -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier,
 ) {
@@ -201,7 +205,12 @@ private fun SignedInAccount(
                 }
             }
 
-            LinkState.AwaitingConfirmation -> LinkPreviewDialog(onConfirm = onConfirmLink, onCancel = onCancelLink)
+            is LinkState.Preview -> LinkPreviewSection(
+                summary = link.summary,
+                confirming = state.linking,
+                onConfirm = onConfirmLink,
+                onCancel = onCancelLink,
+            )
 
             is LinkState.Linked -> {
                 Text(
@@ -209,6 +218,7 @@ private fun SignedInAccount(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
+                SyncStatusPanel(state.syncStatus, onSyncNow)
                 OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.account_sign_out))
                 }
@@ -225,22 +235,158 @@ private fun SignedInAccount(
     }
 }
 
+/** Visible sync state for a linked account: pending, conflicts with reasons, offline, error. */
 @Composable
-private fun LinkPreviewDialog(onConfirm: () -> Unit, onCancel: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text(stringResource(R.string.account_link_preview_title)) },
-        text = { Text(stringResource(R.string.account_link_preview_body)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
+private fun SyncStatusPanel(status: SyncStatusView?, onSyncNow: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = when (status) {
+                null -> stringResource(R.string.account_sync_idle)
+                SyncStatusView.Running -> stringResource(R.string.account_sync_running)
+                is SyncStatusView.Synced -> if (status.pending == 0) {
+                    stringResource(R.string.account_sync_synced)
+                } else {
+                    pluralStringResource(R.plurals.account_sync_pending, status.pending, status.pending)
+                }
+                is SyncStatusView.Conflicts -> pluralStringResource(
+                    R.plurals.account_sync_conflicts,
+                    status.count,
+                    status.count,
+                )
+                is SyncStatusView.Offline -> stringResource(R.string.account_sync_offline, status.pending)
+                is SyncStatusView.Failed -> stringResource(R.string.account_sync_error, status.pending)
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = when (status) {
+                is SyncStatusView.Conflicts, is SyncStatusView.Failed -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (status is SyncStatusView.Conflicts) {
+            status.details.forEach { detail ->
+                Text(
+                    text = stringResource(R.string.account_sync_conflict_row, detail.itemId, detail.reason),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        OutlinedButton(onClick = onSyncNow, enabled = status !is SyncStatusView.Running, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                if (status is SyncStatusView.Running) {
+                    stringResource(R.string.account_sync_running_button)
+                } else {
+                    stringResource(R.string.account_sync_now)
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun LinkPreviewSection(
+    summary: LinkPreviewSummary,
+    confirming: Boolean,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val plan = summary.plan
+    val blocked = summary.conflictingCount > 0 || summary.duplicateCount > 0
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.account_link_preview_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = stringResource(R.string.account_link_preview_intro),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        PreviewRow(
+            text = pluralStringResource(
+                R.plurals.account_link_local_only,
+                summary.localOnlyCount,
+                summary.localOnlyCount,
+            ),
+        )
+        PreviewRow(
+            text = pluralStringResource(
+                R.plurals.account_link_cloud_only,
+                summary.cloudOnlyCount,
+                summary.cloudOnlyCount,
+            ),
+        )
+        PreviewRow(
+            text = pluralStringResource(
+                R.plurals.account_link_identical,
+                summary.identicalCount,
+                summary.identicalCount,
+            ),
+        )
+        if (summary.conflictingCount > 0) {
+            PreviewRow(
+                text = pluralStringResource(
+                    R.plurals.account_link_conflicting,
+                    summary.conflictingCount,
+                    summary.conflictingCount,
+                ),
+                isError = true,
+            )
+        }
+        if (summary.duplicateCount > 0) {
+            PreviewRow(
+                text = pluralStringResource(
+                    R.plurals.account_link_duplicates,
+                    summary.duplicateCount,
+                    summary.duplicateCount,
+                ),
+                isError = true,
+            )
+        }
+        if (blocked) {
+            Text(
+                text = stringResource(R.string.account_link_blocked_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        Button(
+            onClick = onConfirm,
+            enabled = !confirming && !blocked,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (confirming) {
+                CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
+            } else {
                 Text(stringResource(R.string.account_link_confirm))
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onCancel) {
-                Text(stringResource(R.string.account_link_cancel))
-            }
-        },
+        }
+        OutlinedButton(onClick = onCancel, enabled = !confirming, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.account_link_cancel))
+        }
+        Text(
+            text = stringResource(R.string.account_link_footer),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PreviewRow(text: String, isError: Boolean = false) {
+    Text(
+        text = "• $text",
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.fillMaxWidth(),
     )
 }
 
@@ -265,5 +411,8 @@ private fun AccountError.toReadableStringRes(): Int = when (this) {
     AccountError.EMAIL_ALREADY_REGISTERED -> R.string.account_error_email_registered
     AccountError.EMAIL_NOT_CONFIRMED -> R.string.account_error_email_not_confirmed
     AccountError.NETWORK -> R.string.account_error_network
+    AccountError.LINK_BLOCKED -> R.string.account_error_link_blocked
+    AccountError.LINK_STALE -> R.string.account_error_link_stale
+    AccountError.LINK_PARTIAL -> R.string.account_error_link_partial
     AccountError.UNKNOWN -> R.string.account_error_unknown
 }

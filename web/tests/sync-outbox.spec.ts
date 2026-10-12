@@ -159,7 +159,7 @@ test('failed sync leaves the local collection and pending operation intact', asy
       transport: createMemoryTransport({ failNextPush: true }),
       local: {
         listPendingOperations: store.listPendingOperations,
-        acknowledgeOperation: async (opId: string, identity: string) => { await store.acknowledgeOperation(opId, identity) },
+        acknowledgeOperation: async (opId: string, identity: string) => store.acknowledgeOperation(opId, identity),
         applyRemoteOperation: async () => true,
         lastSequence: store.lastSyncSequence,
         saveSequence: store.saveSyncSequence,
@@ -373,4 +373,160 @@ test('backup import rolls back when its outbox write fails', async ({ page }) =>
     return (await store.listPendingOperations('account-a')).length
   })
   expect(pendingCount).toBe(0)
+})
+
+test('remote operations update local items and cursor atomically without creating outbox entries', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const card = {
+      id: 'base1-4', name: 'Charizard', setId: 'base1', setName: 'Base Set', collectorNumber: '4',
+      imageUrl: null, variants: ['NORMAL'], prices: [], setTotal: 102,
+    }
+    await store.setSyncBinding({ identity: 'account-a', deviceId: 'device-a' })
+    const created = await store.applyRemoteOperation('account-a', 1, {
+      kind: 'create', opId: 'remote-create', deviceId: 'device-b',
+      item: {
+        id: '00000000-0000-4000-8000-000000000001', cardId: 'base1-4', quantity: 2,
+        variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 1,
+      },
+    }, card)
+    const replaced = await store.applyRemoteOperation('account-a', 2, {
+      kind: 'replace', opId: 'remote-replace', deviceId: 'device-b', baseRevision: 1,
+      item: {
+        id: '00000000-0000-4000-8000-000000000001', cardId: 'base1-4', quantity: 3,
+        variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 1,
+      },
+    }, card)
+    const deleted = await store.applyRemoteOperation('account-a', 3, {
+      kind: 'delete', opId: 'remote-delete', deviceId: 'device-b', baseRevision: 2,
+      itemId: '00000000-0000-4000-8000-000000000001',
+    })
+    return {
+      applied: [created, replaced, deleted],
+      entries: await store.listCollection(),
+      pending: await store.listPendingOperations('account-a'),
+      cursor: await store.lastSyncSequence('account-a'),
+    }
+  })
+
+  expect(result).toEqual({ applied: [true, true, true], entries: [], pending: [], cursor: 3 })
+})
+
+test('production local adapter pulls authenticated transport operations into IndexedDB', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const { createIndexedDbSyncLocalStore } = await import(`${location.origin}/src/sync/indexeddb-local.ts`)
+    const { createSyncCoordinator } = await import(`${location.origin}/src/sync/coordinator.ts`)
+    const { createMemoryTransport } = await import(`${location.origin}/src/sync/memory-transport.ts`)
+    await store.setSyncBinding({ identity: 'account-a', deviceId: 'device-a' })
+    const transport = createMemoryTransport()
+    await transport.push('account-a', [{
+      kind: 'create', opId: 'from-device-b', deviceId: 'device-b',
+      item: {
+        id: '00000000-0000-4000-8000-000000000002', cardId: 'base1-4', quantity: 4,
+        variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 2,
+      },
+    }])
+    const local = createIndexedDbSyncLocalStore({ resolveCard: async () => ({
+      id: 'base1-4', name: 'Charizard', setId: 'base1', setName: 'Base Set', collectorNumber: '4',
+      imageUrl: null, variants: ['NORMAL'], prices: [], setTotal: 102,
+    }) })
+    const sync = createSyncCoordinator({ transport, local })
+    sync.bindIdentity('account-a')
+    const outcome = await sync.syncOnce()
+    return {
+      outcome,
+      entries: await store.listCollection(),
+      pending: await store.listPendingOperations('account-a'),
+      cursor: await store.lastSyncSequence('account-a'),
+    }
+  })
+
+  expect(result.outcome).toEqual({ kind: 'complete', applied: 0, pending: 0 })
+  expect(result.entries).toHaveLength(1)
+  expect(result.entries[0]?.item).toMatchObject({ quantity: 4, revision: 1 })
+  expect(result.entries[0]?.card.name).toBe('Charizard')
+  expect(result.pending).toEqual([])
+  expect(result.cursor).toBe(1)
+})
+
+test('confirmed link atomically imports cloud rows, rebases revisions, and advances cursor without outbox writes', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const domain = await import(`${location.origin}/src/domain/model.ts`)
+    const localCard = {
+      id: 'base1-4', name: 'Charizard', setId: 'base1', setName: 'Base Set', collectorNumber: '4',
+      imageUrl: null, variants: ['NORMAL'] as const, prices: [], setTotal: 102,
+    }
+    const remoteCard = {
+      id: 'base2-3', name: 'Blastoise', setId: 'base2', setName: 'Jungle', collectorNumber: '3',
+      imageUrl: null, variants: ['NORMAL'] as const, prices: [], setTotal: 64,
+    }
+    const parsed = domain.parseItemDraft(domain.emptyDraft(localCard))
+    if (parsed.kind !== 'valid') throw new Error('Local test draft invalid')
+    await store.addToCollection(localCard, parsed)
+    const before = await store.listCollection()
+    const local = before[0]
+    if (local === undefined) throw new Error('Local item was not created')
+    const linked = await store.completeSyncLink({
+      identity: 'account-a', deviceId: 'device-a', expectedItems: [local.item],
+      remoteItems: [{
+        id: '00000000-0000-4000-8000-000000000002', cardId: 'base2-3', quantity: 2,
+        variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 2, revision: 3,
+      }],
+      remoteCards: [remoteCard], seedRevisions: new Map([[local.item.id, 1]]), highWater: 4,
+    })
+    return {
+      linked,
+      binding: await store.currentSyncBinding(),
+      entries: await store.listCollection(),
+      pending: await store.listPendingOperations('account-a'),
+      cursor: await store.lastSyncSequence('account-a'),
+    }
+  })
+
+  expect(result.linked).toBe(true)
+  expect(result.binding).toEqual({ identity: 'account-a', deviceId: 'device-a' })
+  expect(result.entries).toHaveLength(2)
+  expect(result.entries.map((entry: { item: { revision: number } }) => entry.item.revision).sort()).toEqual([1, 3])
+  expect(result.entries.find((entry: { card: { id: string; name: string } }) => entry.card.id === 'base2-3')?.card.name).toBe('Blastoise')
+  expect(result.pending).toEqual([])
+  expect(result.cursor).toBe(4)
+})
+
+test('confirmed link refuses a changed local snapshot without binding or mutating items', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const domain = await import(`${location.origin}/src/domain/model.ts`)
+    const localCard = {
+      id: 'base1-4', name: 'Charizard', setId: 'base1', setName: 'Base Set', collectorNumber: '4',
+      imageUrl: null, variants: ['NORMAL'] as const, prices: [], setTotal: 102,
+    }
+    const parsed = domain.parseItemDraft(domain.emptyDraft(localCard))
+    if (parsed.kind !== 'valid') throw new Error('Local test draft invalid')
+    await store.addToCollection(localCard, parsed)
+    const before = await store.listCollection()
+    const local = before[0]
+    if (local === undefined) throw new Error('Local item was not created')
+    const linked = await store.completeSyncLink({
+      identity: 'account-a', deviceId: 'device-a', expectedItems: [{ ...local.item, quantity: 2 }],
+      remoteItems: [], remoteCards: [], seedRevisions: new Map([[local.item.id, 1]]), highWater: 1,
+    })
+    return {
+      linked,
+      binding: await store.currentSyncBinding(),
+      entries: await store.listCollection(),
+      pending: await store.listPendingOperations('account-a'),
+    }
+  })
+
+  expect(result.linked).toBe(false)
+  expect(result.binding).toBeNull()
+  expect(result.entries).toHaveLength(1)
+  expect(result.entries[0]?.item.quantity).toBe(1)
+  expect(result.pending).toEqual([])
 })

@@ -1,0 +1,72 @@
+{
+  "description": "Cross-platform sync wire-format vectors. Both the TypeScript (web) and Kotlin (Android) transports must produce the exact canonical bytes and SHA-256 signature below for the same operation, or the server's op-ID/hash mismatch detection silently diverges between platforms. Verified by web/src/sync/crossplatform.test.ts and app/src/test/kotlin/app/tcg/app/data/sync/CrossPlatformSignatureTest.kt.",
+  "cases": [
+    {
+      "name": "create with minor-unit price",
+      "operation": {
+        "kind": "create",
+        "opId": "11111111-1111-4111-8111-111111111111",
+        "item": {
+          "id": "22222222-2222-4222-8222-222222222222",
+          "cardId": "base1-4",
+          "quantity": 3,
+          "variant": "HOLOFOIL",
+          "condition": "NEAR_MINT",
+          "pricePaid": { "amount": 1234, "currency": "USD" },
+          "addedAt": 1791667200000
+        }
+      },
+      "canonical": "{\"item\":{\"addedAt\":1791667200000,\"cardId\":\"base1-4\",\"condition\":\"NEAR_MINT\",\"id\":\"22222222-2222-4222-8222-222222222222\",\"pricePaid\":{\"amount\":1234,\"currency\":\"USD\"},\"quantity\":3,\"variant\":\"HOLOFOIL\"},\"kind\":\"create\",\"opId\":\"11111111-1111-4111-8111-111111111111\"}",
+      "signature": "0f846131f0fe3264a70d026b7bc0d0f5c2620d5535cb94afc9a7962465fe6d84",
+      "priceMajor": 12.34
+    },
+    {
+      "name": "replace without price and with baseRevision",
+      "operation": {
+        "kind": "replace",
+        "opId": "33333333-3333-4333-8333-333333333333",
+        "item": {
+          "id": "22222222-2222-4222-8222-222222222222",
+          "cardId": "base1-4",
+          "quantity": 5,
+          "variant": "HOLOFOIL",
+          "condition": "NEAR_MINT",
+          "pricePaid": null,
+          "addedAt": 1791667200000
+        },
+        "baseRevision": 2
+      },
+      "canonical": "{\"baseRevision\":2,\"item\":{\"addedAt\":1791667200000,\"cardId\":\"base1-4\",\"condition\":\"NEAR_MINT\",\"id\":\"22222222-2222-4222-8222-222222222222\",\"pricePaid\":null,\"quantity\":5,\"variant\":\"HOLOFOIL\"},\"kind\":\"replace\",\"opId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "signature": "e60999024d97bec5c0868c8548f5ffd60d42180abdfc04df54fddba7a8c88548"
+    },
+    {
+      "name": "delete with baseRevision",
+      "operation": {
+        "kind": "delete",
+        "opId": "44444444-4444-4444-8444-444444444444",
+        "itemId": "22222222-2222-4222-8222-222222222222",
+        "baseRevision": 5
+      },
+      "canonical": "{\"baseRevision\":5,\"itemId\":\"22222222-2222-4222-8222-222222222222\",\"kind\":\"delete\",\"opId\":\"44444444-4444-4444-8444-444444444444\"}",
+      "signature": "5848a97e0d6fadd635bf7acfbf81e20ac68dc2b3c13651b5e2b205a8af1154ea"
+    }
+  ],
+  "itemWire": {
+    "note": "pricePaid.amount is always integer minor units on the wire; both platforms convert major units (12.34) to 1234 when serializing and divide by 100 when parsing.",
+    "id": "22222222-2222-4222-8222-222222222222",
+    "cardId": "base1-4",
+    "quantity": 3,
+    "variant": "HOLOFOIL",
+    "condition": "NEAR_MINT",
+    "pricePaid": { "amount": 1234, "currency": "USD" },
+    "addedAt": 1791667200000
+  },
+  "priceVector": {
+    "major": 12.34,
+    "minor": 1234,
+    "rejected": [
+      { "amount": 12.345, "reason": "more than two decimals" },
+      { "amount": -1, "reason": "negative" }
+    ]
+  }
+}

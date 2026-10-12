@@ -19,6 +19,8 @@ export interface PushOutcome {
   kind: 'applied' | 'already-applied' | 'conflict'
   reason?: string
   sequence?: number
+  /** Server echoes the operation id so callers can map results without relying on order. */
+  opId?: string
 }
 
 export interface PullPage {
@@ -26,13 +28,30 @@ export interface PullPage {
   highWaterMark: number
 }
 
+export interface LinkPreview {
+  planId: string
+  digest: string
+  expiresAt: string
+  remoteHighWater: number
+  localOnly: string[]
+  cloudOnly: string[]
+  identical: string[]
+  conflicting: { itemId: string; reason: string }[]
+  duplicateConfigurations: { localItemId: string; remoteItemId: string }[]
+  remoteItems: (SyncItem & { revision: number })[]
+}
+
+export type LinkCommitResult =
+  | { kind: 'linked'; highWater: number; outcomes: PushOutcome[] }
+  | { kind: 'stale-preview' | 'digest-mismatch' | 'expired' | 'consumed' | 'not-found' }
+
 /**
  * Minimal authenticated boundary the transport needs. Web injects a GoTrue-backed
  * implementation; tests inject a stub. Keeping it narrow means auth token handling
  * never leaks into operation mapping.
  */
 export interface SupabaseHttp {
-  rpc(fn: string, body: Record<string, unknown>): Promise<unknown>
+  rpc(fn: string, body: Record<string, unknown>, expectedUserId?: string): Promise<unknown>
   user(): Promise<{ id: string; email: string | null } | null>
 }
 
@@ -57,6 +76,15 @@ function isCurrency(value: unknown): value is Currency {
   return CURRENCIES.some((currency) => currency === value)
 }
 
+function toMinorUnits(amount: number): number {
+  const scaled = amount * 100
+  const rounded = Math.round(scaled)
+  if (!Number.isFinite(amount) || !Number.isSafeInteger(rounded) || Math.abs(scaled - rounded) > 1e-7) {
+    throw new SupabaseSyncError('unavailable', 'O preço pago precisa ter no máximo duas casas decimais')
+  }
+  return rounded
+}
+
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical)
   if (value !== null && typeof value === 'object') {
@@ -77,23 +105,36 @@ function toSerializable(operation: CollectionOperation): Record<string, unknown>
   if (operation.kind === 'delete') {
     return { kind: 'delete', opId: operation.opId, itemId: operation.itemId, baseRevision: operation.baseRevision }
   }
-  const item = {
-    id: operation.item.id,
-    cardId: operation.item.cardId,
-    quantity: operation.item.quantity,
-    variant: operation.item.variant,
-    condition: operation.item.condition,
-    pricePaid: operation.item.pricePaid,
-    addedAt: operation.item.addedAt,
-  }
+  const item = serializeSyncItem(operation.item)
   return operation.kind === 'create'
     ? { kind: 'create', opId: operation.opId, item }
     : { kind: 'replace', opId: operation.opId, item, baseRevision: operation.baseRevision }
 }
 
+function serializeSyncItem(item: SyncItem): Record<string, unknown> {
+  return {
+    id: item.id,
+    cardId: item.cardId,
+    quantity: item.quantity,
+    variant: item.variant,
+    condition: item.condition,
+    pricePaid: item.pricePaid === null
+      ? null
+      : { amount: toMinorUnits(item.pricePaid.amount), currency: item.pricePaid.currency },
+    addedAt: item.addedAt,
+  }
+}
+
 /** Deterministic content signature so the server can detect opId reuse with different content. */
 async function signatureFor(operation: CollectionOperation): Promise<string> {
   return sha256Hex(JSON.stringify(canonical(toSerializable(operation))))
+}
+
+export async function syncSnapshotDigest(items: readonly SyncItem[]): Promise<string> {
+  if (items.length > 5000) throw new SupabaseSyncError('unavailable', 'A prévia aceita até 5.000 posses')
+  const localItems = items.map(serializeSyncItem).sort((left, right) =>
+    String(left.id).localeCompare(String(right.id)))
+  return sha256Hex(JSON.stringify(canonical(localItems)))
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -102,14 +143,14 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function isUnauthorized(message: string): boolean {
-  return /not authenticated|permission denied|JWT|jwt/i.test(message)
+  return /not authenticated|permission denied|JWT|jwt|conta mudou/i.test(message)
 }
 
 export function createSupabaseTransport(input: { http: SupabaseHttp }) {
-  async function call(fn: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async function call(fn: string, body: Record<string, unknown>, expectedIdentity?: string): Promise<Record<string, unknown>> {
     let raw: unknown
     try {
-      raw = await input.http.rpc(fn, body)
+      raw = await input.http.rpc(fn, body, expectedIdentity)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (isUnauthorized(message)) throw new SupabaseSyncError('unauthorized', message)
@@ -131,8 +172,74 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
       return input.http.user()
     },
 
+    async prepareLink(items: readonly SyncItem[]): Promise<LinkPreview> {
+      const localItems = items.map(serializeSyncItem).sort((left, right) =>
+        String(left.id).localeCompare(String(right.id)))
+      const digest = await syncSnapshotDigest(items)
+      const response = await call('prepare_collection_link', {
+        p_local_digest: digest,
+        p_local_items: localItems,
+        p_remote_sequence: 0,
+      })
+      const preview = asRecord(response.preview)
+      const planId = response.planId
+      const expiresAt = response.expiresAt
+      const remoteHighWater = response.remoteHighWater
+      if (typeof planId !== 'string' || planId.length < 8 ||
+        typeof expiresAt !== 'string' || !Number.isFinite(Date.parse(expiresAt)) ||
+        typeof remoteHighWater !== 'number' || !Number.isSafeInteger(remoteHighWater) || remoteHighWater < 0) {
+        throw new SupabaseSyncError('unavailable', 'A prévia de vínculo retornou dados inválidos')
+      }
+      const snapshot = await call('read_collection_link_snapshot', { p_expected_high_water: remoteHighWater })
+      if (snapshot.highWater !== remoteHighWater || !Array.isArray(snapshot.items)) {
+        throw new SupabaseSyncError('unavailable', 'A coleção remota mudou durante a prévia. Gere uma nova prévia.')
+      }
+      return {
+        planId,
+        digest,
+        expiresAt,
+        remoteHighWater,
+        localOnly: parsePreviewIds(preview.localOnly),
+        cloudOnly: parsePreviewIds(preview.cloudOnly),
+        identical: parsePreviewIds(preview.identical),
+        conflicting: parseConflicts(preview.conflicting),
+        duplicateConfigurations: parseDuplicateConfigurations(preview.duplicateConfigurations),
+        remoteItems: snapshot.items.map(parseSnapshotItem),
+      }
+    },
+
+    async commitLink(plan: LinkPreview, deviceId: string, operations: readonly CollectionOperation[]): Promise<LinkCommitResult> {
+      if (deviceId.length < 8 || operations.some((operation) => operation.deviceId !== deviceId)) {
+        throw new SupabaseSyncError('unavailable', 'Dispositivo inválido para confirmar o vínculo')
+      }
+      const serialized = await Promise.all(operations.map(async (operation) => ({
+        ...toSerializable(operation),
+        deviceId,
+        signature: await signatureFor(operation),
+      })))
+      const response = await call('commit_collection_link', {
+        p_plan_id: plan.planId,
+        p_digest: plan.digest,
+        p_device_id: deviceId,
+        p_operations: serialized,
+      })
+      if (response.status === 'linked') {
+        const push = asRecord(response.push)
+        if (push.status !== 'ok' || typeof push.highWater !== 'number' ||
+          !Number.isSafeInteger(push.highWater) || push.highWater < 0) {
+          throw new SupabaseSyncError('unavailable', 'O servidor não confirmou todas as operações do vínculo')
+        }
+        const results = Array.isArray(push.results) ? push.results : []
+        return { kind: 'linked', highWater: push.highWater, outcomes: parsePushOutcomes(results) }
+      }
+      if (response.status === 'stale-preview' || response.status === 'digest-mismatch' ||
+        response.status === 'expired' || response.status === 'consumed' || response.status === 'not-found') {
+        return { kind: response.status }
+      }
+      throw new SupabaseSyncError('unavailable', `Vínculo recusado: ${String(response.status ?? 'desconhecido')}`)
+    },
+
     async push(identity: string, operations: readonly CollectionOperation[]): Promise<PushOutcome[]> {
-      void identity
       if (operations.length === 0) return []
       const first = operations[0]
       if (first === undefined) return []
@@ -147,31 +254,21 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
       const response = await call('push_collection_operations', {
         p_device_id: first.deviceId,
         p_operations: serialized,
-      })
+      }, identity)
 
       if (response.status !== 'ok') {
         throw new SupabaseSyncError('unavailable', `Push recusado: ${String(response.status ?? 'desconhecido')}`)
       }
 
       const results = Array.isArray(response.results) ? response.results : []
-      return results.map((entry): PushOutcome => {
-        const row = asRecord(entry)
-        const reason = typeof row.reason === 'string' ? row.reason : undefined
-        const revision = typeof row.revision === 'number' ? row.revision : undefined
-        if (row.status === 'applied') return { kind: 'applied', ...(revision === undefined ? {} : { sequence: revision }) }
-        if (row.status === 'already-applied') {
-          return { kind: 'already-applied', ...(revision === undefined ? {} : { sequence: revision }) }
-        }
-        return { kind: 'conflict', ...(reason === undefined ? {} : { reason }) }
-      })
+      return parsePushOutcomes(results)
     },
 
     async pull(identity: string, afterSequence: number): Promise<PullPage> {
-      void identity
       const response = await call('pull_collection_operations', {
         p_after_sequence: afterSequence,
         p_page_limit: 500,
-      })
+      }, identity)
 
       const raw = Array.isArray(response.operations) ? response.operations : []
       const operations: SequencedOperation[] = raw.map((entry) => {
@@ -184,6 +281,84 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
       const highWaterMark = typeof response.highWater === 'number' ? response.highWater : afterSequence
       return { operations, highWaterMark }
     },
+  }
+}
+
+function parsePreviewIds(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new SupabaseSyncError('unavailable', 'A prévia de vínculo retornou uma lista inválida')
+  return value.map((id) => {
+    const parsed = parseItemId(id)
+    if (parsed === null) throw new SupabaseSyncError('unavailable', 'A prévia contém um item inválido')
+    return parsed
+  })
+}
+
+function parseConflicts(value: unknown): { itemId: string; reason: string }[] {
+  if (!Array.isArray(value)) throw new SupabaseSyncError('unavailable', 'A prévia de vínculo retornou conflitos inválidos')
+  return value.map((entry) => {
+    const row = asRecord(entry)
+    const itemId = parseItemId(row.itemId)
+    const reason = row.reason
+    if (itemId === null || typeof reason !== 'string' || reason.length === 0) {
+      throw new SupabaseSyncError('unavailable', 'A prévia contém um conflito inválido')
+    }
+    return { itemId, reason }
+  })
+}
+
+function parseDuplicateConfigurations(value: unknown): { localItemId: string; remoteItemId: string }[] {
+  if (!Array.isArray(value)) throw new SupabaseSyncError('unavailable', 'A prévia de vínculo retornou duplicatas inválidas')
+  return value.map((entry) => {
+    const row = asRecord(entry)
+    const localItemId = parseItemId(row.localItemId)
+    const remoteItemId = parseItemId(row.remoteItemId)
+    if (localItemId === null || remoteItemId === null) {
+      throw new SupabaseSyncError('unavailable', 'A prévia contém uma duplicata inválida')
+    }
+    return { localItemId, remoteItemId }
+  })
+}
+
+function parsePushOutcomes(results: readonly unknown[]): PushOutcome[] {
+  return results.map((entry): PushOutcome => {
+    const row = asRecord(entry)
+    const reason = typeof row.reason === 'string' ? row.reason : undefined
+    const opId = typeof row.opId === 'string' ? row.opId : undefined
+    const revision = typeof row.revision === 'number' && Number.isSafeInteger(row.revision) && row.revision >= 0
+      ? row.revision
+      : undefined
+    const extra = {
+      ...(reason === undefined ? {} : { reason }),
+      ...(opId === undefined ? {} : { opId }),
+      ...(revision === undefined ? {} : { sequence: revision }),
+    }
+    if (row.status === 'applied') return { kind: 'applied', ...extra }
+    if (row.status === 'already-applied') return { kind: 'already-applied', ...extra }
+    return { kind: 'conflict', ...extra }
+  })
+}
+
+function parseSnapshotItem(value: unknown): SyncItem & { revision: number } {
+  const row = asRecord(value)
+  const id = parseItemId(row.id)
+  const cardId = parseCardId(row.cardId)
+  const quantity = Number(row.quantity)
+  const addedAt = Number(row.addedAt)
+  const revision = Number(row.revision)
+  if (id === null || cardId === null || !isVariant(row.variant) || !isCondition(row.condition) ||
+    !Number.isSafeInteger(quantity) || quantity < 1 || !Number.isSafeInteger(addedAt) ||
+    !Number.isSafeInteger(revision) || revision < 1) {
+    throw new SupabaseSyncError('unavailable', 'A coleção remota contém uma posse inválida')
+  }
+  return {
+    id,
+    cardId,
+    quantity,
+    variant: row.variant,
+    condition: row.condition,
+    pricePaid: parseRemotePrice(row.pricePaid),
+    addedAt,
+    revision,
   }
 }
 
@@ -234,5 +409,5 @@ function parseRemotePrice(value: unknown): SyncItem['pricePaid'] {
   const currency = raw.currency
   if (!Number.isSafeInteger(amount) || amount < 0) throw new SupabaseSyncError('unavailable', 'Preço remoto inválido')
   if (!isCurrency(currency)) throw new SupabaseSyncError('unavailable', 'Moeda remota desconhecida')
-  return { amount, currency: currency satisfies Currency }
+  return { amount: amount / 100, currency: currency satisfies Currency }
 }

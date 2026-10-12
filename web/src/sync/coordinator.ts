@@ -1,17 +1,33 @@
 import type { CollectionOperation } from './policy.ts'
-import type { MemoryTransport } from './memory-transport.ts'
+
+export interface SyncTransport {
+  push(identity: string, operations: readonly CollectionOperation[]): Promise<{
+    kind: 'applied' | 'already-applied' | 'conflict'
+    reason?: string
+    sequence?: number
+  }[]>
+  pull(identity: string, afterSequence: number): Promise<{
+    operations: { sequence: number; operation: CollectionOperation }[]
+    highWaterMark: number
+  }>
+}
 
 export interface SyncLocalStore {
   listPendingOperations(identity: string): Promise<CollectionOperation[]>
-  acknowledgeOperation(opId: string, identity: string): Promise<void>
+  acknowledgeOperation(opId: string, identity: string): Promise<boolean>
   applyRemoteOperation(operation: CollectionOperation, identity: string, sequence: number): Promise<boolean>
   lastSequence(identity: string): Promise<number>
   saveSequence(identity: string, sequence: number): Promise<boolean>
 }
 
+export interface SyncConflictDetail {
+  itemId: string
+  reason: string
+}
+
 export type SyncResult =
   | { kind: 'complete'; applied: number; pending: number }
-  | { kind: 'conflicts'; conflicts: number; pending: number }
+  | { kind: 'conflicts'; conflicts: number; pending: number; details: SyncConflictDetail[] }
   | { kind: 'offline'; pending: number }
   | { kind: 'error'; pending: number }
 
@@ -22,7 +38,7 @@ export interface SyncCoordinator {
 }
 
 export function createSyncCoordinator(input: {
-  transport: Pick<MemoryTransport, 'push' | 'pull'>
+  transport: SyncTransport
   local: SyncLocalStore
 }): SyncCoordinator {
   let identity: string | null = null
@@ -39,15 +55,19 @@ export function createSyncCoordinator(input: {
         if (boundIdentity !== identity) return { kind: 'offline', pending: pending.length }
         const outcomes = await input.transport.push(boundIdentity, pending)
         let applied = 0
-        let conflicts = 0
+        const conflictDetails: SyncConflictDetail[] = []
         for (let index = 0; index < outcomes.length; index += 1) {
           const outcome = outcomes[index]
           const operation = pending[index]
           if (outcome === undefined || operation === undefined) continue
           if (outcome.kind === 'conflict') {
-            conflicts += 1
+            conflictDetails.push({
+              itemId: operation.kind === 'delete' ? operation.itemId : operation.item.id,
+              reason: outcome.reason ?? 'conflict',
+            })
           } else if (identity === boundIdentity) {
-            await input.local.acknowledgeOperation(operation.opId, boundIdentity)
+            const acknowledged = await input.local.acknowledgeOperation(operation.opId, boundIdentity)
+            if (identity !== boundIdentity || !acknowledged) return { kind: 'offline', pending: pending.length }
             if (outcome.kind === 'applied') applied += 1
           }
         }
@@ -67,8 +87,8 @@ export function createSyncCoordinator(input: {
         if (identity !== boundIdentity || !cursorSaved) return { kind: 'offline', pending: pending.length }
 
         const remaining = (await input.local.listPendingOperations(boundIdentity)).length
-        return conflicts > 0
-          ? { kind: 'conflicts', conflicts, pending: remaining }
+        return conflictDetails.length > 0
+          ? { kind: 'conflicts', conflicts: conflictDetails.length, pending: remaining, details: conflictDetails }
           : { kind: 'complete', applied, pending: remaining }
       } catch {
         if (identity !== boundIdentity) return { kind: 'offline', pending: 0 }

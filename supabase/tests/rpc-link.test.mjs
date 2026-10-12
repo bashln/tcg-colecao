@@ -46,6 +46,14 @@ async function commit(actor, planId, digest, operations, deviceId = DEVICE) {
   return response.rows[0].result;
 }
 
+async function snapshot(actor, expectedHighWater) {
+  const response = await actor.query(
+    'select public.read_collection_link_snapshot($1::bigint) as result',
+    [expectedHighWater],
+  );
+  return response.rows[0].result;
+}
+
 function newUser() {
   return `00000000-0000-0000-0000-${Math.random().toString(16).slice(2, 12).padEnd(12, '0')}`;
 }
@@ -187,6 +195,36 @@ describe('commit_collection_link', () => {
       () => commit(anon, randomUUID(), 'digest-x-1234567', []),
       /permission denied/,
     );
+    await anon.end();
+  });
+});
+
+describe('read_collection_link_snapshot', () => {
+  test('returns only active rows owned by the authenticated user at expected sequence', async () => {
+    const user = newUser();
+    const otherUser = newUser();
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: user });
+    const otherActor = await cluster.connectActor({ role: 'authenticated', sub: otherUser });
+    await push(actor, [createOp(item('item-snapshot-0001', { pricePaid: { amount: 1234, currency: 'USD' } }))]);
+
+    const result = await snapshot(actor, 1);
+    const isolated = await snapshot(otherActor, 0);
+
+    assert.equal(result.highWater, 1);
+    assert.deepEqual(result.items, [{
+      id: 'item-snapshot-0001', cardId: 'card-item-snapshot-0001', quantity: 1,
+      variant: 'NORMAL', condition: 'NEAR_MINT',
+      pricePaid: { amount: 1234, currency: 'USD' }, addedAt: 1_700_000_000_000, revision: 1,
+    }]);
+    assert.deepEqual(isolated, { highWater: 0, items: [] });
+    await assert.rejects(() => snapshot(actor, 0), /stale-preview/);
+    await actor.end();
+    await otherActor.end();
+  });
+
+  test('anon cannot read a collection snapshot', async () => {
+    const anon = await cluster.connectActor({ role: 'anon', sub: null });
+    await assert.rejects(() => snapshot(anon, 0), /permission denied/);
     await anon.end();
   });
 });

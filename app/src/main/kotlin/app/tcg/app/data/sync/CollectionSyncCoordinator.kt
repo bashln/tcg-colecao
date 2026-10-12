@@ -11,9 +11,11 @@ interface SyncLocalStore {
     suspend fun saveSequence(identity: String, sequence: Long): Boolean
 }
 
+data class SyncConflictDetail(val itemId: String, val reason: String)
+
 sealed interface SyncResult {
     data class Complete(val applied: Int, val pending: Int) : SyncResult
-    data class Conflicts(val count: Int, val pending: Int) : SyncResult
+    data class Conflicts(val count: Int, val pending: Int, val details: List<SyncConflictDetail> = emptyList()) : SyncResult
     data class Offline(val pending: Int) : SyncResult
     data class Error(val pending: Int) : SyncResult
 }
@@ -35,11 +37,14 @@ class CollectionSyncCoordinator(
             if (identity.get() != boundIdentity) return SyncResult.Offline(pending.size)
             val outcomes = transport.push(boundIdentity, pending)
             var applied = 0
-            var conflicts = 0
+            val conflicts = mutableListOf<SyncConflictDetail>()
             pending.zip(outcomes).forEach { (operation, outcome) ->
                 if (identity.get() != boundIdentity) return SyncResult.Offline(pending.size)
                 when (outcome) {
-                    is PushOutcome.Conflict -> conflicts++
+                    is PushOutcome.Conflict -> conflicts += SyncConflictDetail(
+                        itemId = operation.itemId(),
+                        reason = outcome.reason,
+                    )
                     is PushOutcome.Applied, is PushOutcome.AlreadyApplied -> {
                         if (!local.acknowledge(boundIdentity, operation.opId)) {
                             return SyncResult.Error(pending.size)
@@ -61,7 +66,7 @@ class CollectionSyncCoordinator(
             }
 
             val remaining = local.pending(boundIdentity).size
-            if (conflicts > 0) SyncResult.Conflicts(conflicts, remaining)
+            if (conflicts.isNotEmpty()) SyncResult.Conflicts(conflicts.size, remaining, conflicts)
             else SyncResult.Complete(applied, remaining)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -70,4 +75,10 @@ class CollectionSyncCoordinator(
             SyncResult.Error(remaining)
         }
     }
+}
+
+private fun SyncOperation.itemId(): String = when (this) {
+    is SyncOperation.Delete -> itemId
+    is SyncOperation.Create -> item.id
+    is SyncOperation.Replace -> item.id
 }

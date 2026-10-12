@@ -73,6 +73,29 @@ test('push serializes operations and maps per-operation server outcomes', async 
   assert.equal(outcomes[0]?.kind, 'applied')
 })
 
+test('push converts purchase money to minor units before sending it', async () => {
+  const operation = createOp('10000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001')
+  if (operation.kind !== 'create') throw new Error('expected create operation')
+  operation.item.pricePaid = { amount: 12.34, currency: 'USD' }
+  const { http, record } = httpStub({ push_collection_operations: { status: 'ok', results: [], highWater: 0 } })
+
+  await createSupabaseTransport({ http }).push('account-a', [operation])
+
+  const operations = record[0]?.body.p_operations as Array<Record<string, unknown>>
+  const item = operations[0]?.item as Record<string, unknown>
+  assert.deepEqual(item.pricePaid, { amount: 1234, currency: 'USD' })
+})
+
+test('push refuses purchase money with precision the database cannot store', async () => {
+  const operation = createOp('10000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000001')
+  if (operation.kind !== 'create') throw new Error('expected create operation')
+  operation.item.pricePaid = { amount: 12.345, currency: 'USD' }
+  const { http, record } = httpStub({ push_collection_operations: { status: 'ok', results: [], highWater: 0 } })
+
+  await assert.rejects(() => createSupabaseTransport({ http }).push('account-a', [operation]))
+  assert.equal(record.length, 0)
+})
+
 test('push maps conflict, already-applied and server rejection distinctly', async () => {
   const base = createOp('10000000-0000-4000-8000-000000000011', '20000000-0000-4000-8000-000000000001')
   const { http } = httpStub({
@@ -158,4 +181,129 @@ test('pull requests the cursor page and returns ordered operations with high wat
   assert.ok(remove && remove.sequence === 8)
   assert.equal(remove?.operation.kind, 'delete')
   assert.ok(remove && remove.operation.kind === 'delete' && remove.operation.baseRevision === 1)
+})
+
+test('pull converts remote minor units back to purchase money', async () => {
+  const { http } = httpStub({
+    pull_collection_operations: {
+      operations: [{
+        opId: '10000000-0000-4000-8000-000000000004',
+        serverSequence: 1,
+        deviceId: '20000000-0000-4000-8000-000000000001',
+        itemId: '00000000-0000-4000-8000-000000000001',
+        kind: 'create',
+        baseRevision: null,
+        item: {
+          id: '00000000-0000-4000-8000-000000000001',
+          cardId: 'base1-4',
+          quantity: 1,
+          variant: 'NORMAL',
+          condition: 'NEAR_MINT',
+          pricePaid: { amount: 1234, currency: 'USD' },
+          addedAt: 1_791_667_200_000,
+        },
+      }],
+      highWater: 1,
+    },
+  })
+
+  const page = await createSupabaseTransport({ http }).pull('account-a', 0)
+  const operation = page.operations[0]?.operation
+
+  assert.ok(operation?.kind === 'create')
+  assert.deepEqual(operation.item.pricePaid, { amount: 12.34, currency: 'USD' })
+})
+
+test('prepareLink sends a canonical local snapshot in minor units and parses the server preview', async () => {
+  const cloudItemId = parseItemId('00000000-0000-4000-8000-000000000002')!
+  const { http, record } = httpStub({
+    prepare_collection_link: {
+      planId: '9f86d081-884c-4d65-9c67-41b405d56001',
+      expiresAt: '2026-10-11T20:00:00Z',
+      remoteHighWater: 12,
+      preview: {
+        localOnly: [itemId], cloudOnly: [cloudItemId], identical: [], conflicting: [], duplicateConfigurations: [],
+      },
+    },
+    read_collection_link_snapshot: { highWater: 12, items: [{
+      id: cloudItemId, cardId, quantity: 1, variant: 'NORMAL', condition: 'NEAR_MINT',
+      pricePaid: { amount: 1234, currency: 'USD' }, addedAt: 1_791_667_200_000, revision: 3,
+    }] },
+  })
+  const transport = createSupabaseTransport({ http })
+  const snapshot = [{
+    id: itemId, cardId, quantity: 2, variant: 'NORMAL' as const, condition: 'NEAR_MINT' as const,
+    pricePaid: { amount: 12.34, currency: 'USD' as const }, addedAt: 1_791_667_200_000,
+  }]
+
+  const plan = await transport.prepareLink(snapshot)
+
+  assert.equal(record[0]?.fn, 'prepare_collection_link')
+  assert.equal(record[0]?.body.p_remote_sequence, 0)
+  assert.equal(record[1]?.fn, 'read_collection_link_snapshot')
+  assert.equal(record[1]?.body.p_expected_high_water, 12)
+  const bodyItems = record[0]?.body.p_local_items as Array<Record<string, unknown>>
+  assert.deepEqual(bodyItems[0]?.pricePaid, { amount: 1234, currency: 'USD' })
+  assert.equal(typeof record[0]?.body.p_local_digest, 'string')
+  assert.equal(plan.localOnly[0], itemId)
+  assert.equal(plan.cloudOnly[0], cloudItemId)
+  assert.equal(plan.remoteHighWater, 12)
+  assert.deepEqual(plan.remoteItems[0], {
+    id: cloudItemId, cardId, quantity: 1, variant: 'NORMAL', condition: 'NEAR_MINT',
+    pricePaid: { amount: 12.34, currency: 'USD' }, addedAt: 1_791_667_200_000, revision: 3,
+  })
+})
+
+test('prepareLink refuses malformed preview data instead of inventing an empty plan', async () => {
+  const { http } = httpStub({ prepare_collection_link: { preview: { localOnly: 'not-an-array' } } })
+
+  await assert.rejects(() => createSupabaseTransport({ http }).prepareLink([]))
+})
+
+test('prepareLink refuses a remote snapshot from a different high-water mark', async () => {
+  const { http } = httpStub({
+    prepare_collection_link: {
+      planId: '9f86d081-884c-4d65-9c67-41b405d56001',
+      expiresAt: '2026-10-11T20:00:00Z',
+      remoteHighWater: 12,
+      preview: { localOnly: [], cloudOnly: [], identical: [], conflicting: [], duplicateConfigurations: [] },
+    },
+    read_collection_link_snapshot: { highWater: 13, items: [] },
+  })
+
+  await assert.rejects(() => createSupabaseTransport({ http }).prepareLink([]), /mudou durante a prévia/)
+})
+
+test('commitLink sends signed seed operations only when explicitly called and reports server result', async () => {
+  const operation = createOp('10000000-0000-4000-8000-000000000099', '20000000-0000-4000-8000-000000000099')
+  const { http, record } = httpStub({
+    commit_collection_link: {
+      status: 'linked',
+      push: {
+        status: 'ok',
+        results: [{ opId: operation.opId, status: 'applied', revision: 1 }],
+        highWater: 4,
+      },
+    },
+  })
+  const transport = createSupabaseTransport({ http })
+  const plan = {
+    planId: '9f86d081-884c-4d65-9c67-41b405d56001', digest: 'digest-12345678',
+    expiresAt: '2026-10-11T20:00:00Z', remoteHighWater: 3,
+    localOnly: [itemId], cloudOnly: [], identical: [], conflicting: [], duplicateConfigurations: [], remoteItems: [],
+  }
+
+  const result = await transport.commitLink(plan, operation.deviceId, [operation])
+
+  assert.equal(record[0]?.fn, 'commit_collection_link')
+  assert.equal(record[0]?.body.p_plan_id, plan.planId)
+  assert.equal(record[0]?.body.p_digest, plan.digest)
+  assert.equal(record[0]?.body.p_device_id, operation.deviceId)
+  const sent = record[0]?.body.p_operations as Array<Record<string, unknown>>
+  assert.equal(sent[0]?.opId, operation.opId)
+  assert.equal(typeof sent[0]?.signature, 'string')
+  assert.deepEqual(result, {
+    kind: 'linked', highWater: 4,
+    outcomes: [{ kind: 'applied', sequence: 1, opId: operation.opId }],
+  })
 })

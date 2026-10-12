@@ -22,7 +22,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +42,8 @@ import androidx.navigation.navArgument
 import app.tcg.app.BuildConfig
 import app.tcg.app.R
 import app.tcg.app.auth.AuthController
+import app.tcg.app.data.sync.SyncLinkCoordinator
+import app.tcg.app.data.sync.SyncLifecycle
 import app.tcg.app.data.sync.SyncLinkRepository
 import app.tcg.app.ui.account.AccountScreen
 import app.tcg.app.ui.account.AccountViewModel
@@ -93,6 +94,8 @@ fun AppNav(
     collectionRepository: CollectionRepository,
     authController: AuthController,
     syncLinkRepository: SyncLinkRepository,
+    syncLinkCoordinator: SyncLinkCoordinator,
+    syncLifecycle: SyncLifecycle,
     updateCoordinator: UpdateCoordinator,
     updateInstaller: UpdateInstaller,
     navController: NavHostController = rememberNavController(),
@@ -198,14 +201,22 @@ fun AppNav(
                 )
             }
             composable(Routes.ACCOUNT) {
-                val scope = rememberCoroutineScope()
                 val viewModel: AccountViewModel = viewModel(
                     factory = viewModelFactory {
                         initializer {
                             AccountViewModel(
                                 auth = authController,
-                                onLinkConfirmed = { identity -> scope.launch { syncLinkRepository.link(identity) } },
-                                onLinkUnlinked = { scope.launch { syncLinkRepository.unlink() } },
+                                link = syncLinkCoordinator,
+                                syncStatus = syncLifecycle.status,
+                                onSyncNow = { syncLifecycle.request() },
+                                onLinkConfirmed = { identity ->
+                                    syncLifecycle.persistAndRefreshBinding(
+                                        authState = { authController.state.value },
+                                        persistBinding = { syncLinkRepository.link(identity) },
+                                        readLinkedIdentity = syncLinkRepository::currentIdentity,
+                                    ).await()
+                                },
+                                onLinkUnlinked = { syncLifecycle.unlinkBinding(syncLinkRepository::unlink) },
                             )
                         }
                     },
@@ -217,6 +228,7 @@ fun AppNav(
                     onRequestLink = viewModel::requestLink,
                     onConfirmLink = viewModel::confirmLink,
                     onCancelLink = viewModel::cancelLink,
+                    onSyncNow = viewModel::syncNow,
                     onSignOut = viewModel::signOut,
                     onDismissError = viewModel::dismissError,
                 )

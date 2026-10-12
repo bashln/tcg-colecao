@@ -250,6 +250,31 @@ describe('push_collection_operations', () => {
     await actor.end();
   });
 
+  test('stores purchase prices in exact minor currency units and rejects major-unit payloads', async () => {
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: USER_A });
+    const exact = op({ item: item({
+      id: 'item-money-cents-01',
+      pricePaid: { amount: 1234, currency: 'USD' },
+    }) });
+    const accepted = await push(actor, [exact]);
+    assert.equal(outcome(accepted.rows[0].result, exact.opId).status, 'applied');
+
+    const stored = await cluster.admin.query(
+      `select price_paid_amount::int as amount, price_paid_currency as currency
+       from public.collection_items where item_id = 'item-money-cents-01'`,
+    );
+    assert.deepEqual(stored.rows, [{ amount: 1234, currency: 'USD' }]);
+
+    const decimal = op({ item: item({
+      id: 'item-money-major-01',
+      pricePaid: { amount: 12.34, currency: 'USD' },
+    }) });
+    const rejected = await push(actor, [decimal]);
+    assert.equal(outcome(rejected.rows[0].result, decimal.opId).status, 'rejected');
+    assert.equal(outcome(rejected.rows[0].result, decimal.opId).reason, 'invalid-payload');
+    await actor.end();
+  });
+
   test('anon cannot call push', async () => {
     const anon = await cluster.connectActor({ role: 'anon', sub: null });
     await assert.rejects(() => push(anon, [op({})]), /permission denied/);

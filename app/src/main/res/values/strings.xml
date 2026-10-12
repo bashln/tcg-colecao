@@ -198,7 +198,9 @@
     <string name="account_linked">Sincronização ativada. Sua coleção é salva na conta e neste aparelho.</string>
     <string name="account_sign_out">Sair da conta</string>
     <string name="account_link_preview_title">Sincronizar com sua conta?</string>
-    <string name="account_link_preview_body">Vamos enviar uma cópia da sua coleção para a conta e buscá-la em outros aparelhos. Nada é enviado agora sem a sua confirmação. Você pode cancelar e continuar só no aparelho.</string>
+    <string name="account_link_preview_intro">Nada foi enviado até agora. Confira o que acontece ao confirmar:</string>
+    <string name="account_link_blocked_body">Resolva as linhas acima antes de vincular. Nada foi enviado e sua coleção local não mudou.</string>
+    <string name="account_link_footer">Ao confirmar, a coleção local passa a ser sincronizada com esta conta. Você pode sair da conta depois sem apagar as cartas deste aparelho.</string>
     <string name="account_link_confirm">Confirmar e sincronizar</string>
     <string name="account_link_cancel">Cancelar</string>
     <string name="account_dismiss_error">Fechar</string>
@@ -207,6 +209,46 @@
     <string name="account_error_email_not_confirmed">Confirme o e-mail antes de entrar.</string>
     <string name="account_error_network">Sem conexão. Tente de novo.</string>
     <string name="account_error_unknown">Não foi possível continuar. Tente de novo.</string>
+    <string name="account_error_link_blocked">A prévia encontrou linhas que precisam da sua atenção. Revise e tente de novo.</string>
+    <string name="account_sync_idle">Verificando sincronização…</string>
+    <string name="account_sync_running">Sincronizando com a conta…</string>
+    <string name="account_sync_running_button">Sincronizando…</string>
+    <string name="account_sync_synced">Sincronizado. Nenhuma alteração pendente.</string>
+    <string name="account_sync_now">Sincronizar agora</string>
+    <string name="account_sync_offline">Sem conexão agora. %1$d alterações ficam pendentes e serão enviadas quando a conexão voltar. Nada foi perdido.</string>
+    <string name="account_sync_error">Não foi possível sincronizar agora. %1$d alterações continuam pendentes e nada foi perdido.</string>
+    <string name="account_sync_conflict_row">• %1$s: %2$s</string>
+    <plurals name="account_sync_pending">
+        <item quantity="one">%1$d alteração aguardando envio</item>
+        <item quantity="other">%1$d alterações aguardando envio</item>
+    </plurals>
+    <plurals name="account_sync_conflicts">
+        <item quantity="one">%1$d conflito de sincronização precisa da sua atenção. A posse continuou local e pendente.</item>
+        <item quantity="other">%1$d conflitos de sincronização precisam da sua atenção. As posses continuaram locais e pendentes.</item>
+    </plurals>
+    <string name="account_error_link_stale">A prévia ficou desatualizada. Gere uma nova prévia para continuar.</string>
+    <string name="account_error_link_partial">A nuvem pode já ter recebido itens da prévia, mas este aparelho não concluiu o vínculo. Gere uma nova prévia e confira conflitos antes de confirmar novamente.</string>
+
+    <plurals name="account_link_local_only">
+        <item quantity="one">%1$d posse só neste aparelho será enviada para a conta</item>
+        <item quantity="other">%1$d posses só neste aparelho serão enviadas para a conta</item>
+    </plurals>
+    <plurals name="account_link_cloud_only">
+        <item quantity="one">%1$d posse só na nuvem será adicionada aqui</item>
+        <item quantity="other">%1$d posses só na nuvem serão adicionadas aqui</item>
+    </plurals>
+    <plurals name="account_link_identical">
+        <item quantity="one">%1$d posse já existe idêntica nas duas pontas</item>
+        <item quantity="other">%1$d posses já existem idênticas nas duas pontas</item>
+    </plurals>
+    <plurals name="account_link_conflicting">
+        <item quantity="one">%1$d posse tem uma versão diferente na nuvem</item>
+        <item quantity="other">%1$d posses têm versões diferentes na nuvem</item>
+    </plurals>
+    <plurals name="account_link_duplicates">
+        <item quantity="one">%1$d posse repetiria uma configuração que já existe na nuvem</item>
+        <item quantity="other">%1$d posses repetiriam configurações que já existem na nuvem</item>
+    </plurals>
 
     <string name="update_title">Atualizações</string>
     <string name="update_intro">Veja se há uma versão nova do app. As atualizações vêm do repositório público no GitHub.</string>

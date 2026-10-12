@@ -128,6 +128,40 @@
 - [x] **`SupabaseSyncTransport` (Android) TDD RED→GREEN**: serialização de create/replace/delete, assinatura SHA-256 canônica (igual à web) para detectar reuso de `opId`, mapeamento applied/already-applied/conflict/rejected, erros tipados `UNAUTHORIZED`/`DEVICE_REVOKED`/`UNAVAILABLE`, recusa de sessão anônima antes de rede, cursor de pull por `serverSequence`.
 - [x] **Room `SyncLocalStore`**: aplicação remota autoritativa e atômica (item + cursor na mesma transação), replay idempotente por cursor monotônico por identidade (tabela `sync_cursor`, migração 4→5), ack isolado e proteção contra troca de identidade; colisão de configuração falha sem sobrescrever dados locais.
 - [x] **Auth core Android**: `AuthController` (restore/refresh de sessão, signUp auto-confirm vs aguardando verificação, signIn, signOut best-effort que nunca toca a coleção) + `SupabaseAuthClient` (GoTrue `/auth/v1`) com erros não-revelatórios; sessão persistida via boundary `SessionStore`. Armazenamento seguro de plataforma pronto (SessionCipher Keystore AES-GCM + EncryptedSessionStore). UI de conta + prévia de vínculo ficam na próxima unidade.
-- [ ] **Acionadores automáticos**: sync após edição local, ao retomar o app e ao restaurar rede enquanto ativo; preservar modo local-only offline e no sign-out.
-- [ ] **Reconciliar dinheiro**: web/kotlin usam `Double`, o servidor grava `bigint`; decidir unidades menores para não truncar centavos.
-- [ ] **Migração/RLS/RPC aplicadas** ao projeto isolado `fwzzwqakrvogafqiatgo` e **roundtrip real entre dois clientes** (não mocks) antes de afirmar sync completo.
+- [x] **Acionadores automáticos**: implementação local aciona sync após edição, retomada e recuperação de rede; logout/troca preservam coleção e param sync. Gates serão reexecutados nesta retomada.
+- [x] **Reconciliar dinheiro**: transporte Web e Android usa unidades menores e rejeita precisão extra; vetores de wire compartilhados verificam assinatura idêntica. Gates serão reexecutados nesta retomada.
+- [x] **Migração/RLS/RPC aplicadas** ao projeto isolado `fwzzwqakrvogafqiatgo`; seis tabelas sync sem dados, conforme contagem 2026-10-12.
+- [ ] **Round-trip hospedado real** entre duas contas/dispositivos e isolamento: bloqueado até haver dois e-mails confirmados por SMTP/domínio configurado. Não usar conta pessoal.
+
+# Phase 7: Account sync completion audit
+
+- [x] Read the current execution and shutdown records before touching the worktree.
+- [x] Confirm the prior Goal Worker stopped and inspect its report against the actual checkout.
+- [x] Refresh hosted Supabase security and performance advisors without changing remote state.
+- [x] Recheck only aggregate counts for six sync tables and Auth accounts; preserve the unconfirmed Auth account because its identity/purpose is not established.
+- [x] Compare local Supabase migration versions with the linked project's migration registry using the read-only CLI list command.
+- [x] Prove `db push` safety with `--dry-run`; after history-only `migration repair`, it reports remote database up to date.
+- [x] Independent reviews completed; remaining M3/M4/L2/L3 and protocol findings F8/F9/F10/F11/F12/F15 documented as release blockers.
+- [ ] `BLOCKED: no-comments requires comment-sicko, which is not available in the OpenCode subagent registry; do not claim this specialist audit ran.`
+- [x] Run fresh full local gates for Web, Android, and PostgreSQL, then inspect traces/reports and the exact git diff.
+  - [x] Web unit: `npm run test:unit`, 65/65 pass after latest sync follow-up.
+  - [x] Web production build: `npm run build` pass.
+  - [x] Web E2E Chromium: 30/30 pass; all 30 traces retained under `web/test-results/`.
+  - [x] PostgreSQL harness: `npm test`, 34/34 pass using temporary local clusters.
+  - [x] Android: `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug --rerun-tasks`; core 65, app 279, zero failures.
+  - [x] Whitespace: `git diff --check` clean; explicit scan found no trailing whitespace in 37 untracked source/docs files.
+- [x] Resolve verified local/remote migration-history drift without replaying schema DDL or changing user data; `migration list` aligns 4/4 and `db push --dry-run` is up to date.
+- [ ] Verify every definition-of-done item; hosted Auth/two-account round-trip INCONCLUSIVE because controlled confirmed accounts/SMTP remain unavailable.
+- [ ] WebKit/iPhone remains unverified; Playwright's browser-list command could not enumerate installations because its local `.links` directory is missing. Do not claim WebKit coverage.
+- [x] User explicitly authorized branch commit and push; no release, deploy, merge, or destructive data action authorized.
+- [x] Update `progress.json`, `errors.json`, and `.audit/supabase-auto-sync.tsv` with current run evidence and blockers; preserve SDD ledger and historical transcript.
+- [ ] Report exactly what is verified, what remains externally blocked, and why security-sensitive ACL changes were not made.
+
+## Review follow-up: critical account sync fixes
+
+- [x] Ground Android sync lifecycle and auth transport by tracing current call sites and tests.
+- [x] Sketch and cross-judge session identity binding design for race-safe RPC dispatch. Hybrid selected: capture coherent session and compare bound identity before dispatch; no SQL migration needed because request token remains bound to captured owner.
+- [x] TDD RED/GREEN: bind CollectionSyncCoordinator identity whenever SyncLifecycle binding changes.
+- [x] TDD RED/GREEN: reject sync RPC when captured AuthSession user differs from the coordinator identity.
+- [ ] Inspect remaining review findings and fix confirmed high-risk issues one by one; M3/M4/L2/L3 and F8/F9/F10/F11/F12/F15 remain.
+- [x] Run focused and full regression gates; update progress/errors and audit ledger.
