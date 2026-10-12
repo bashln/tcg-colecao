@@ -12,6 +12,13 @@
 -- transaction. `invalid-payload`, `device-revoked` and `revision-limit` outcomes stay
 -- distinct from resolvable content conflicts, and no client-supplied cloud value or base
 -- revision is ever trusted — every snapshot is read from the database.
+--
+-- The `source` discriminator fences the legacy pull-conflict RPCs away from push-protocol
+-- rows: rows that already exist are classified as `legacy`, rows recorded by this push
+-- path are `push`. Historical duplicate open retries (created before the uniqueness
+-- guards) are consolidated deterministically — the oldest open row wins, later duplicates
+-- are closed as superseded with `superseded_by` pointing at the winner — so no payload is
+-- ever deleted and operator-visible state stays reachable.
 
 alter table public.sync_conflicts
   add column cloud_item jsonb,
@@ -21,16 +28,63 @@ alter table public.sync_conflicts
   add column resolution_id uuid,
   add column resolution_choice text,
   add column resolution_result jsonb,
-  add column resolution_device_id text;
+  add column resolution_device_id text,
+  add column source text not null default 'legacy',
+  add column superseded_by uuid references public.sync_conflicts (id);
 
 alter table public.sync_conflicts
   add constraint sync_conflicts_push_choice_check
   check (resolution_choice is null or resolution_choice in ('keep-local', 'keep-cloud'));
 
--- One open row per operation: retries reuse it, acknowledgments close it.
-create unique index sync_conflicts_open_operation
+alter table public.sync_conflicts
+  add constraint sync_conflicts_source_check
+  check (source in ('legacy', 'push'));
+
+-- Deterministic, non-destructive consolidation of duplicate open retries left behind by
+-- the old push implementation. The oldest open row per key is canonical; later duplicates
+-- keep their payload and are marked closed + superseded. Re-running is a no-op because
+-- closed rows drop out of the ranking.
+do $$
+begin
+  with ranked as (
+    select id,
+           first_value(id) over (partition by collection_id, op_id
+                                 order by created_at, id) as canonical_id
+      from public.sync_conflicts
+     where op_id is not null and resolved_at is null
+  ), losers as (
+    select id, canonical_id from ranked where id <> canonical_id
+  )
+  update public.sync_conflicts sc
+     set resolved_at = now(), superseded_by = l.canonical_id
+    from losers l
+   where sc.id = l.id;
+
+  with ranked as (
+    select id,
+           first_value(id) over (partition by collection_id, payload
+                                 order by created_at, id) as canonical_id
+      from public.sync_conflicts
+     where op_id is null and resolved_at is null
+       and payload is not null
+  ), losers as (
+    select id, canonical_id from ranked where id <> canonical_id
+  )
+  update public.sync_conflicts sc
+     set resolved_at = now(), superseded_by = l.canonical_id
+    from losers l
+   where sc.id = l.id;
+end $$;
+
+-- One open row per operation id, and one per malformed payload (operation id missing):
+-- retries reuse it, acknowledgments and supersession close it.
+create unique index if not exists sync_conflicts_open_operation
   on public.sync_conflicts (collection_id, op_id)
   where resolved_at is null and op_id is not null;
+
+create unique index if not exists sync_conflicts_open_malformed
+  on public.sync_conflicts (collection_id, payload)
+  where resolved_at is null and op_id is null and payload is not null;
 
 create function public._tcg_item_snapshot(p_collection_id uuid, p_item_id text)
   returns jsonb
@@ -70,11 +124,20 @@ as $$
   limit 1;
 $$;
 
+-- Target item of a rejected operation, derived strictly by operation kind: a `delete`
+-- addresses `itemId` and must never follow a crafted nested `item.id`, while
+-- `create`/`replace` address `item.id`. Operations without a recognized kind (malformed
+-- or legacy rows) keep the payload-first fallback. The recorded column is only a
+-- fallback, never an override.
 create function public._tcg_push_target_item(p_item_id text, p_operation jsonb)
   returns text
   language sql immutable set search_path = public, pg_temp
 as $$
-  select coalesce(p_operation -> 'item' ->> 'id', p_operation ->> 'itemId', p_item_id);
+  select case
+    when p_operation ->> 'kind' = 'delete' then coalesce(p_operation ->> 'itemId', p_item_id)
+    when p_operation ->> 'kind' in ('create', 'replace') then coalesce(p_operation -> 'item' ->> 'id', p_item_id)
+    else coalesce(p_operation -> 'item' ->> 'id', p_operation ->> 'itemId', p_item_id)
+  end;
 $$;
 
 -- Authoritative cloud state for a rejected operation: the current row or tombstone for
@@ -98,7 +161,10 @@ as $$
 $$;
 
 -- Records (or refreshes) the single open conflict row for an operation and returns its
--- durable id together with the snapshot the client must compare against.
+-- durable id together with the snapshot the client must compare against. Rows recorded
+-- here are `push`-source rows: the push protocol owns their visibility and their close.
+-- Operations without a valid operation id reuse the open row with the same payload, so
+-- malformed retries cannot grow the open set without bound.
 create function public._tcg_record_push_conflict(
   p_collection_id uuid,
   p_op_id uuid,
@@ -120,18 +186,28 @@ begin
 
   if p_op_id is null then
     insert into public.sync_conflicts
-      (collection_id, op_id, device_id, item_id, reason, payload, owner,
+      (collection_id, op_id, device_id, item_id, reason, payload, owner, source,
        cloud_item, conflicting_item, observed_high_water, refreshed_at)
     values
-      (p_collection_id, null, p_device_id, p_item_id, p_reason, p_operation, p_owner,
+      (p_collection_id, null, p_device_id, p_item_id, p_reason, p_operation, p_owner, 'push',
        v_state -> 'cloudItem', v_state -> 'conflictingItem', v_high, now())
+    on conflict (collection_id, payload) where resolved_at is null and op_id is null and payload is not null
+    do update set
+      device_id = excluded.device_id,
+      item_id = excluded.item_id,
+      reason = excluded.reason,
+      source = 'push',
+      cloud_item = excluded.cloud_item,
+      conflicting_item = excluded.conflicting_item,
+      observed_high_water = excluded.observed_high_water,
+      refreshed_at = now()
     returning id into v_id;
   else
     insert into public.sync_conflicts
-      (collection_id, op_id, device_id, item_id, reason, payload, owner,
+      (collection_id, op_id, device_id, item_id, reason, payload, owner, source,
        cloud_item, conflicting_item, observed_high_water, refreshed_at)
     values
-      (p_collection_id, p_op_id, p_device_id, p_item_id, p_reason, p_operation, p_owner,
+      (p_collection_id, p_op_id, p_device_id, p_item_id, p_reason, p_operation, p_owner, 'push',
        v_state -> 'cloudItem', v_state -> 'conflictingItem', v_high, now())
     on conflict (collection_id, op_id) where resolved_at is null and op_id is not null
     do update set
@@ -139,6 +215,7 @@ begin
       item_id = excluded.item_id,
       reason = excluded.reason,
       payload = excluded.payload,
+      source = 'push',
       cloud_item = excluded.cloud_item,
       conflicting_item = excluded.conflicting_item,
       observed_high_water = excluded.observed_high_water,
@@ -266,7 +343,7 @@ begin
       else
         v_rec := public._tcg_record_push_conflict(
           v_cid, v_op_uuid, p_device_id,
-          coalesce(v_op->'item'->>'id', v_op->>'itemId'),
+          public._tcg_push_target_item(null, v_op),
           'id-collision', v_op, v_owner);
         v_results := v_results || public._tcg_push_outcome(v_op_id, 'conflict', 'id-collision', v_op, v_rec);
       end if;
@@ -280,6 +357,15 @@ begin
       v_item_id := v_item->>'id';
     else
       v_rec := public._tcg_record_push_conflict(v_cid, v_op_uuid, p_device_id, null, 'invalid-payload', v_op, v_owner);
+      v_results := v_results || public._tcg_push_outcome(v_op_id, 'rejected', 'invalid-payload', v_op, v_rec);
+      continue;
+    end if;
+
+    -- A delete addresses exactly one item through `itemId`. A nested `item` object on a
+    -- delete is a crafted payload: reject it as a permanent error instead of letting its
+    -- second id steer any snapshot, resolution, or tombstone.
+    if v_kind = 'delete' and jsonb_typeof(v_op->'item') = 'object' then
+      v_rec := public._tcg_record_push_conflict(v_cid, v_op_uuid, p_device_id, v_item_id, 'invalid-payload', v_op, v_owner);
       v_results := v_results || public._tcg_push_outcome(v_op_id, 'rejected', 'invalid-payload', v_op, v_rec);
       continue;
     end if;
@@ -594,6 +680,26 @@ begin
   v_signature := coalesce(v_row.payload ->> 'signature', v_row.id::text);
   v_item := v_row.payload -> 'item';
   v_target := public._tcg_push_target_item(v_row.item_id, v_row.payload);
+
+  -- A delete may only ever address its `itemId`: a forbidden nested `item` object means
+  -- the payload carries a second id, so no choice may be applied from it.
+  if v_row.payload ->> 'kind' = 'delete' and jsonb_typeof(v_item) = 'object' then
+    return jsonb_build_object(
+      'status', 'invalid-resolution',
+      'conflictId', v_row.id,
+      'reason', 'invalid-payload');
+  end if;
+
+  -- The target is validated at the boundary: an id-collision may retain an item id that
+  -- never passed the payload checks, and it must surface as a typed refusal rather than
+  -- a database CHECK violation mid-apply.
+  if v_target is null or v_target !~ '^[a-zA-Z0-9-]{8,80}$' then
+    return jsonb_build_object(
+      'status', 'invalid-resolution',
+      'conflictId', v_row.id,
+      'reason', 'invalid-payload');
+  end if;
+
   v_duplicate_owner := null;
   if v_row.reason = 'duplicate-configuration' and jsonb_typeof(v_item) = 'object' then
     v_duplicate_owner := public._tcg_find_config_owner(v_row.collection_id, v_item, v_target);
@@ -868,6 +974,87 @@ begin
     'conflictId', v_row.id,
     'resolutionId', v_row.resolution_id,
     'choice', v_row.resolution_choice);
+end;
+$$;
+
+-- Legacy pull-conflict RPCs, fenced from push-protocol rows. The legacy read only ever
+-- lists `legacy` rows; on a `push` row the legacy resolver mirrors its historical
+-- idempotent statuses but never closes the row, so an unacknowledged receipt stays
+-- replayable and the push protocol alone owns the close. Legacy rows behave exactly as
+-- before.
+create or replace function public.read_collection_conflicts()
+  returns jsonb
+  language plpgsql stable security definer set search_path = public, pg_temp
+as $$
+declare
+  v_owner uuid := auth.uid();
+  v_result jsonb;
+begin
+  if v_owner is null then
+    raise exception 'not authenticated';
+  end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', conflict.id,
+    'itemId', conflict.item_id,
+    'reason', conflict.reason,
+    'payload', conflict.payload,
+    'createdAt', conflict.created_at
+  ) order by conflict.created_at, conflict.id), '[]'::jsonb)
+  into v_result
+  from public.sync_conflicts conflict
+  where conflict.owner = v_owner
+    and conflict.resolved_at is null
+    and conflict.source = 'legacy';
+
+  return v_result;
+end;
+$$;
+
+create or replace function public.resolve_collection_conflict(p_conflict_id uuid, p_resolution text, p_device_id text)
+  returns jsonb
+  language plpgsql security definer set search_path = public, pg_temp
+as $$
+declare
+  v_owner uuid := auth.uid();
+begin
+  if v_owner is null then
+    raise exception 'not authenticated';
+  end if;
+  if p_resolution is null or p_resolution not in ('keep-local', 'keep-cloud', 'keep-remote') then
+    raise exception 'invalid-resolution';
+  end if;
+  if p_device_id is null or p_device_id !~ '^[a-zA-Z0-9-]{8,80}$' then
+    raise exception 'invalid-device';
+  end if;
+
+  if exists (
+    select 1 from public.sync_conflicts
+     where id = p_conflict_id and owner = v_owner and source = 'push'
+  ) then
+    -- Mirror the historical statuses without ever setting resolved_at: the push
+    -- protocol owns visibility and close for this row.
+    update public.sync_conflicts
+       set resolution = p_resolution
+     where id = p_conflict_id and owner = v_owner
+       and source = 'push' and resolution is null;
+    if found then
+      return jsonb_build_object('status', 'resolved');
+    end if;
+    return jsonb_build_object('status', 'already-resolved');
+  end if;
+
+  update public.sync_conflicts
+  set resolved_at = now(), resolution = p_resolution
+  where id = p_conflict_id and owner = v_owner and resolved_at is null;
+  if found then
+    return jsonb_build_object('status', 'resolved');
+  end if;
+
+  if exists (select 1 from public.sync_conflicts where id = p_conflict_id and owner = v_owner) then
+    return jsonb_build_object('status', 'already-resolved');
+  end if;
+  return jsonb_build_object('status', 'not-found');
 end;
 $$;
 

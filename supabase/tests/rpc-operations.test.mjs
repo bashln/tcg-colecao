@@ -1,7 +1,9 @@
 import test, { after, before, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { startCluster } from './helpers/platform.mjs';
+import { listMigrations, readMigration, startCluster } from './helpers/platform.mjs';
+
+const DURABLE_PUSH_MIGRATION = '20261012220000_durable_push_conflicts.sql';
 
 const USER_A = '00000000-0000-0000-0000-00000000000a';
 const USER_B = '00000000-0000-0000-0000-00000000000b';
@@ -92,6 +94,28 @@ async function conflictRowCount(opId) {
     [opId],
   );
   return rows.rows[0].n;
+}
+
+async function readLegacyConflicts(actor) {
+  const response = await actor.query('select public.read_collection_conflicts() as result');
+  return response.rows[0].result;
+}
+
+async function resolveLegacyConflict(actor, conflictId, choice, deviceId = DEVICE_A1) {
+  const response = await actor.query(
+    'select public.resolve_collection_conflict($1::uuid, $2::text, $3::text) as result',
+    [conflictId, choice, deviceId],
+  );
+  return response.rows[0].result;
+}
+
+async function conflictRowState(conflictId) {
+  const rows = await cluster.admin.query(
+    `select resolved_at, resolution_id, superseded_by, source
+     from public.sync_conflicts where id = $1::uuid`,
+    [conflictId],
+  );
+  return rows.rows[0];
 }
 
 before(async () => {
@@ -843,5 +867,350 @@ describe('durable push conflict resolution protocol', () => {
     );
     assert.deepEqual(stored.rows, [{ quantity: 2, revision: 2 }], 'cloud state stays untouched');
     await actor.end();
+  });
+
+  test('durable push conflict rejects a delete that carries a second item id', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c00b';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-craft-target-1' }) })]);
+    await push(actor, [op({ item: item({ id: 'item-craft-victim-1' }) })]);
+    await push(actor, [
+      op({ kind: 'replace', item: item({ id: 'item-craft-target-1', quantity: 4 }), baseRevision: 1 }),
+    ]);
+
+    const crafted = {
+      opId: randomUUID(),
+      kind: 'delete',
+      signature: randomUUID(),
+      itemId: 'item-craft-target-1',
+      baseRevision: 1,
+      item: item({ id: 'item-craft-victim-1' }),
+    };
+    const pushed = (await push(actor, [crafted])).rows[0].result;
+    const rejection = outcome(pushed, crafted.opId);
+    assert.equal(rejection.status, 'rejected', 'a delete carrying a nested item is malformed');
+    assert.equal(rejection.reason, 'invalid-payload');
+    assert.equal(
+      rejection.cloudItem.itemId,
+      'item-craft-target-1',
+      'the snapshot must follow itemId for deletes, not a crafted nested id',
+    );
+
+    const refused = await resolvePushConflict(actor, rejection.conflictId, 'keep-local');
+    assert.equal(refused.status, 'invalid-resolution', 'the resolver refuses the forbidden nested item');
+
+    // A legacy-shaped row that already carries the crafted payload must also stay inert.
+    const collection = await cluster.admin.query(
+      'select id from public.collections where owner = $1::uuid',
+      [owner],
+    );
+    const seededId = randomUUID();
+    const seeded = { ...crafted, opId: randomUUID() };
+    await cluster.admin.query(
+      `insert into public.sync_conflicts
+         (id, collection_id, op_id, device_id, item_id, reason, payload, owner)
+       values ($1, $2, $3::uuid, $4, 'item-craft-target-1', 'stale', $5, $6)`,
+      [seededId, collection.rows[0].id, seeded.opId, DEVICE_A1, JSON.stringify(seeded), owner],
+    );
+    const seededResolve = await resolvePushConflict(actor, seededId, 'keep-local');
+    assert.equal(
+      seededResolve.status,
+      'invalid-resolution',
+      'a stale row with a crafted nested delete must not tombstone the other item',
+    );
+
+    const items = await cluster.admin.query(
+      `select item_id, revision::int as revision, deleted from public.collection_items
+       where item_id in ('item-craft-target-1', 'item-craft-victim-1')
+       order by item_id`,
+    );
+    assert.deepEqual(items.rows, [
+      { item_id: 'item-craft-target-1', revision: 2, deleted: false },
+      { item_id: 'item-craft-victim-1', revision: 1, deleted: false },
+    ], 'neither the target nor the unrelated victim may be mutated');
+    const logged = await cluster.admin.query(
+      `select count(*)::int as n from public.collection_operations
+       where op_id = any($1::uuid[])`,
+      [[crafted.opId, seeded.opId]],
+    );
+    assert.equal(logged.rows[0].n, 0, 'no operation may be logged for the crafted deletes');
+    await actor.end();
+  });
+
+  test('push conflict resolution refuses an id-collision payload with a malformed item id', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c00c';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    const applied = op({ item: item({ id: 'item-collision-ok-1' }) });
+    await push(actor, [applied]);
+
+    const forged = {
+      opId: applied.opId,
+      kind: 'create',
+      signature: randomUUID(),
+      item: {
+        id: 'bad id!!',
+        cardId: 'card-bad-000001',
+        quantity: 1,
+        variant: 'NORMAL',
+        condition: 'NEAR_MINT',
+        pricePaid: null,
+        addedAt: 1_700_000_000_000,
+      },
+    };
+    const pushed = (await push(actor, [forged])).rows[0].result;
+    const conflict = outcome(pushed, forged.opId);
+    assert.equal(conflict.status, 'conflict');
+    assert.equal(conflict.reason, 'id-collision');
+
+    const refused = await resolvePushConflict(actor, conflict.conflictId, 'keep-local');
+    assert.equal(
+      refused.status,
+      'invalid-resolution',
+      'a malformed item id must surface as a typed refusal, never a DB CHECK violation',
+    );
+    assert.equal(refused.reason, 'invalid-payload');
+
+    const malformed = await cluster.admin.query(
+      `select item_id from public.collection_items where item_id = 'bad id!!'`,
+    );
+    assert.deepEqual(malformed.rows, [], 'no row may be written under the malformed id');
+    const stored = await cluster.admin.query(
+      `select quantity::int as quantity, revision::int as revision
+       from public.collection_items where item_id = 'item-collision-ok-1'`,
+    );
+    assert.deepEqual(stored.rows, [{ quantity: 1, revision: 1 }], 'cloud state stays untouched');
+    const operations = await cluster.admin.query(
+      `select count(*)::int as n from public.collection_operations o
+       join public.collections c on c.id = o.collection_id
+       where c.owner = $1::uuid`,
+      [owner],
+    );
+    assert.equal(operations.rows[0].n, 1, 'a refused resolution must not append operations');
+    await actor.end();
+  });
+
+  test('durable push conflict keeps malformed operation retries bounded and permanent', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c00d';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    const malformed = { kind: 'create', signature: randomUUID(), item: item({ id: 'item-malformed-01' }) };
+    let stableConflictId;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const pushed = (await push(actor, [malformed])).rows[0].result;
+      const outcomeRow = pushed.results[0];
+      assert.equal(outcomeRow.opId, null, 'the malformed op id is echoed as null');
+      assert.equal(
+        outcomeRow.status,
+        'rejected',
+        'permanent errors stay distinguishable from content conflicts',
+      );
+      assert.equal(outcomeRow.reason, 'invalid-payload');
+      assert.ok(outcomeRow.conflictId);
+      if (stableConflictId === undefined) stableConflictId = outcomeRow.conflictId;
+      assert.equal(
+        outcomeRow.conflictId,
+        stableConflictId,
+        'a malformed retry must reuse its record instead of spawning rows',
+      );
+    }
+
+    const openRows = await cluster.admin.query(
+      `select count(*)::int as n from public.sync_conflicts
+       where owner = $1::uuid and op_id is null and resolved_at is null`,
+      [owner],
+    );
+    assert.equal(openRows.rows[0].n, 1, 'malformed retries must not grow the open set');
+
+    const refused = await resolvePushConflict(actor, stableConflictId, 'keep-local');
+    assert.equal(refused.status, 'invalid-resolution', 'permanent errors stay non-resolvable');
+    const visible = await readPushConflicts(actor);
+    const entry = visible.find((row) => row.id === stableConflictId);
+    assert.ok(entry, 'a permanent error must remain visible, never silently closed');
+    assert.equal(entry.reason, 'invalid-payload');
+    await actor.end();
+  });
+});
+
+describe('legacy conflict resolver fence', () => {
+  test('legacy conflict resolver cannot close an unacknowledged receipt or push conflict', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c00e';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-legacy-fence-1' }) })]);
+    await push(actor, [
+      op({ kind: 'replace', item: item({ id: 'item-legacy-fence-1', quantity: 3 }), baseRevision: 1 }),
+    ]);
+    const stale = op({
+      kind: 'replace',
+      item: item({ id: 'item-legacy-fence-1', quantity: 9 }),
+      baseRevision: 1,
+    });
+    const pushed = (await push(actor, [stale])).rows[0].result;
+    const conflictId = outcome(pushed, stale.opId).conflictId;
+
+    const legacyList = await readLegacyConflicts(actor);
+    assert.deepEqual(legacyList.map((row) => row.id), [], 'the legacy read must not see push-protocol rows');
+
+    const legacyAttempt = await resolveLegacyConflict(actor, conflictId, 'keep-remote');
+    assert.equal(legacyAttempt.status, 'resolved', 'legacy callers keep their idempotent statuses');
+    assert.equal(
+      (await conflictRowState(conflictId)).resolved_at,
+      null,
+      'the legacy resolver must never close a push conflict',
+    );
+    const stillListed = await readPushConflicts(actor);
+    assert.ok(
+      stillListed.find((row) => row.id === conflictId),
+      'the push conflict stays owned by the protocol after a legacy attempt',
+    );
+
+    const resolved = await resolvePushConflict(actor, conflictId, 'keep-cloud');
+    assert.equal(resolved.status, 'resolved');
+    const secondLegacy = await resolveLegacyConflict(actor, conflictId, 'keep-local');
+    assert.equal(secondLegacy.status, 'already-resolved');
+    const receiptState = await conflictRowState(conflictId);
+    assert.equal(receiptState.resolved_at, null, 'an unacknowledged receipt must stay open');
+    assert.equal(
+      receiptState.resolution_id,
+      resolved.resolutionId,
+      'the recorded receipt is untouched by the legacy resolver',
+    );
+    const replayList = await readPushConflicts(actor);
+    assert.equal(
+      replayList.find((row) => row.id === conflictId).resolution.id,
+      resolved.resolutionId,
+      'the receipt still replays after legacy attempts',
+    );
+    assert.equal(receiptState.source, 'push', 'new push rows carry the source discriminator');
+
+    const legacyRowId = randomUUID();
+    const collection = await cluster.admin.query(
+      'select id from public.collections where owner = $1::uuid',
+      [owner],
+    );
+    await cluster.admin.query(
+      `insert into public.sync_conflicts (id, collection_id, item_id, reason, payload, owner)
+       values ($1, $2, 'item-legacy-row-1', 'stale', '{"local":{},"remote":{}}', $3)`,
+      [legacyRowId, collection.rows[0].id, owner],
+    );
+    const legacyOnly = await readLegacyConflicts(actor);
+    assert.deepEqual(legacyOnly.map((row) => row.id), [legacyRowId], 'legacy rows keep their old read view');
+    const legacyResolved = await resolveLegacyConflict(actor, legacyRowId, 'keep-remote');
+    assert.equal(legacyResolved.status, 'resolved');
+    assert.ok(
+      (await conflictRowState(legacyRowId)).resolved_at,
+      'legacy rows still close under the legacy resolver',
+    );
+    const afterLegacyClose = await readPushConflicts(actor);
+    assert.equal(
+      afterLegacyClose.find((row) => row.id === legacyRowId),
+      undefined,
+      'a closed legacy row leaves both views',
+    );
+    await actor.end();
+  });
+});
+
+describe('duplicate open conflict migration safety', () => {
+  test('duplicate open conflict migration consolidates retries without losing payloads', async () => {
+    const seededCluster = await startCluster({ applyMigrations: false });
+    try {
+      for (const name of await listMigrations()) {
+        if (name === DURABLE_PUSH_MIGRATION) continue;
+        await seededCluster.admin.query(await readMigration(name));
+      }
+
+      const owner = '00000000-0000-0000-0000-00000000c00f';
+      const collectionId = randomUUID();
+      const operationId = randomUUID();
+      const opWinnerId = randomUUID();
+      const opLoserId = randomUUID();
+      const malformedWinnerId = randomUUID();
+      const malformedLoserId = randomUUID();
+      const opWinnerPayload = { opId: '11111111-1111-1111-1111-111111111111', kind: 'replace' };
+      const opLoserPayload = { opId: '22222222-2222-2222-2222-222222222222', kind: 'replace' };
+      const malformedPayload = { kind: 'create', note: 'no operation id' };
+
+      await seededCluster.admin.query(
+        'insert into public.collections (id, owner) values ($1::uuid, $2::uuid)',
+        [collectionId, owner],
+      );
+      await seededCluster.admin.query(
+        `insert into public.sync_conflicts
+           (id, collection_id, op_id, device_id, item_id, reason, payload, owner, created_at)
+         values
+           ($1::uuid, $2::uuid, $3::uuid, 'device-mig-a1-0000000000000000', 'item-migrate-01', 'stale', $4, $5, '2026-10-12 10:00:00+00'),
+           ($6::uuid, $2::uuid, $3::uuid, 'device-mig-b1-0000000000000000', 'item-migrate-01', 'stale', $7, $5, '2026-10-12 11:00:00+00')`,
+        [opWinnerId, collectionId, operationId, JSON.stringify(opWinnerPayload), owner, opLoserId, JSON.stringify(opLoserPayload)],
+      );
+      await seededCluster.admin.query(
+        `insert into public.sync_conflicts
+           (id, collection_id, op_id, device_id, item_id, reason, payload, owner, created_at)
+         values
+           ($1::uuid, $2::uuid, null, 'device-mig-a1-0000000000000000', null, 'invalid-payload', $3, $4, '2026-10-12 12:00:00+00'),
+           ($5::uuid, $2::uuid, null, 'device-mig-b1-0000000000000000', null, 'invalid-payload', $3, $4, '2026-10-12 13:00:00+00')`,
+        [malformedWinnerId, collectionId, JSON.stringify(malformedPayload), owner, malformedLoserId],
+      );
+
+      await seededCluster.admin.query(await readMigration(DURABLE_PUSH_MIGRATION));
+
+      const rows = await seededCluster.admin.query(
+        `select id, op_id, payload, resolved_at, superseded_by, source
+         from public.sync_conflicts
+         where collection_id = $1::uuid
+         order by created_at`,
+        [collectionId],
+      );
+      assert.equal(rows.rows.length, 4, 'historical conflict rows are preserved, never deleted');
+      const [opWinner, opLoser, malformedWinner, malformedLoser] = rows.rows;
+      assert.deepEqual(opWinner.payload, opWinnerPayload, 'the canonical payload survives');
+      assert.deepEqual(opLoser.payload, opLoserPayload, 'the superseded payload survives');
+      assert.deepEqual(malformedWinner.payload, malformedPayload);
+      assert.deepEqual(malformedLoser.payload, malformedPayload);
+      assert.equal(opWinner.id, opWinnerId, 'the oldest open row wins deterministically');
+      assert.equal(opWinner.resolved_at, null, 'the canonical conflict stays open and visible');
+      assert.equal(opWinner.superseded_by, null);
+      assert.ok(opLoser.resolved_at, 'the duplicate retry is closed as superseded');
+      assert.equal(opLoser.superseded_by, opWinnerId, 'the pointer names the canonical row');
+      assert.equal(malformedWinner.id, malformedWinnerId);
+      assert.equal(malformedWinner.resolved_at, null);
+      assert.ok(malformedLoser.resolved_at);
+      assert.equal(malformedLoser.superseded_by, malformedWinnerId);
+      assert.equal(opWinner.source, 'legacy', 'pre-existing rows are classified as legacy');
+
+      const indexes = await seededCluster.admin.query(
+        `select indexname from pg_indexes
+         where tablename = 'sync_conflicts'
+           and indexname in ('sync_conflicts_open_operation', 'sync_conflicts_open_malformed')
+         order by indexname`,
+      );
+      assert.deepEqual(
+        indexes.rows.map((row) => row.indexname),
+        ['sync_conflicts_open_malformed', 'sync_conflicts_open_operation'],
+        'both uniqueness guards exist after consolidation',
+      );
+
+      await assert.rejects(
+        () =>
+          seededCluster.admin.query(
+            `insert into public.sync_conflicts (collection_id, op_id, reason, payload, owner)
+             values ($1::uuid, $2::uuid, 'stale', '{"opId":"33333333-3333-3333-3333-333333333333"}', $3::uuid)`,
+            [collectionId, operationId, owner],
+          ),
+        /duplicate key/,
+        'the operation-id uniqueness guard is enforced',
+      );
+      await assert.rejects(
+        () =>
+          seededCluster.admin.query(
+            `insert into public.sync_conflicts (collection_id, op_id, reason, payload, owner)
+             values ($1::uuid, null, 'invalid-payload', $2, $3::uuid)`,
+            [collectionId, JSON.stringify(malformedPayload), owner],
+          ),
+        /duplicate key/,
+        'the malformed-payload uniqueness guard is enforced',
+      );
+    } finally {
+      await seededCluster.stop();
+    }
   });
 });
