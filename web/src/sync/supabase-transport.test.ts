@@ -27,6 +27,7 @@ function createOp(opId: string, deviceId: string, quantity = 2): CollectionOpera
 interface RecordedCall {
   fn: string
   body: Record<string, unknown>
+  expectedUserId?: string
 }
 
 function httpStub(
@@ -34,8 +35,8 @@ function httpStub(
   record: RecordedCall[] = [],
 ): { http: SupabaseHttp; record: RecordedCall[] } {
   const http: SupabaseHttp = {
-    async rpc(fn: string, body: Record<string, unknown>) {
-      const call = { fn, body }
+    async rpc(fn: string, body: Record<string, unknown>, expectedUserId?: string) {
+      const call = { fn, body, expectedUserId }
       record.push(call)
       return typeof responses === 'function' ? responses(call) : (responses[fn] ?? {})
     },
@@ -45,6 +46,22 @@ function httpStub(
   }
   return { http, record }
 }
+
+test('link preview and commit pin every RPC to the preview identity', async () => {
+  const { http, record } = httpStub({
+    prepare_collection_link: {
+      planId: '9f86d081-884c-4d65-9c67-41b405d56001', expiresAt: '2026-10-11T20:00:00Z',
+      remoteHighWater: 12, preview: { localOnly: [], cloudOnly: [], identical: [], conflicting: [], duplicateConfigurations: [] },
+    },
+    read_collection_link_snapshot: { highWater: 12, items: [] },
+    commit_collection_link: { status: 'linked', push: { status: 'ok', results: [], highWater: 12 } },
+  })
+  const transport = createSupabaseTransport({ http })
+  const plan = await transport.prepareLink([], 'user-a')
+  await transport.commitLink(plan, 'device-link-0001', [], 'user-a')
+
+  assert.deepEqual(record.map((call) => call.expectedUserId), ['user-a', 'user-a', 'user-a'])
+})
 
 test('push serializes operations and maps per-operation server outcomes', async () => {
   const operation = createOp('10000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001')

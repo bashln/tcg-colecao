@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -25,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference
  * foreground, network) and guarantees single-flight; the coordinator decides HOW.
  * Tests drive it with a counting/gating lambda so the concurrency contract is visible.
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SyncLifecycleTest {
 
     @Test
@@ -105,16 +107,95 @@ class SyncLifecycleTest {
         )
 
         lifecycle.persistAndRefreshBinding(
+            expectedIdentity = "user-a",
             authState = { signedIn("user-a") },
             persistBinding = { events += "persisted" },
             readLinkedIdentity = {
                 events += "read"
                 "user-a"
             },
+            clearBinding = { events += "cleared" },
         )
         advanceUntilIdle()
 
         assertEquals(listOf("persisted", "read", "bound:user-a"), events)
+    }
+
+    @Test
+    fun `unlink racing a suspended link persistence cannot leave a stale binding`() = runTest {
+        val persistStarted = CompletableDeferred<Unit>()
+        val finishPersist = CompletableDeferred<Unit>()
+        var auth: AuthState = signedIn("user-a")
+        var storedIdentity: String? = null
+        val lifecycle = SyncLifecycle(this) { SyncResult.Complete(applied = 0, pending = 0) }
+        val persisted = lifecycle.persistAndRefreshBinding(
+            expectedIdentity = "user-a",
+            authState = { auth },
+            persistBinding = {
+                persistStarted.complete(Unit)
+                finishPersist.await()
+                storedIdentity = "user-a"
+            },
+            readLinkedIdentity = { storedIdentity },
+            clearBinding = { storedIdentity = null },
+        )
+        runCurrent()
+        persistStarted.await()
+        auth = AuthState.SignedOut
+        lifecycle.unlinkBinding { storedIdentity = null }
+        finishPersist.complete(Unit)
+        advanceUntilIdle()
+
+        assertFalse(persisted.await())
+        assertNull(storedIdentity)
+        assertNull(lifecycle.status.value.identity)
+    }
+
+    @Test
+    fun `unlink after link persistence completes clears the binding`() = runTest {
+        var storedIdentity: String? = null
+        val lifecycle = SyncLifecycle(this) { SyncResult.Complete(applied = 0, pending = 0) }
+        val persisted = lifecycle.persistAndRefreshBinding(
+            expectedIdentity = "user-a",
+            authState = { signedIn("user-a") },
+            persistBinding = { storedIdentity = "user-a" },
+            readLinkedIdentity = { storedIdentity },
+            clearBinding = { storedIdentity = null },
+        )
+        advanceUntilIdle()
+        assertTrue(persisted.await())
+
+        lifecycle.unlinkBinding { storedIdentity = null }
+        advanceUntilIdle()
+
+        assertNull(storedIdentity)
+        assertNull(lifecycle.status.value.identity)
+    }
+
+    @Test
+    fun `unlink triggered during identity publication wins over link completion`() = runTest {
+        var storedIdentity: String? = null
+        lateinit var lifecycle: SyncLifecycle
+        lifecycle = SyncLifecycle(
+            scope = this,
+            onIdentityChanged = { identity ->
+                if (identity == "user-a") lifecycle.unlinkBinding { storedIdentity = null }
+            },
+            syncAction = { SyncResult.Complete(applied = 0, pending = 0) },
+        )
+        val persisted = lifecycle.persistAndRefreshBinding(
+            expectedIdentity = "user-a",
+            authState = { signedIn("user-a") },
+            persistBinding = { storedIdentity = "user-a" },
+            readLinkedIdentity = { storedIdentity },
+            clearBinding = { storedIdentity = null },
+        )
+
+        advanceUntilIdle()
+
+        assertFalse(persisted.await())
+        assertNull(storedIdentity)
+        assertNull(lifecycle.status.value.identity)
     }
 
     private fun signedIn(userId: String) = AuthState.SignedIn(

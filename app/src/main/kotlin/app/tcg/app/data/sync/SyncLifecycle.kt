@@ -6,10 +6,13 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import app.tcg.app.auth.AuthState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 data class SyncStatus(
@@ -31,6 +34,8 @@ class SyncLifecycle(
     private val syncAction: suspend (SyncResult?) -> SyncResult,
 ) {
     private val identity = AtomicReference<String?>(null)
+    private val bindingGeneration = AtomicLong(0)
+    private val bindingTransitions = Mutex()
     private val _status = MutableStateFlow(SyncStatus())
     val status: StateFlow<SyncStatus> = _status.asStateFlow()
 
@@ -60,33 +65,57 @@ class SyncLifecycle(
 
     /** Persist confirmed link and refresh coordinator identity within application scope. */
     fun persistAndRefreshBinding(
+        expectedIdentity: String,
         authState: () -> AuthState,
         persistBinding: suspend () -> Unit,
         readLinkedIdentity: suspend () -> String?,
-    ): Deferred<Boolean> = scope.async {
-        try {
-            persistBinding()
-            refreshBinding(authState(), readLinkedIdentity())
-            true
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            false
+        clearBinding: suspend () -> Unit,
+    ): Deferred<Boolean> {
+        val generation = bindingGeneration.get()
+        return scope.async {
+            bindingTransitions.withLock {
+                if (generation != bindingGeneration.get() || currentIdentity(authState()) != expectedIdentity) return@withLock false
+                try {
+                    persistBinding()
+                    val linkedIdentity = readLinkedIdentity()
+                    if (generation != bindingGeneration.get() || currentIdentity(authState()) != expectedIdentity || linkedIdentity != expectedIdentity) {
+                        if (linkedIdentity == expectedIdentity) clearBinding()
+                        bindIdentity(null)
+                        return@withLock false
+                    }
+                    refreshBinding(authState(), linkedIdentity)
+                    if (generation != bindingGeneration.get() || currentIdentity(authState()) != expectedIdentity) {
+                        clearBinding()
+                        bindIdentity(null)
+                        return@withLock false
+                    }
+                    true
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    false
+                }
+            }
         }
     }
 
     fun unlinkBinding(unlink: suspend () -> Unit) {
+        bindingGeneration.incrementAndGet()
+        bindIdentity(null)
         scope.launch {
-            try {
-                unlink()
-                bindIdentity(null)
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                bindIdentity(null)
+            bindingTransitions.withLock {
+                try {
+                    unlink()
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    bindIdentity(null)
+                }
             }
         }
     }
+
+    private fun currentIdentity(auth: AuthState): String? = (auth as? AuthState.SignedIn)?.session?.userId
 
     fun bindIdentity(nextIdentity: String?) {
         identity.set(nextIdentity)

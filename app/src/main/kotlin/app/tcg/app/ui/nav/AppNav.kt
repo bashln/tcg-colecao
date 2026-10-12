@@ -211,9 +211,11 @@ fun AppNav(
                                 onSyncNow = { syncLifecycle.request() },
                                 onLinkConfirmed = { identity ->
                                     syncLifecycle.persistAndRefreshBinding(
+                                        expectedIdentity = identity,
                                         authState = { authController.state.value },
                                         persistBinding = { syncLinkRepository.link(identity) },
                                         readLinkedIdentity = syncLinkRepository::currentIdentity,
+                                        clearBinding = syncLinkRepository::unlink,
                                     ).await()
                                 },
                                 onLinkUnlinked = { syncLifecycle.unlinkBinding(syncLinkRepository::unlink) },

@@ -406,8 +406,10 @@ export async function completeSyncLink(input: {
   remoteCards: readonly CardSummary[]
   seedRevisions: ReadonlyMap<string, number>
   highWater: number
+  isIdentityCurrent?: () => boolean
 }): Promise<boolean> {
-  if (!isSyncBinding({ identity: input.identity, deviceId: input.deviceId }) ||
+  if ((input.isIdentityCurrent !== undefined && !input.isIdentityCurrent()) ||
+    !isSyncBinding({ identity: input.identity, deviceId: input.deviceId }) ||
     !Number.isSafeInteger(input.highWater) || input.highWater < 0) return false
 
   const expectedById = new Map(input.expectedItems.map((item) => [item.id, item]))
@@ -463,6 +465,10 @@ export async function completeSyncLink(input: {
   let rowsReady = false
   const writeWhenReady = () => {
     if (!bindingReady || !rowsReady || linked) return
+    if (input.isIdentityCurrent !== undefined && !input.isIdentityCurrent()) {
+      transaction.abort()
+      return
+    }
     if (bindingRow !== undefined) {
       const currentBinding = typeof bindingRow === 'object' && bindingRow !== null && 'binding' in bindingRow
         ? bindingRow.binding
@@ -490,6 +496,10 @@ export async function completeSyncLink(input: {
     const cursorKey = `cursor:${input.identity}`
     const cursorRequest = sync.get(cursorKey)
     cursorRequest.onsuccess = () => {
+      if (input.isIdentityCurrent !== undefined && !input.isIdentityCurrent()) {
+        transaction.abort()
+        return
+      }
       const raw: unknown = cursorRequest.result
       const previous = typeof raw === 'object' && raw !== null && 'sequence' in raw &&
         typeof raw.sequence === 'number' && Number.isSafeInteger(raw.sequence) && raw.sequence >= 0

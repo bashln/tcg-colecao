@@ -173,7 +173,7 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
       return input.http.user()
     },
 
-    async prepareLink(items: readonly SyncItem[]): Promise<LinkPreview> {
+    async prepareLink(items: readonly SyncItem[], expectedIdentity?: string): Promise<LinkPreview> {
       const localItems = items.map(serializeSyncItem).sort((left, right) =>
         String(left.id).localeCompare(String(right.id)))
       const digest = await syncSnapshotDigest(items)
@@ -181,7 +181,7 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
         p_local_digest: digest,
         p_local_items: localItems,
         p_remote_sequence: 0,
-      })
+      }, expectedIdentity)
       const preview = asRecord(response.preview)
       const planId = response.planId
       const expiresAt = response.expiresAt
@@ -191,7 +191,7 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
         typeof remoteHighWater !== 'number' || !Number.isSafeInteger(remoteHighWater) || remoteHighWater < 0) {
         throw new SupabaseSyncError('unavailable', 'A prévia de vínculo retornou dados inválidos')
       }
-      const snapshot = await call('read_collection_link_snapshot', { p_expected_high_water: remoteHighWater })
+      const snapshot = await call('read_collection_link_snapshot', { p_expected_high_water: remoteHighWater }, expectedIdentity)
       if (snapshot.highWater !== remoteHighWater || !Array.isArray(snapshot.items)) {
         throw new SupabaseSyncError('unavailable', 'A coleção remota mudou durante a prévia. Gere uma nova prévia.')
       }
@@ -209,7 +209,7 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
       }
     },
 
-    async commitLink(plan: LinkPreview, deviceId: string, operations: readonly CollectionOperation[]): Promise<LinkCommitResult> {
+    async commitLink(plan: LinkPreview, deviceId: string, operations: readonly CollectionOperation[], expectedIdentity?: string): Promise<LinkCommitResult> {
       if (deviceId.length < 8 || operations.some((operation) => operation.deviceId !== deviceId)) {
         throw new SupabaseSyncError('preflight', 'Dispositivo inválido para confirmar o vínculo')
       }
@@ -230,7 +230,7 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
           p_digest: plan.digest,
           p_device_id: deviceId,
           p_operations: serialized,
-        })
+        }, expectedIdentity)
       } catch (error) {
         if (error instanceof SupabaseSyncError && (error.kind === 'unauthorized' || error.kind === 'invalid-response')) throw error
         throw new SupabaseSyncError('commit-uncertain', 'A resposta da nuvem não chegou e ela pode já ter recebido itens da prévia.')

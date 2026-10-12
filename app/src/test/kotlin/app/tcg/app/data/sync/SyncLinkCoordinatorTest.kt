@@ -40,16 +40,20 @@ class SyncLinkCoordinatorTest {
         var commit: LinkCommitResult = LinkCommitResult.Linked(9L, emptyList())
         var commitError: Exception? = null
         val prepared = mutableListOf<List<SyncItem>>()
+        val preparedIdentities = mutableListOf<String>()
         val committed = mutableListOf<Pair<LinkPreview, List<SyncOperation>>>()
+        val committedIdentities = mutableListOf<String>()
 
-        override suspend fun prepareLink(items: List<SyncItem>): LinkPreview {
+        override suspend fun prepareLink(items: List<SyncItem>, expectedIdentity: String): LinkPreview {
             prepared += items
+            preparedIdentities += expectedIdentity
             previewError?.let { throw it }
             return checkNotNull(preview)
         }
 
-        override suspend fun commitLink(plan: LinkPreview, deviceId: String, operations: List<SyncOperation>): LinkCommitResult {
+        override suspend fun commitLink(plan: LinkPreview, deviceId: String, operations: List<SyncOperation>, expectedIdentity: String): LinkCommitResult {
             committed += plan to operations
+            committedIdentities += expectedIdentity
             commitError?.let { throw it }
             return commit
         }
@@ -103,7 +107,7 @@ class SyncLinkCoordinatorTest {
     private fun coordinator(
         transport: FakeLinkTransport,
         cards: CardRepository,
-    ) = RoomSyncLinkCoordinator(
+    ): SyncLinkCoordinator = RoomSyncLinkCoordinator(
         transport = transport,
         store = RoomSyncLocalStore(db),
         dao = dao,
@@ -125,7 +129,7 @@ class SyncLinkCoordinatorTest {
         val items = localSyncItems("item-1")
         val transport = FakeLinkTransport { items -> syncSnapshotDigest(items) }.apply { preview = plan(items) }
 
-        val summary = coordinator(transport, FakeCards(emptyMap())).preparePreview()
+        val summary = coordinator(transport, FakeCards(emptyMap())).preparePreview("user-a")
 
         assertEquals(items.map { it.id }, transport.prepared.single().map { it.id })
         assertEquals("plan-1", summary.plan.planId)

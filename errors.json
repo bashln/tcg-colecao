@@ -582,6 +582,63 @@
         "Adicionar import ao editar assinatura Deferred sem conferir imports existentes"
       ],
       "solucao": "Remover duplicata; focused tests e suite completa depois passaram. Outra chave extra foi detectada no fechamento deste ledger e removida; JSON.parse final passou"
+    },
+    {
+      "erro": "Helper sdd-workspace indisponível no caminho indicado pela instalação da skill; chamada inicial também usou binário inexistente como probe",
+      "tentativas": 2,
+      "abordagens_falhas": [
+        "Assumir que executando-plans instala sibling subagent-driven-development no mesmo cache",
+        "Usar ./node_modules/.bin/true como probe sem verificar existência"
+      ],
+      "solucao": "Criar ledger diretamente no caminho canônico .superpowers/sdd/<plan-basename>/progress.md; preservar worktree existente e seguir plano manualmente"
+    },
+    {
+      "erro": "Teste RED de resultado parcial não provocou colisão porque usou um opId novo, válido para outro operation id mesmo compartilhando itemId",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Modelar id-collision apenas repetindo itemId sem repetir opId"
+      ],
+      "solucao": "Reusar opId existente e mudar signature/payload para produzir conflito real no push; manter a asserção de que link não pode anunciar sucesso"
+    },
+    {
+      "erro": "Teste RED provou que limpeza de link_plans durante preview apagava planos expirados de outros owners",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Limpar globalmente registros expirados dentro de RPC SECURITY DEFINER"
+      ],
+      "solucao": "Escopar a limpeza a owner = auth.uid(); teste de preview confirma owner estrangeiro preservado e repetição idempotente"
+    },
+    {
+      "erro": "TypeScript build não aceitou função de rejeição sem branch para novo resultado LinkCommitResult.partial",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Excluir apenas o discriminante linked do tipo usado por rejectionMessage"
+      ],
+      "solucao": "Excluir linked e partial, pois ambos são tratados antes da função de recusa; build será repetido junto ao gate E2E"
+    },
+    {
+      "erro": "Teste RED provou que transporte web aceitava status linked mesmo quando o resultado do push continha operação recusada",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Confiar apenas no discriminante status retornado pelo servidor sem validar outcomes"
+      ],
+      "solucao": "Validar contagem de outcomes e rejeitar qualquer conflito sob status linked; teste focado passa com invalid-response"
+    },
+    {
+      "erro": "Teste RED de vínculo Web com identity stale atingiu proteção de snapshot local antes de verificar owner e tentou concluir caminho local",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Validar auth apenas depois da leitura/digest e depender de desabilitação da UI"
+      ],
+      "solucao": "Verificar identidade antes do primeiro efeito remoto e novamente após retorno; atomic completion também recebe guarda síncrona antes de binding/cursor writes"
+    },
+    {
+      "erro": "Primeira versão do teste identity durante resolução de carta passou por fixture inconsistente (cardId remoto não correspondia ao CardSummary) e não alcançou commit",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Usar o item local padrão com cardId diferente da carta que resolveCard retorna"
+      ],
+      "solucao": "Ajustar cardId do item remoto para cloudCard.id; teste então falhou com resultado partial e commit já chamado, confirmando lacuna real; guarda pré-dispatch corrigiu e teste passou"
     }
   ]
 }

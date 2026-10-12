@@ -42,12 +42,12 @@ class AccountViewModelTest {
         var outcome: LinkOutcome = LinkOutcome.Linked(9L)
         val confirmed = mutableListOf<Pair<String, LinkPreview>>()
 
-        override suspend fun preparePreview(): LinkPreviewSummary {
+        override suspend fun preparePreview(identity: String): LinkPreviewSummary {
             prepareError?.let { throw it }
             return checkNotNull(summary)
         }
 
-        override suspend fun confirm(identity: String, plan: LinkPreview): LinkOutcome {
+        override suspend fun confirm(identity: String, plan: LinkPreview, isIdentityCurrent: () -> Boolean): LinkOutcome {
             confirmed += identity to plan
             return outcome
         }
@@ -391,6 +391,24 @@ class AccountViewModelTest {
         assertEquals("b@example.com", vm.state.value.email)
         assertEquals(LinkState.LocalOnly, vm.state.value.linkState)
         assertEquals("only A was ever linked", listOf("user-a"), linked)
+    }
+
+    @Test
+    fun `direct auth identity change invalidates an unconfirmed preview`() = runTest {
+        remote.signInSession = userA
+        signInAs("a@example.com")
+        link.summary = LinkPreviewSummary(linkPlan(), 1, 0, 0, 0, 0)
+        vm.requestLink()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.linkState is LinkState.Preview)
+
+        remote.signInSession = userB
+        signInAs("b@example.com")
+        advanceUntilIdle()
+
+        assertEquals("b@example.com", vm.state.value.email)
+        assertEquals(LinkState.LocalOnly, vm.state.value.linkState)
+        assertTrue(link.confirmed.isEmpty())
     }
 
     @Test

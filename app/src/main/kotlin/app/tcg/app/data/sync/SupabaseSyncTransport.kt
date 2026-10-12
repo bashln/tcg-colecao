@@ -81,8 +81,13 @@ sealed interface LinkCommitResult {
  * guards a stale preview is computed by one shared function on both sides.
  */
 interface SyncLinkTransport {
-    suspend fun prepareLink(items: List<SyncItem>): LinkPreview
-    suspend fun commitLink(plan: LinkPreview, deviceId: String, operations: List<SyncOperation>): LinkCommitResult
+    suspend fun prepareLink(items: List<SyncItem>, expectedIdentity: String): LinkPreview
+    suspend fun commitLink(
+        plan: LinkPreview,
+        deviceId: String,
+        operations: List<SyncOperation>,
+        expectedIdentity: String,
+    ): LinkCommitResult
 }
 
 private const val MAX_LINK_ITEMS = 5_000
@@ -199,8 +204,8 @@ class SupabaseSyncTransport(
      * caller's local digest and the server's own high-water sequence, and returns the
      * exact preview rows so the UI can show what would be sent, added, or blocked.
      */
-    override suspend fun prepareLink(items: List<SyncItem>): LinkPreview {
-        if (sessionProvider() == null) {
+    override suspend fun prepareLink(items: List<SyncItem>, expectedIdentity: String): LinkPreview {
+        if (sessionProvider()?.userId != expectedIdentity) {
             throw SupabaseSyncException(SyncErrorKind.UNAUTHORIZED, "Sem sessão de conta para vincular")
         }
         val localItems = JsonArray(items.sortedBy { it.id }.map { encodeItem(it) })
@@ -215,6 +220,7 @@ class SupabaseSyncTransport(
                     "p_remote_sequence" to JsonPrimitive(0L),
                 ),
             ),
+            expectedIdentity = expectedIdentity,
         )
         val preview = response["preview"] as? JsonObject ?: throw unavailable("Prévia de vínculo ausente")
         val planId = response.string("planId") ?: throw unavailable("Prévia sem plano")
@@ -225,6 +231,7 @@ class SupabaseSyncTransport(
         val snapshot = call(
             "read_collection_link_snapshot",
             JsonObject(mapOf("p_expected_high_water" to JsonPrimitive(highWater))),
+            expectedIdentity = expectedIdentity,
         )
         val snapshotHighWater = snapshot.jsonPrimitiveOrNull("highWater")
         val items = snapshot["items"] as? JsonArray ?: throw unavailable("Instantâneo remoto ausente")
@@ -271,8 +278,9 @@ class SupabaseSyncTransport(
         plan: LinkPreview,
         deviceId: String,
         operations: List<SyncOperation>,
+        expectedIdentity: String,
     ): LinkCommitResult {
-        if (sessionProvider() == null) {
+        if (sessionProvider()?.userId != expectedIdentity) {
             throw SupabaseSyncException(SyncErrorKind.UNAUTHORIZED, "Sem sessão de conta para vincular")
         }
         if (deviceId.length < 8 || operations.any { it.deviceId != deviceId }) {
@@ -296,6 +304,7 @@ class SupabaseSyncTransport(
                         "p_operations" to encodedOperations,
                     ),
                 ),
+                expectedIdentity = expectedIdentity,
             )
         } catch (cancelled: CancellationException) {
             throw cancelled

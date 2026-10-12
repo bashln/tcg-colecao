@@ -16,8 +16,8 @@ import {
  * Every failure path before completion leaves the local collection untouched.
  */
 export interface LinkTransport {
-  prepareLink(items: readonly SyncItem[]): Promise<LinkPreview>
-  commitLink(plan: LinkPreview, deviceId: string, operations: readonly CollectionOperation[]): Promise<LinkCommitResult>
+  prepareLink(items: readonly SyncItem[], identity?: string): Promise<LinkPreview>
+  commitLink(plan: LinkPreview, deviceId: string, operations: readonly CollectionOperation[], identity?: string): Promise<LinkCommitResult>
 }
 
 export interface LinkSnapshot {
@@ -45,6 +45,7 @@ export interface CompleteLinkInput {
   remoteCards: readonly CardSummary[]
   seedRevisions: ReadonlyMap<string, number>
   highWater: number
+  isIdentityCurrent?: () => boolean
 }
 
 export function snapshotForLink(entries: readonly CollectionEntry[]): LinkSnapshot {
@@ -66,8 +67,9 @@ export function linkBlockers(preview: LinkPreview): LinkBlocker | null {
 export async function prepareLinkPreview(
   transport: LinkTransport,
   entries: readonly CollectionEntry[],
+  identity?: string,
 ): Promise<LinkPreview> {
-  return transport.prepareLink(snapshotForLink(entries).syncItems)
+  return transport.prepareLink(snapshotForLink(entries).syncItems, identity)
 }
 
 export async function confirmLink(input: {
@@ -77,8 +79,12 @@ export async function confirmLink(input: {
   preview: LinkPreview
   readEntries: () => Promise<CollectionEntry[]>
   resolveCard: (cardId: string) => Promise<CardSummary>
+  isIdentityCurrent?: () => boolean
   completeLink: (value: CompleteLinkInput) => Promise<boolean>
 }): Promise<LinkConfirmation> {
+  if (input.isIdentityCurrent !== undefined && !input.isIdentityCurrent()) {
+    return { kind: 'error', message: 'A conta mudou. Nada foi enviado; gere uma nova prévia para esta conta.' }
+  }
   const blocker = linkBlockers(input.preview)
   if (blocker !== null) return { kind: 'blocked', message: linkBlockerMessage(blocker) }
 
@@ -86,6 +92,9 @@ export async function confirmLink(input: {
   const snapshot = snapshotForLink(entries)
   const digest = await syncSnapshotDigest(snapshot.syncItems)
   if (digest !== input.preview.digest) return { kind: 'local-changed', message: LOCAL_CHANGED_MESSAGE }
+  if (input.isIdentityCurrent !== undefined && !input.isIdentityCurrent()) {
+    return { kind: 'error', message: 'A conta mudou. Nada foi enviado; gere uma nova prévia para esta conta.' }
+  }
 
   const itemsById = new Map<string, CollectionItem>(snapshot.expectedItems.map((item) => [item.id, item]))
   const operations: CollectionOperation[] = []
@@ -110,9 +119,13 @@ export async function confirmLink(input: {
     }
   }
 
+  if (input.isIdentityCurrent !== undefined && !input.isIdentityCurrent()) {
+    return { kind: 'error', message: 'A conta mudou. Nada foi enviado; gere uma nova prévia para esta conta.' }
+  }
+
   let commit: LinkCommitResult
   try {
-    commit = await input.transport.commitLink(input.preview, input.deviceId, operations)
+    commit = await input.transport.commitLink(input.preview, input.deviceId, operations, input.identity)
   } catch (error) {
     if (error instanceof SupabaseSyncError && error.kind === 'unauthorized') {
       return { kind: 'error', message: error.message }
@@ -124,6 +137,13 @@ export async function confirmLink(input: {
       return { kind: 'error', message: `A resposta do servidor foi inválida; a nuvem pode já ter recebido itens da prévia. Gere uma nova prévia e confira qualquer conflito antes de confirmar novamente.` }
     }
     return { kind: 'error', message: LINK_COMMIT_UNCERTAIN_MESSAGE }
+  }
+  if (input.isIdentityCurrent !== undefined && !input.isIdentityCurrent() &&
+    (commit.kind === 'linked' || commit.kind === 'partial')) {
+    return {
+      kind: 'partial',
+      message: 'A conta mudou enquanto a nuvem processava o vínculo. A coleção local não foi associada; gere uma nova prévia para a conta atual e confira conflitos.',
+    }
   }
   if (commit.kind === 'partial') {
     const reasons = [...new Set(commit.outcomes.filter((outcome) => outcome.kind === 'conflict').map((outcome) => outcome.reason).filter(Boolean))]
@@ -145,6 +165,7 @@ export async function confirmLink(input: {
     remoteCards: [...cardsById.values()],
     seedRevisions: seeds,
     highWater: commit.highWater,
+    isIdentityCurrent: input.isIdentityCurrent,
   })
   if (!completed) return { kind: 'local-changed', message: LINK_COMMITTED_LOCAL_CHANGED_MESSAGE }
   return { kind: 'linked', highWater: commit.highWater }

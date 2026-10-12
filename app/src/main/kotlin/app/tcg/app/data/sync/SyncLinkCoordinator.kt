@@ -35,8 +35,8 @@ sealed interface LinkOutcome {
 
 /** First-link flow the account screen drives: a read-only preview, then an explicit confirm. */
 interface SyncLinkCoordinator {
-    suspend fun preparePreview(): LinkPreviewSummary
-    suspend fun confirm(identity: String, plan: LinkPreview): LinkOutcome
+    suspend fun preparePreview(identity: String): LinkPreviewSummary
+    suspend fun confirm(identity: String, plan: LinkPreview, isIdentityCurrent: () -> Boolean = { true }): LinkOutcome
 }
 
 /**
@@ -53,9 +53,9 @@ class RoomSyncLinkCoordinator(
     private val cards: CardRepository,
     private val deviceId: String,
 ) : SyncLinkCoordinator {
-    override suspend fun preparePreview(): LinkPreviewSummary {
+    override suspend fun preparePreview(identity: String): LinkPreviewSummary {
         val items = localSyncItems()
-        val plan = transport.prepareLink(items)
+        val plan = transport.prepareLink(items, identity)
         return LinkPreviewSummary(
             plan = plan,
             localOnlyCount = plan.localOnly.size,
@@ -66,7 +66,8 @@ class RoomSyncLinkCoordinator(
         )
     }
 
-    override suspend fun confirm(identity: String, plan: LinkPreview): LinkOutcome {
+    override suspend fun confirm(identity: String, plan: LinkPreview, isIdentityCurrent: () -> Boolean): LinkOutcome {
+        if (!isIdentityCurrent()) return LinkOutcome.Failed("A conta mudou. Nada foi enviado; gere uma nova prévia para esta conta.")
         if (plan.conflicting.isNotEmpty() || plan.duplicateConfigurations.isNotEmpty()) {
             return LinkOutcome.Blocked
         }
@@ -79,6 +80,7 @@ class RoomSyncLinkCoordinator(
         val currentIds = current.map { it.id }.toSet()
         val remoteOnly = plan.remoteItems.filter { it.item.id !in currentIds }
         for (remote in remoteOnly) {
+            if (!isIdentityCurrent()) return LinkOutcome.Failed("A conta mudou. Nada foi enviado; gere uma nova prévia para esta conta.")
             val card = cards.getCard(remote.item.cardId)
             if (card === null || card.id != remote.item.cardId) {
                 return LinkOutcome.Failed("Não foi possível carregar os dados da carta ${remote.item.cardId} para importar da nuvem. Verifique a conexão e tente novamente.")
@@ -93,7 +95,8 @@ class RoomSyncLinkCoordinator(
         }
 
         val commit = try {
-            transport.commitLink(plan, deviceId, operations)
+            if (!isIdentityCurrent()) return LinkOutcome.Failed("A conta mudou. Nada foi enviado; gere uma nova prévia para esta conta.")
+            transport.commitLink(plan, deviceId, operations, identity)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: SupabaseSyncException) {
@@ -103,6 +106,7 @@ class RoomSyncLinkCoordinator(
         }
         if (commit is LinkCommitResult.Partial) return LinkOutcome.Partial(commit.outcomes)
         if (commit !is LinkCommitResult.Linked) return LinkOutcome.Refused(commit)
+        if (!isIdentityCurrent()) return LinkOutcome.Partial(commit.outcomes)
 
         val seeds = LinkedHashMap<String, Long>()
         for ((index, operation) in operations.withIndex()) {

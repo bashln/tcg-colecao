@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import type { CollectionEntry } from '../domain/model.ts'
-import { completeSyncLink, listCollection } from '../collection/store.ts'
+import { listCollection } from '../collection/store.ts'
 import { resolveCardForSync } from '../sync/cards.ts'
 import { createSupabaseTransport, type LinkPreview } from '../sync/supabase-transport.ts'
 import type { SyncConflictDetail, SyncResult } from '../sync/coordinator.ts'
 import type { SyncRunnerState } from '../sync/runner.ts'
 import type { SyncBinding } from '../sync/outbox.ts'
 import { confirmLink, linkBlockerMessage, linkBlockers, prepareLinkPreview } from './link.ts'
+import type { CompleteLinkInput } from './link.ts'
 import type { SupabaseWebAuth } from './auth.ts'
 
 type Phase =
@@ -36,13 +37,15 @@ function cloudOnlyCopy(count: number): string {
  * A signed-in person without a binding always lands on the preview flow; after the
  * atomic completion succeeds the panel switches to the linked state.
  */
-export function LinkPanel({ auth, identity, deviceId, entries, binding, onLinked, syncState, onSyncNow }: {
+export function LinkPanel({ auth, identity, deviceId, entries, binding, onLinked, isIdentityCurrent, completeLink, syncState, onSyncNow }: {
   auth: SupabaseWebAuth
   identity: string
   deviceId: string
   entries: CollectionEntry[]
   binding: SyncBinding | null
   onLinked: () => void
+  isIdentityCurrent: () => boolean
+  completeLink: (input: CompleteLinkInput) => Promise<boolean>
   syncState: SyncRunnerState
   onSyncNow: () => void
 }) {
@@ -64,7 +67,7 @@ export function LinkPanel({ auth, identity, deviceId, entries, binding, onLinked
     setPhase({ kind: 'loading' })
     setError('')
     try {
-      const preview = await prepareLinkPreview(transport, await listCollection())
+      const preview = await prepareLinkPreview(transport, await listCollection(), identity)
       setPhase({ kind: 'preview', preview })
     } catch (cause) {
       setPhase({ kind: 'idle' })
@@ -83,7 +86,8 @@ export function LinkPanel({ auth, identity, deviceId, entries, binding, onLinked
       preview: phase.preview,
       readEntries: () => listCollection(),
       resolveCard: resolveCardForSync,
-      completeLink: completeSyncLink,
+      isIdentityCurrent,
+      completeLink,
     })
     if (result.kind === 'linked') {
       setPhase({ kind: 'idle' })

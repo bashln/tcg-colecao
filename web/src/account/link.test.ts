@@ -215,6 +215,47 @@ test('confirmLink refuses a local collection that changed after the preview with
   assert.equal(spy.calls.length, 0)
 })
 
+test('confirmLink refuses to dispatch when the preview identity is no longer current', async () => {
+  let committed = false
+  const plan = await previewFor([])
+  const transportImpl = transport({
+    prepare: plan,
+    commit: { kind: 'linked', highWater: 1, outcomes: [] },
+    onCommit: () => { committed = true },
+  })
+
+  const result = await confirmLink({
+    transport: transportImpl,
+    identity: 'user-a', deviceId: 'device-1', preview: plan,
+    isIdentityCurrent: () => false,
+    readEntries: async () => [], resolveCard: async () => cloudCard,
+    completeLink: completeSpy(false).complete as never,
+  })
+
+  assert.equal(committed, false)
+  assert.equal(result.kind, 'error')
+  assert.match((result as { message: string }).message, /conta mudou.*nada foi enviado/i)
+})
+
+test('confirmLink rechecks identity after awaiting remote card resolution', async () => {
+  let current = true
+  let committed = false
+  const localId = '00000000-0000-4000-8000-000000000001'
+  const remote = { ...localItem(localId), cardId: cloudCard.id, revision: 2 }
+  const plan = await previewFor([], { cloudOnly: [localId], remoteItems: [remote] })
+  const result = await confirmLink({
+    transport: transport({ prepare: plan, commit: { kind: 'linked', highWater: 2, outcomes: [] }, onCommit: () => { committed = true } }),
+    identity: 'user-a', deviceId: 'device-1', preview: plan,
+    readEntries: async () => [],
+    resolveCard: async () => { current = false; return cloudCard },
+    isIdentityCurrent: () => current,
+    completeLink: completeSpy(false).complete as never,
+  })
+
+  assert.equal(result.kind, 'error')
+  assert.equal(committed, false)
+})
+
 test('confirmLink reports preview blockers and never calls commit or local completion', async () => {
   let committed = false
   const plan = preview({ conflicting: [{ itemId: '00000000-0000-4000-8000-000000000001', reason: 'different-content' }] })

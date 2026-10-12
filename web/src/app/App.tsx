@@ -3,7 +3,7 @@ import type { KeyboardEvent } from 'react'
 import { getCatalogCard, getSetCoverage, listSets, searchCatalog } from '../catalog/tcgdex.ts'
 import type { CatalogResult, SetOption } from '../catalog/tcgdex.ts'
 import { isCollectionBackupSizeAllowed } from '../collection/backup.ts'
-import { addToCollection, currentSyncBinding, editCollectionItem, importCollectionBackup, listCollection, observeCollectionChanges, removeCollectionItem, setSyncBinding } from '../collection/store.ts'
+import { addToCollection, completeSyncLink, currentSyncBinding, editCollectionItem, importCollectionBackup, listCollection, observeCollectionChanges, removeCollectionItem, setSyncBinding } from '../collection/store.ts'
 import {
   CONDITIONS, CURRENCIES, VARIANTS, collectionEstimate, conditionLabels, draftFromItem, emptyDraft,
   formatMoney, missingFromCompleteCatalog, parseItemDraft, quoteFor, variantLabels,
@@ -14,6 +14,7 @@ import { CardArtwork, Icon, ItemFields, QuantityControl } from '../ui/components
 import type { IconName } from '../ui/components.tsx'
 import { browserAuthStorage, SupabaseWebAuth, type AuthState } from '../account/auth.ts'
 import { LinkPanel } from '../account/LinkPanel.tsx'
+import type { CompleteLinkInput } from '../account/link.ts'
 import type { SyncBinding } from '../sync/outbox.ts'
 import { browserDeviceId } from '../sync/device.ts'
 import { resolveCardForSync } from '../sync/cards.ts'
@@ -86,42 +87,65 @@ export function App() {
   const [currency, setCurrency] = useState<Currency>('USD')
   const [online, setOnline] = useState(() => navigator.onLine)
   const [authState, setAuthState] = useState<AuthState>({ kind: 'signed-out' })
+  const authStateRef = useRef(authState)
+  authStateRef.current = authState
+  const authGeneration = useRef(0)
   const [deviceId] = useState(() => browserDeviceId())
   const [syncBinding, setSyncBindingState] = useState<SyncBinding | null>(null)
   const [syncState, setSyncState] = useState<SyncRunnerState>({ running: false, result: null })
   const photoUrl = useRef<string | null>(null)
 
-  const refreshBinding = useCallback(async () => {
-    try {
-      setSyncBindingState(await currentSyncBinding())
-    } catch {
-      setSyncBindingState(null)
-    }
+  const setCurrentAuthState = useCallback((next: AuthState) => {
+    const previousIdentity = authStateRef.current.kind === 'signed-in' ? authStateRef.current.session.userId : null
+    const nextIdentity = next.kind === 'signed-in' ? next.session.userId : null
+    if (previousIdentity !== nextIdentity) authGeneration.current += 1
+    authStateRef.current = next
+    setAuthState(next)
   }, [])
 
-  useEffect(() => { void refreshBinding() }, [refreshBinding])
+  const serializeBindingTransition = useCallback(<T,>(operation: () => Promise<T>): Promise<T> => {
+    const run = bindingTransitions.current.then(operation, operation)
+    bindingTransitions.current = run.then(() => undefined, () => undefined)
+    return run
+  }, [])
 
-  // Keep account binding while signed out so a browser restart or logout does not force
-  // a destructive re-link. Sync still requires a live session for the same identity;
-  // signing in to another account clears the old binding and requires a fresh preview.
-  useEffect(() => {
-    let active = true
-    void (async () => {
+  const bindingTransitions = useRef<Promise<void>>(Promise.resolve())
+
+  const isIdentityCurrent = useCallback((identity: string) =>
+    authStateRef.current.kind === 'signed-in' && authStateRef.current.session.userId === identity,
+  [])
+
+  const completeLink = useCallback((input: CompleteLinkInput) => serializeBindingTransition(async () => {
+    const generation = authGeneration.current
+    const current = () => generation === authGeneration.current && isIdentityCurrent(input.identity)
+    if (!current()) return false
+    const completed = await completeSyncLink({ ...input, isIdentityCurrent: current })
+    if (!current()) {
       const binding = await currentSyncBinding().catch(() => null)
-      if (!active || binding === null) return
-      if (authState.kind === 'signed-in') {
-        if (binding.identity === authState.session.userId) {
-          setSyncBindingState(binding)
-        } else {
-          await setSyncBinding(null).catch(() => {})
-          if (active) setSyncBindingState(null)
-        }
-      } else if (authState.kind === 'signed-out' && active) {
-        setSyncBindingState(binding)
+      if (binding?.identity === input.identity) await setSyncBinding(null).catch(() => {})
+      return false
+    }
+    return completed
+  }), [isIdentityCurrent, serializeBindingTransition])
+
+  const refreshBinding = useCallback(async () => {
+    return serializeBindingTransition(async () => {
+      const generation = authGeneration.current
+      const binding = await currentSyncBinding().catch(() => null)
+      if (generation !== authGeneration.current) return
+      const currentAuth = authStateRef.current
+      if (currentAuth.kind === 'signed-in' && binding !== null && binding.identity !== currentAuth.session.userId) {
+        await setSyncBinding(null).catch(() => {})
+        if (generation === authGeneration.current) setSyncBindingState(null)
+        return
       }
-    })()
-    return () => { active = false }
-  }, [authState])
+      setSyncBindingState(binding)
+    })
+  }, [serializeBindingTransition])
+
+  // Keep same-account binding while signed out. A different active account clears it
+  // through the serialized transition queue before any later link can persist.
+  useEffect(() => { void refreshBinding() }, [authState, refreshBinding])
 
   // Sync lifecycle: while the signed-in account owns the binding, sync runs on link,
   // after every local write, when the tab returns to the foreground, and when the
@@ -184,16 +208,16 @@ export function App() {
         const state = callbackState.kind === 'signed-in' ? callbackState : await supabaseAuth.start()
         if (!active) return
         window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`)
-        setAuthState(state)
+        setCurrentAuthState(state)
         setNotice(callbackState.kind === 'signed-in'
           ? 'E-mail confirmado. Sua coleção continua local até você revisar e confirmar o vínculo.'
           : 'O link de confirmação expirou ou não é válido. Entre novamente ou solicite outra confirmação.')
       })
     } else {
-      void supabaseAuth.start().then((state) => { if (active) setAuthState(state) })
+      void supabaseAuth.start().then((state) => { if (active) setCurrentAuthState(state) })
     }
     return () => { active = false }
-  }, [])
+  }, [setCurrentAuthState])
 
   useEffect(() => () => { if (photoUrl.current !== null) URL.revokeObjectURL(photoUrl.current) }, [])
 
@@ -299,7 +323,8 @@ export function App() {
           } catch {
             setNotice('Não foi possível ler este arquivo. Escolha uma cópia JSON válida e tente novamente.')
           }
-        }} authState={authState} auth={supabaseAuth} onAuthState={setAuthState} /> : null}
+        }} authState={authState} auth={supabaseAuth} onAuthState={setCurrentAuthState}
+          isIdentityCurrent={isIdentityCurrent} completeLink={completeLink} /> : null}
         {screen.kind === 'scan' ? <ScanScreen onBack={() => navigate({ kind: 'collection' })} onPhoto={(file) => { void handlePhoto(file) }} onCatalog={() => navigate({ kind: 'catalog', photoUrl: null })} /> : null}
         {screen.kind === 'catalog' ? <CatalogScreen photoUrl={screen.photoUrl} onBack={() => navigate({ kind: 'scan' })} onSelect={(card) => { void selectCatalogCard(card, [], screen.photoUrl) }} /> : null}
         {screen.kind === 'confirm' ? <ConfirmScreen key={screen.card.id} card={screen.card} alternatives={screen.alternatives} photoUrl={screen.photoUrl}
@@ -420,11 +445,12 @@ function HomeScreen({ entries, currency, onCurrency, onCollection, onScan }: { e
   return <><h1>Início</h1><div className="home-panel"><p>Sua coleção neste navegador</p><strong>{entries.reduce((sum, entry) => sum + entry.item.quantity, 0)} cartas</strong><span>{estimate.amount === null ? 'Sem cotação de mercado' : `${formatMoney(estimate.amount, currency)} estimados`}</span><label className="summary-currency"><span className="sr-only">Moeda da estimativa</span><select value={currency} onChange={(event) => onCurrency(event.target.value as Currency)}>{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label></div><div className="home-actions"><button type="button" className="primary-button" onClick={onCollection}><Icon name="cards" />Ver coleção</button><button type="button" className="secondary-button" onClick={onScan}><Icon name="camera" />Escanear carta</button></div><p className="storage-footnote">Entre na conta e vincule a coleção para sincronizar entre seus aparelhos.</p></>
 }
 
-function ProfileScreen({ entries, onRetry, onNotice, onImport, authState, auth, onAuthState, syncBinding, deviceId, onLinked, syncState, onSyncNow }: {
+function ProfileScreen({ entries, onRetry, onNotice, onImport, authState, auth, onAuthState, syncBinding, deviceId, onLinked, syncState, onSyncNow, isIdentityCurrent, completeLink }: {
   entries: CollectionEntry[]; onRetry: () => void; onNotice: (message: string) => void; onImport: (file: File) => void;
   authState: AuthState; auth: SupabaseWebAuth | null; onAuthState: (state: AuthState) => void;
   syncBinding: SyncBinding | null; deviceId: string; onLinked: () => void;
   syncState: SyncRunnerState; onSyncNow: () => void;
+  isIdentityCurrent: (identity: string) => boolean; completeLink: (input: CompleteLinkInput) => Promise<boolean>;
 }) {
   const exportCopy = () => {
     const blob = new Blob([JSON.stringify({ format: 'tcg-colecao-web-1', exportedAt: new Date().toISOString(), entries }, null, 2)], { type: 'application/json' })
@@ -444,7 +470,7 @@ function ProfileScreen({ entries, onRetry, onNotice, onImport, authState, auth, 
     : <>
       <WebAccountPanel auth={auth} state={authState} onState={onAuthState} onNotice={onNotice} linked={authState.kind === 'signed-in' && syncBinding !== null && syncBinding.identity === authState.session.userId} />
       {authState.kind === 'signed-in'
-        ? <LinkPanel auth={auth} identity={authState.session.userId} deviceId={deviceId} entries={entries} binding={syncBinding} onLinked={onLinked} syncState={syncState} onSyncNow={onSyncNow} />
+        ? <LinkPanel key={authState.session.userId} auth={auth} identity={authState.session.userId} deviceId={deviceId} entries={entries} binding={syncBinding} onLinked={onLinked} isIdentityCurrent={() => isIdentityCurrent(authState.session.userId)} completeLink={completeLink} syncState={syncState} onSyncNow={onSyncNow} />
         : null}
     </>}</div><div className="profile-panel"><h2>Coleção local</h2><p>Suas cartas ficam neste navegador. O navegador pode apagar dados locais; guarde uma cópia da sua coleção.</p><button type="button" className="primary-button" onClick={exportCopy} disabled={entries.length === 0}>Baixar cópia da coleção</button><label className="secondary-button import-backup" htmlFor="collection-backup">Restaurar ou combinar cópia</label><input id="collection-backup" className="sr-only" type="file" accept="application/json,.json" aria-label="Importar cópia da coleção" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImport(file); event.target.value = '' }} /><p className="storage-footnote">Cópias de até 50 MB. Cartas repetidas são combinadas por variante e condição. Conflitos interrompem a importação sem alterar a coleção.</p><button type="button" className="text-button" onClick={onRetry}>Atualizar coleção</button></div></>
 }

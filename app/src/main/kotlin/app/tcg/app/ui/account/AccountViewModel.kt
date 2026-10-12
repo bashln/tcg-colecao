@@ -3,6 +3,7 @@ package app.tcg.app.ui.account
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import app.tcg.app.auth.AuthController
 import app.tcg.app.auth.AuthError
 import app.tcg.app.auth.AuthResult
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -86,6 +88,24 @@ class AccountViewModel(
     private val error = MutableStateFlow<AccountError?>(null)
     private val errorMessage = MutableStateFlow<String?>(null)
     private val linkState = MutableStateFlow<LinkState>(LinkState.LocalOnly)
+    private var linkJob: Job? = null
+
+    init {
+        var lastIdentity = (auth.state.value as? AuthState.SignedIn)?.session?.userId
+        viewModelScope.launch {
+            auth.state.collect { state ->
+                val nextIdentity = (state as? AuthState.SignedIn)?.session?.userId
+                if (nextIdentity != lastIdentity) {
+                    lastIdentity = nextIdentity
+                    linkJob?.cancel()
+                    linking.value = false
+                    linkState.value = LinkState.LocalOnly
+                    error.value = null
+                    errorMessage.value = null
+                }
+            }
+        }
+    }
 
     private val baseState: StateFlow<AccountUiState> = combine(
         auth.state,
@@ -122,21 +142,26 @@ class AccountViewModel(
     fun submitSignUp(email: String, password: String) = submit { auth.signUp(email, password) }
 
     fun requestLink() {
-        if (auth.state.value !is AuthState.SignedIn) return
+        val session = auth.state.value as? AuthState.SignedIn ?: return
         if (linkState.value !is LinkState.LocalOnly || linking.value) return
-        viewModelScope.launch {
+        linkJob = viewModelScope.launch {
             linking.value = true
             error.value = null
             errorMessage.value = null
-            linkState.value = try {
-                LinkState.Preview(link.preparePreview())
+            try {
+                val summary = link.preparePreview(session.session.userId)
+                if ((auth.state.value as? AuthState.SignedIn)?.session?.userId == session.session.userId) {
+                    linkState.value = LinkState.Preview(summary)
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (cause: Exception) {
                 error.value = if (cause.message.isNullOrBlank()) AccountError.UNKNOWN else AccountError.NETWORK
-                LinkState.LocalOnly
+                linkState.value = LinkState.LocalOnly
+            } finally {
+                linking.value = false
+                linkJob = null
             }
-            linking.value = false
         }
     }
 
@@ -144,14 +169,16 @@ class AccountViewModel(
         val session = auth.state.value as? AuthState.SignedIn ?: return
         val preview = linkState.value as? LinkState.Preview ?: return
         if (linking.value) return
-        viewModelScope.launch {
+        linkJob = viewModelScope.launch {
             linking.value = true
             error.value = null
             errorMessage.value = null
             try {
-                when (val outcome = link.confirm(session.session.userId, preview.summary.plan)) {
+                when (val outcome = link.confirm(session.session.userId, preview.summary.plan) {
+                    (auth.state.value as? AuthState.SignedIn)?.session?.userId == session.session.userId
+                }) {
                     is LinkOutcome.Linked -> {
-                        if (onLinkConfirmed(session.session.userId)) {
+                        if ((auth.state.value as? AuthState.SignedIn)?.session?.userId == session.session.userId && onLinkConfirmed(session.session.userId)) {
                             linkState.value = LinkState.Linked(session.session.userId)
                         } else {
                             linkState.value = LinkState.LocalOnly
@@ -191,6 +218,7 @@ class AccountViewModel(
                 errorMessage.value = null
             } finally {
                 linking.value = false
+                linkJob = null
             }
         }
     }
@@ -204,12 +232,14 @@ class AccountViewModel(
     }
 
     fun signOut() {
+        linkJob?.cancel()
+        linkState.value = LinkState.LocalOnly
+        linking.value = false
+        onLinkUnlinked()
         viewModelScope.launch {
             auth.signOut()
-            linkState.value = LinkState.LocalOnly
             error.value = null
             errorMessage.value = null
-            onLinkUnlinked()
         }
     }
 

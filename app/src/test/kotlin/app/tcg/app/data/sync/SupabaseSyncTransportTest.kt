@@ -78,6 +78,29 @@ class SupabaseSyncTransportTest {
     }
 
     @Test
+    fun `link commit refuses a changed account before dispatch`() = runTest {
+        var requests = 0
+        val engine = MockEngine {
+            requests++
+            respond("{}", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val plan = LinkPreview(
+            planId = "9f86d081-884c-4d65-9c67-41b405d56001", digest = "digest-12345678",
+            expiresAt = "2026-10-12T20:00:00Z", remoteHighWater = 7L,
+            localOnly = emptyList(), cloudOnly = emptyList(), identical = emptyList(),
+            conflicting = emptyList(), duplicateConfigurations = emptyList(), remoteItems = emptyList(),
+        )
+
+        val failure = runCatching {
+            transport(engine, userId = "account-b").commitLink(plan, "device-0001", emptyList(), expectedIdentity = "account-a")
+        }.exceptionOrNull()
+
+        assertTrue(failure is SupabaseSyncException)
+        assertEquals(SyncErrorKind.UNAUTHORIZED, (failure as SupabaseSyncException).kind)
+        assertEquals(0, requests)
+    }
+
+    @Test
     fun `push serializes operations and maps per-operation outcomes`() = runTest {
         lateinit var body: String
         val engine = MockEngine { request ->
@@ -260,7 +283,7 @@ class SupabaseSyncTransportTest {
             )
         }
 
-        val preview = transport(engine).prepareLink(listOf(item("item-1")))
+        val preview = transport(engine).prepareLink(listOf(item("item-1")), "account-a")
 
         assertTrue(bodies[0].contains("\"p_local_digest\":\""))
         assertTrue(bodies[0].contains("\"p_remote_sequence\":0"))
@@ -306,7 +329,7 @@ class SupabaseSyncTransportTest {
         )
         val operation = SyncOperation.Create(opId = "op-1", deviceId = deviceId, item = item("item-1"))
 
-        val linked = transport(engine).commitLink(plan, deviceId, listOf(operation))
+        val linked = transport(engine).commitLink(plan, deviceId, listOf(operation), "account-a")
 
         assertTrue(linked is LinkCommitResult.Linked)
         assertEquals(9L, (linked as LinkCommitResult.Linked).highWater)
@@ -316,10 +339,10 @@ class SupabaseSyncTransportTest {
         assertTrue(lastBody.contains("\"p_device_id\":\"device-0001\""))
         assertTrue(lastBody.contains("\"signature\":"))
 
-        val refused = transport(engine).commitLink(plan, deviceId, listOf(operation))
+        val refused = transport(engine).commitLink(plan, deviceId, listOf(operation), "account-a")
         assertEquals(LinkCommitResult.StalePreview, refused)
 
-        val partial = transport(engine).commitLink(plan, deviceId, listOf(operation))
+        val partial = transport(engine).commitLink(plan, deviceId, listOf(operation), "account-a")
         assertTrue(partial is LinkCommitResult.Partial)
         assertEquals(10L, (partial as LinkCommitResult.Partial).highWater)
         assertEquals(PushOutcome.Conflict("id-collision", "op-1"), partial.outcomes.single())
@@ -336,7 +359,7 @@ class SupabaseSyncTransportTest {
         )
         val invalid = item("item-1").copy(pricePaid = Money(12.345, Currency.USD))
         val failure = runCatching {
-            transport(engine).commitLink(plan, "device-0001", listOf(SyncOperation.Create("op-1", "device-0001", invalid)))
+            transport(engine).commitLink(plan, "device-0001", listOf(SyncOperation.Create("op-1", "device-0001", invalid)), "account-a")
         }.exceptionOrNull()
 
         assertTrue(failure is SupabaseSyncException)
@@ -354,12 +377,12 @@ class SupabaseSyncTransportTest {
         val invalidEngine = MockEngine {
             respond(content = "{bad", status = HttpStatusCode.OK, headers = headersOf(HttpHeaders.ContentType, "application/json"))
         }
-        val invalid = runCatching { transport(invalidEngine).commitLink(plan, "device-0001", emptyList()) }.exceptionOrNull()
+        val invalid = runCatching { transport(invalidEngine).commitLink(plan, "device-0001", emptyList(), "account-a") }.exceptionOrNull()
         assertTrue(invalid is SupabaseSyncException)
         assertEquals(SyncErrorKind.INVALID_RESPONSE, (invalid as SupabaseSyncException).kind)
 
         val lostEngine = MockEngine { throw java.io.IOException("connection lost") }
-        val lost = runCatching { transport(lostEngine).commitLink(plan, "device-0001", emptyList()) }.exceptionOrNull()
+        val lost = runCatching { transport(lostEngine).commitLink(plan, "device-0001", emptyList(), "account-a") }.exceptionOrNull()
         assertTrue(lost is SupabaseSyncException)
         assertEquals(SyncErrorKind.COMMIT_UNCERTAIN, (lost as SupabaseSyncException).kind)
         assertTrue(lost.message.orEmpty().contains("pode já ter recebido"))
@@ -369,7 +392,7 @@ class SupabaseSyncTransportTest {
     fun `prepareLink refuses an anonymous session before any network call`() = runTest {
         val engine = MockEngine { error("must not perform network call without a signed-in user") }
         try {
-            transport(engine, userId = null).prepareLink(listOf(item("item-1")))
+            transport(engine, userId = null).prepareLink(listOf(item("item-1")), "account-a")
             fail("expected unauthorized error")
         } catch (error: SupabaseSyncException) {
             assertEquals(SyncErrorKind.UNAUTHORIZED, error.kind)

@@ -208,8 +208,7 @@ object AppModule {
                     val linkedIdentity = linkRepository.currentIdentity()
                     val signedInIdentity = (auth as? app.tcg.app.auth.AuthState.SignedIn)?.session?.userId
                     if (signedInIdentity != null && linkedIdentity != null && signedInIdentity != linkedIdentity) {
-                        linkRepository.unlink()
-                        lifecycle.refreshBinding(auth, null)
+                        lifecycle.unlinkBinding(linkRepository::unlink)
                     } else {
                         lifecycle.refreshBinding(auth, linkedIdentity)
                     }
