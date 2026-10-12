@@ -142,6 +142,15 @@ abstract class CollectionDao {
     abstract suspend fun upsertSyncCursor(cursor: SyncCursorEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun upsertSyncConflict(conflict: SyncConflictEntity)
+
+    @Query("SELECT * FROM sync_conflict_records WHERE identity = :identity AND resolvedAt IS NULL ORDER BY sequence")
+    abstract suspend fun listSyncConflicts(identity: String): List<SyncConflictEntity>
+
+    @Query("SELECT * FROM sync_conflict_records WHERE id = :conflictId")
+    abstract suspend fun getSyncConflict(conflictId: String): SyncConflictEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun upsertRemoteItem(item: CollectionItemEntity)
 
     @Insert
@@ -152,6 +161,9 @@ abstract class CollectionDao {
 
     @Query("DELETE FROM sync_outbox WHERE opId = :opId AND identity = :identity")
     abstract suspend fun acknowledgeOperation(opId: String, identity: String): Int
+
+    @Query("DELETE FROM sync_outbox WHERE identity = :identity AND itemId = :itemId")
+    abstract suspend fun removePendingForItem(identity: String, itemId: String)
 
     @Transaction
     open suspend fun upsertSumming(item: CollectionItemEntity) {

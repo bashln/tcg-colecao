@@ -14,6 +14,8 @@ import app.tcg.app.data.sync.SyncConflictDetail
 import app.tcg.app.data.sync.SyncLinkCoordinator
 import app.tcg.app.data.sync.SyncResult
 import app.tcg.app.data.sync.SyncStatus
+import app.tcg.app.data.sync.SyncConflictResolution
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -81,6 +83,7 @@ class AccountViewModel(
     private val onSyncNow: () -> Unit,
     private val onLinkConfirmed: suspend (String) -> Boolean,
     private val onLinkUnlinked: () -> Unit,
+    private val onResolveConflict: ((String, SyncConflictResolution) -> Deferred<SyncResult>)? = null,
 ) : ViewModel() {
 
     private val submitting = MutableStateFlow(false)
@@ -136,6 +139,13 @@ class AccountViewModel(
     }.stateIn(viewModelScope, SharingStarted.Eagerly, AccountUiState())
 
     fun syncNow() = onSyncNow()
+
+    fun resolveConflict(conflictId: String, resolution: SyncConflictResolution) {
+        val action = onResolveConflict ?: return
+        viewModelScope.launch {
+            action(conflictId, resolution).await()
+        }
+    }
 
     fun submitSignIn(email: String, password: String) = submit { auth.signIn(email, password) }
 

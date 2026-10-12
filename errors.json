@@ -639,6 +639,30 @@
         "Usar o item local padrão com cardId diferente da carta que resolveCard retorna"
       ],
       "solucao": "Ajustar cardId do item remoto para cloudCard.id; teste então falhou com resultado partial e commit já chamado, confirmando lacuna real; guarda pré-dispatch corrigiu e teste passou"
+    },
+    {
+      "erro": "Primeira integração de RemoteApplyResult e resolução IndexedDB não compilou por retorno boolean legado, propriedades union sem narrowing e métodos novos ausentes nos fakes",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Migrar assinatura de aplicação remota sem alterar resolução das Promises e sem atualizar pontos de uso"
+      ],
+      "solucao": "Migrar Promise result e callers, narrow discriminado antes de acessar propriedades de cada operação e manter métodos opcionais nos adapters de teste; build, unit e E2E afetados passaram"
+    },
+    {
+      "erro": "Adicionar callback de resolução ao construtor SyncLifecycle quebrou trailing lambdas Kotlin em testes legados",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Adicionar parâmetro default depois do syncAction, que era o último parâmetro posicional"
+      ],
+      "solucao": "Mover callback opcional antes de syncAction para manter syncAction como último parâmetro e preservar chamadas com trailing lambda"
+    },
+    {
+      "erro": "Teste de lifecycle esperava status da resolução após advanceUntilIdle, mas teste também acionou sync automático de bindIdentity que publicou resultado mais recente",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Assumir que o status atual continuaria sendo o resultado da ação manual após o drain automático"
+      ],
+      "solucao": "Validar resultado retornado pela Deferred da resolução e tratar status compartilhado como último resultado de lifecycle; teste focado passou"
     }
   ]
 }

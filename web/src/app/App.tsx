@@ -304,7 +304,12 @@ export function App() {
             await refreshCollection()
           }} /> : null}
         {screen.kind === 'home' ? <HomeScreen entries={entries} currency={currency} onCurrency={setCurrency} onCollection={() => navigate({ kind: 'collection' })} onScan={() => navigate({ kind: 'scan' })} /> : null}
-        {screen.kind === 'profile' ? <ProfileScreen entries={entries} onRetry={refreshCollection} onNotice={setNotice} syncBinding={syncBinding} deviceId={deviceId} onLinked={() => { void refreshBinding() }} syncState={syncState} onSyncNow={() => { void syncRunner?.request() }} onImport={async (file) => {
+        {screen.kind === 'profile' ? <ProfileScreen entries={entries} onRetry={refreshCollection} onNotice={setNotice} syncBinding={syncBinding} deviceId={deviceId} onLinked={() => { void refreshBinding() }} syncState={syncState} onSyncNow={() => { void syncRunner?.request() }} onResolveConflict={async (conflictId, resolution) => {
+          if (authState.kind !== 'signed-in' || syncCoordinator?.resolveConflict === undefined) return
+          const result = await syncCoordinator.resolveConflict(authState.session.userId, conflictId, resolution)
+          setSyncState({ running: false, result })
+          await refreshCollection()
+        }} onImport={async (file) => {
           if (!isCollectionBackupSizeAllowed(file.size)) {
             setNotice('Este arquivo é maior que 50 MB. Escolha uma cópia menor.')
             return
@@ -445,11 +450,12 @@ function HomeScreen({ entries, currency, onCurrency, onCollection, onScan }: { e
   return <><h1>Início</h1><div className="home-panel"><p>Sua coleção neste navegador</p><strong>{entries.reduce((sum, entry) => sum + entry.item.quantity, 0)} cartas</strong><span>{estimate.amount === null ? 'Sem cotação de mercado' : `${formatMoney(estimate.amount, currency)} estimados`}</span><label className="summary-currency"><span className="sr-only">Moeda da estimativa</span><select value={currency} onChange={(event) => onCurrency(event.target.value as Currency)}>{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label></div><div className="home-actions"><button type="button" className="primary-button" onClick={onCollection}><Icon name="cards" />Ver coleção</button><button type="button" className="secondary-button" onClick={onScan}><Icon name="camera" />Escanear carta</button></div><p className="storage-footnote">Entre na conta e vincule a coleção para sincronizar entre seus aparelhos.</p></>
 }
 
-function ProfileScreen({ entries, onRetry, onNotice, onImport, authState, auth, onAuthState, syncBinding, deviceId, onLinked, syncState, onSyncNow, isIdentityCurrent, completeLink }: {
+function ProfileScreen({ entries, onRetry, onNotice, onImport, authState, auth, onAuthState, syncBinding, deviceId, onLinked, syncState, onSyncNow, onResolveConflict, isIdentityCurrent, completeLink }: {
   entries: CollectionEntry[]; onRetry: () => void; onNotice: (message: string) => void; onImport: (file: File) => void;
   authState: AuthState; auth: SupabaseWebAuth | null; onAuthState: (state: AuthState) => void;
   syncBinding: SyncBinding | null; deviceId: string; onLinked: () => void;
   syncState: SyncRunnerState; onSyncNow: () => void;
+  onResolveConflict: (conflictId: string, resolution: 'keep-local' | 'keep-cloud') => Promise<void>;
   isIdentityCurrent: (identity: string) => boolean; completeLink: (input: CompleteLinkInput) => Promise<boolean>;
 }) {
   const exportCopy = () => {
@@ -470,7 +476,7 @@ function ProfileScreen({ entries, onRetry, onNotice, onImport, authState, auth, 
     : <>
       <WebAccountPanel auth={auth} state={authState} onState={onAuthState} onNotice={onNotice} linked={authState.kind === 'signed-in' && syncBinding !== null && syncBinding.identity === authState.session.userId} />
       {authState.kind === 'signed-in'
-        ? <LinkPanel key={authState.session.userId} auth={auth} identity={authState.session.userId} deviceId={deviceId} entries={entries} binding={syncBinding} onLinked={onLinked} isIdentityCurrent={() => isIdentityCurrent(authState.session.userId)} completeLink={completeLink} syncState={syncState} onSyncNow={onSyncNow} />
+        ? <LinkPanel key={authState.session.userId} auth={auth} identity={authState.session.userId} deviceId={deviceId} entries={entries} binding={syncBinding} onLinked={onLinked} isIdentityCurrent={() => isIdentityCurrent(authState.session.userId)} completeLink={completeLink} syncState={syncState} onSyncNow={onSyncNow} onResolveConflict={onResolveConflict} />
         : null}
     </>}</div><div className="profile-panel"><h2>Coleção local</h2><p>Suas cartas ficam neste navegador. O navegador pode apagar dados locais; guarde uma cópia da sua coleção.</p><button type="button" className="primary-button" onClick={exportCopy} disabled={entries.length === 0}>Baixar cópia da coleção</button><label className="secondary-button import-backup" htmlFor="collection-backup">Restaurar ou combinar cópia</label><input id="collection-backup" className="sr-only" type="file" accept="application/json,.json" aria-label="Importar cópia da coleção" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImport(file); event.target.value = '' }} /><p className="storage-footnote">Cópias de até 50 MB. Cartas repetidas são combinadas por variante e condição. Conflitos interrompem a importação sem alterar a coleção.</p><button type="button" className="text-button" onClick={onRetry}>Atualizar coleção</button></div></>
 }

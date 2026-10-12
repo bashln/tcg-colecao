@@ -138,7 +138,7 @@ class RoomSyncLocalStoreTest {
             operation = SyncOperation.Create("op-7", "device-0001", syncItem("item-1", quantity = 5)),
         )
 
-        assertTrue(store.applyRemote("acct", entry))
+        assertEquals(RemoteApplyResult.Applied, store.applyRemote("acct", entry))
 
         val row = db.collectionDao().getById("item-1")
         assertEquals(5, row?.quantity)
@@ -171,7 +171,7 @@ class RoomSyncLocalStoreTest {
             ),
         )
 
-        assertTrue(store.applyRemote("acct", entry))
+        assertEquals(RemoteApplyResult.Applied, store.applyRemote("acct", entry))
 
         val row = db.collectionDao().getById("item-1")
         assertEquals(6, row?.quantity)
@@ -201,7 +201,7 @@ class RoomSyncLocalStoreTest {
             operation = SyncOperation.Delete("op-11", "device-0001", baseRevision = 2, itemId = "item-1"),
         )
 
-        assertTrue(store.applyRemote("acct", entry))
+        assertEquals(RemoteApplyResult.Applied, store.applyRemote("acct", entry))
 
         assertNull(db.collectionDao().getById("item-1"))
         assertEquals(11L, store.lastSequence("acct"))
@@ -227,10 +227,62 @@ class RoomSyncLocalStoreTest {
             operation = SyncOperation.Create("op-5", "device-0001", syncItem("remote-1")),
         )
 
-        assertFalse(store.applyRemote("acct", entry))
+        val result = store.applyRemote("acct", entry)
+        assertTrue(result is RemoteApplyResult.Conflict)
+        assertEquals("duplicate-configuration", (result as RemoteApplyResult.Conflict).detail.reason)
+        assertEquals("local-1", result.detail.local?.id)
+        val stored = store.conflicts("acct").single()
+        assertEquals("remote-1", (stored.remote as SyncOperation.Create).item.id)
 
         assertNull(db.collectionDao().getById("remote-1"))
         assertEquals(0L, store.lastSequence("acct"))
+    }
+
+    @Test
+    fun keep_local_retries_return_the_same_replacement_operation() = runTest {
+        db.collectionDao().setSyncBinding(app.tcg.app.data.local.SyncBindingEntity(identity = "acct", deviceId = "device-0001"))
+        db.collectionDao().insertIfAbsent(
+            CollectionItemEntity(
+                id = "local-1", cardId = "base1-4", quantity = 2, condition = Condition.NEAR_MINT,
+                variant = CardVariant.NORMAL, pricePaidAmount = null, pricePaidCurrency = null,
+                addedAt = 1L, revision = 3,
+            ),
+        )
+        val remote = SyncOperation.Create("op-remote", "device-0002", syncItem("remote-1", quantity = 7))
+        val result = store.applyRemote("acct", SequencedOperation(5L, remote))
+        assertTrue(result is RemoteApplyResult.Conflict)
+        val conflictId = (result as RemoteApplyResult.Conflict).detail.id
+
+        val first = store.resolveConflict("acct", conflictId, SyncConflictResolution.KeepLocal)
+        val retry = store.resolveConflict("acct", conflictId, SyncConflictResolution.KeepLocal)
+
+        assertTrue(first is SyncOperation.Replace)
+        assertEquals(first, retry)
+        assertEquals("remote-1", (first as SyncOperation.Replace).item.id)
+        assertEquals(1L, first.baseRevision)
+        assertEquals(0L, store.lastSequence("acct"))
+        assertEquals(1, store.pending("acct").size)
+    }
+
+    @Test
+    fun keep_cloud_replaces_conflicting_local_row_and_advances_cursor() = runTest {
+        db.collectionDao().setSyncBinding(app.tcg.app.data.local.SyncBindingEntity(identity = "acct", deviceId = "device-0001"))
+        db.collectionDao().insertIfAbsent(
+            CollectionItemEntity(
+                id = "local-1", cardId = "base1-4", quantity = 2, condition = Condition.NEAR_MINT,
+                variant = CardVariant.NORMAL, pricePaidAmount = null, pricePaidCurrency = null,
+                addedAt = 1L, revision = 1,
+            ),
+        )
+        val remote = SyncOperation.Create("op-remote", "device-0002", syncItem("remote-1", quantity = 7))
+        val conflict = store.applyRemote("acct", SequencedOperation(5L, remote)) as RemoteApplyResult.Conflict
+
+        assertNull(store.resolveConflict("acct", conflict.detail.id, SyncConflictResolution.KeepCloud))
+
+        assertNull(db.collectionDao().getById("local-1"))
+        assertEquals(7, db.collectionDao().getById("remote-1")?.quantity)
+        assertEquals(5L, store.lastSequence("acct"))
+        assertTrue(store.conflicts("acct").isEmpty())
     }
 
     @Test

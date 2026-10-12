@@ -3,6 +3,7 @@ package app.tcg.app.ui.account
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.tcg.app.R
 import app.tcg.app.data.sync.LinkPreviewSummary
+import app.tcg.app.data.sync.SyncConflictResolution
 
 /**
  * Account screen: create an account or sign in, and explicitly activate sync. The local
@@ -47,6 +49,7 @@ fun AccountScreen(
     onConfirmLink: () -> Unit,
     onCancelLink: () -> Unit,
     onSyncNow: () -> Unit,
+    onResolveConflict: (String, SyncConflictResolution) -> Unit = { _, _ -> },
     onSignOut: () -> Unit,
     onDismissError: () -> Unit,
     modifier: Modifier = Modifier,
@@ -58,6 +61,7 @@ fun AccountScreen(
             onConfirmLink = onConfirmLink,
             onCancelLink = onCancelLink,
             onSyncNow = onSyncNow,
+            onResolveConflict = onResolveConflict,
             onSignOut = onSignOut,
             modifier = modifier,
         )
@@ -175,6 +179,7 @@ private fun SignedInAccount(
     onConfirmLink: () -> Unit,
     onCancelLink: () -> Unit,
     onSyncNow: () -> Unit,
+    onResolveConflict: (String, SyncConflictResolution) -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier,
 ) {
@@ -218,7 +223,7 @@ private fun SignedInAccount(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                SyncStatusPanel(state.syncStatus, onSyncNow)
+                SyncStatusPanel(state.syncStatus, onSyncNow, onResolveConflict)
                 OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.account_sign_out))
                 }
@@ -237,7 +242,11 @@ private fun SignedInAccount(
 
 /** Visible sync state for a linked account: pending, conflicts with reasons, offline, error. */
 @Composable
-private fun SyncStatusPanel(status: SyncStatusView?, onSyncNow: () -> Unit) {
+private fun SyncStatusPanel(
+    status: SyncStatusView?,
+    onSyncNow: () -> Unit,
+    onResolveConflict: (String, SyncConflictResolution) -> Unit,
+) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -274,6 +283,33 @@ private fun SyncStatusPanel(status: SyncStatusView?, onSyncNow: () -> Unit) {
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                val remoteItem = when (val remote = detail.remote) {
+                    is app.tcg.app.data.sync.SyncOperation.Create -> remote.item
+                    is app.tcg.app.data.sync.SyncOperation.Replace -> remote.item
+                    is app.tcg.app.data.sync.SyncOperation.Delete, null -> null
+                }
+                if (detail.local != null || remoteItem != null) {
+                    Text(
+                        text = stringResource(
+                            R.string.account_sync_conflict_values,
+                            detail.local?.let { "${it.quantity} × ${it.cardId} · ${it.variant}/${it.condition}" } ?: stringResource(R.string.account_sync_value_absent),
+                            remoteItem?.let { "${it.quantity} × ${it.cardId} · ${it.variant}/${it.condition}" } ?: stringResource(R.string.account_sync_value_absent),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (detail.id.isNotBlank() && detail.remote != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { onResolveConflict(detail.id, SyncConflictResolution.KeepLocal) },
+                        ) { Text(stringResource(R.string.account_sync_keep_local)) }
+                        OutlinedButton(
+                            onClick = { onResolveConflict(detail.id, SyncConflictResolution.KeepCloud) },
+                        ) { Text(stringResource(R.string.account_sync_keep_cloud)) }
+                    }
+                }
             }
         }
         OutlinedButton(onClick = onSyncNow, enabled = status !is SyncStatusView.Running, modifier = Modifier.fillMaxWidth()) {

@@ -7,8 +7,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class],
-    version = 5,
+    entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class, SyncConflictEntity::class],
+    version = 6,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -84,6 +84,28 @@ abstract class TcgDatabase : RoomDatabase() {
                         PRIMARY KEY(`identity`)
                     )""".trimIndent(),
                 )
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `sync_conflict_records` (
+                        `id` TEXT NOT NULL,
+                        `identity` TEXT NOT NULL,
+                        `sequence` INTEGER NOT NULL,
+                        `itemId` TEXT NOT NULL,
+                        `reason` TEXT NOT NULL,
+                        `localPayload` TEXT,
+                        `remotePayload` TEXT NOT NULL,
+                        `resolution` TEXT,
+                        `resolutionOperationId` TEXT,
+                        `resolutionOperation` TEXT,
+                        `resolvedAt` INTEGER,
+                        PRIMARY KEY(`id`)
+                    )""".trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_sync_conflict_records_identity` ON `sync_conflict_records` (`identity`)")
             }
         }
     }

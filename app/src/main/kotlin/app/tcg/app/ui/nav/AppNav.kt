@@ -219,6 +219,7 @@ fun AppNav(
                                     ).await()
                                 },
                                 onLinkUnlinked = { syncLifecycle.unlinkBinding(syncLinkRepository::unlink) },
+                                onResolveConflict = syncLifecycle::resolveConflict,
                             )
                         }
                     },
@@ -231,6 +232,7 @@ fun AppNav(
                     onConfirmLink = viewModel::confirmLink,
                     onCancelLink = viewModel::cancelLink,
                     onSyncNow = viewModel::syncNow,
+                    onResolveConflict = viewModel::resolveConflict,
                     onSignOut = viewModel::signOut,
                     onDismissError = viewModel::dismissError,
                 )

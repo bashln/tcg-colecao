@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { parseCardId, parseItemId } from '../domain/model.ts'
 import { createSyncCoordinator } from './coordinator.ts'
+import type { SyncConflictDetail } from './coordinator.ts'
 import { createMemoryTransport } from './memory-transport.ts'
 import type { CollectionOperation } from './policy.ts'
 
@@ -39,7 +40,8 @@ function localStore(...operations: CollectionOperation[]) {
       pending.delete(opId)
       return true
     },
-    async applyRemoteOperation(operation: CollectionOperation, _identity: string, _nextSequence: number) { remoteReceived.push(operation.opId); return true },
+    async applyRemoteOperation(operation: CollectionOperation, _identity: string, _nextSequence: number) { remoteReceived.push(operation.opId); return { kind: 'applied' as const } },
+    async listConflicts() { return [] },
     async lastSequence(_identity: string) { return sequence },
     async saveSequence(_identity: string, next: number) { sequence = next; return true },
   }
@@ -102,7 +104,8 @@ test('account switch never sends operations owned by previous identity', async (
       acknowledged.push(opId)
       return true
     },
-    async applyRemoteOperation() { return true },
+    async applyRemoteOperation() { return { kind: 'applied' as const } },
+    async listConflicts() { return [] },
     async lastSequence() { return 0 },
     async saveSequence() { return true },
   }
@@ -169,7 +172,8 @@ test('switching identity during remote apply does not advance its cursor', async
   const local = {
     async listPendingOperations() { return [] },
     async acknowledgeOperation() { return true },
-    async applyRemoteOperation() { return await new Promise<boolean>((resolve) => { resolveApply = resolve }) },
+    async applyRemoteOperation() { return await new Promise<import('./coordinator.ts').RemoteApplyResult>((resolve) => { resolveApply = (applied) => resolve(applied ? { kind: 'applied' } : { kind: 'conflict', detail: { id: 'conflict-1', sequence: 1, itemId, reason: 'stale', local: item, remote: operation } }) }) },
+    async listConflicts() { return [] },
     async lastSequence() { return 0 },
     async saveSequence(_identity: string, sequence: number) { savedSequence = sequence; return true },
   }
@@ -182,6 +186,42 @@ test('switching identity during remote apply does not advance its cursor', async
 
   assert.deepEqual(await syncing, { kind: 'offline', pending: 0 })
   assert.equal(savedSequence, 0)
+})
+
+test('pull conflict persists both values and holds cursor at first unapplied sequence', async () => {
+  const remoteFirst = createOperation('10000000-0000-4000-8000-000000000018', '20000000-0000-4000-8000-000000000002')
+  const remoteSecond = { ...createOperation('10000000-0000-4000-8000-000000000019', '20000000-0000-4000-8000-000000000002', 5), item: { ...item, id: parseItemId('00000000-0000-4000-8000-000000000019')!, quantity: 5 } }
+  const transport = createMemoryTransport()
+  await transport.push('account-a', [remoteFirst, remoteSecond])
+  let cursor = 0
+  const stored: SyncConflictDetail[] = []
+  const local = {
+    async listPendingOperations() { return [] },
+    async acknowledgeOperation() { return true },
+    async applyRemoteOperation(operation: CollectionOperation, _identity: string, sequence: number) {
+      if (sequence === 1) {
+        const detail: SyncConflictDetail = { identity: 'account-a', id: `account-a:${sequence}`, sequence, itemId, reason: 'duplicate-configuration', local: item, remote: operation }
+        stored.push(detail)
+        return { kind: 'conflict' as const, detail }
+      }
+      cursor = sequence
+      return { kind: 'applied' as const }
+    },
+    async lastSequence() { return cursor },
+    async saveSequence(_identity: string, sequence: number) { cursor = sequence; return true },
+    async listConflicts() { return stored },
+  }
+  const device = createSyncCoordinator({ transport, local })
+  device.bindIdentity('account-a')
+
+  const result = await device.syncOnce()
+
+  assert.equal(result.kind, 'conflicts')
+  assert.equal(result.kind === 'conflicts' ? result.details[0]?.sequence : -1, 1)
+  assert.equal(result.kind === 'conflicts' ? result.details[0]?.local?.quantity : -1, 2)
+  assert.equal(result.kind === 'conflicts' ? result.details[0]?.remote?.kind : '', 'create')
+  assert.equal(cursor, 0)
+  assert.equal(stored.length, 1)
 })
 
 test('mid-flight account switch never pulls or acknowledges under the new identity', async () => {

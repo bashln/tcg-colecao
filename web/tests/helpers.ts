@@ -88,7 +88,7 @@ export async function readOutboxIdentities(page: Page): Promise<{ identity: stri
  * Mocks the whole Supabase sync surface (prepare/snapshot/commit plus push/pull) with a
  * coherent server high-water sequence, so link and automatic sync flows run end to end.
  */
-export async function mockSyncRpc(page: Page, options: { conflicting?: boolean } = {}): Promise<SyncHarness> {
+export async function mockSyncRpc(page: Page, options: { conflicting?: boolean; pullOperation?: Record<string, unknown> } = {}): Promise<SyncHarness> {
   const harness: SyncHarness = { calls: [], highWater: 7, failPushes: false }
   await page.route('**/rest/v1/rpc/**', async (route) => {
     const request = route.request()
@@ -140,6 +140,14 @@ export async function mockSyncRpc(page: Page, options: { conflicting?: boolean }
     }
     if (fn === 'read_collection_link_snapshot') {
       return respond({ highWater: harness.highWater, items: [] })
+    }
+    if (fn === 'pull_collection_operations') {
+      const after = Number(body.p_after_sequence ?? 0)
+      const operation = options.pullOperation
+      return respond({
+        operations: operation !== undefined && after < Number(operation.serverSequence) ? [operation] : [],
+        highWater: operation === undefined ? harness.highWater : Math.max(harness.highWater, Number(operation.serverSequence)),
+      })
     }
     if (fn === 'commit_collection_link') {
       const operations = (body.p_operations ?? []) as { opId: string }[]

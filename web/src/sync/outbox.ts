@@ -60,8 +60,9 @@ export function recordCollectionWrite(
   transaction: IDBTransaction,
   item: CollectionItem,
   previous: CollectionItem | null,
+  opId?: string,
 ): void {
-  recordBoundOperation(transaction, (binding, opId) => createCollectionOperation(binding, item, previous, opId))
+  recordBoundOperation(transaction, (binding, generatedId) => createCollectionOperation(binding, item, previous, opId ?? generatedId), opId)
 }
 
 export function recordCollectionDelete(transaction: IDBTransaction, item: CollectionItem): void {
@@ -71,10 +72,11 @@ export function recordCollectionDelete(transaction: IDBTransaction, item: Collec
 function recordBoundOperation(
   transaction: IDBTransaction,
   createOperation: (binding: SyncBinding, opId: string) => CollectionOperation,
+  operationId?: string,
 ): void {
   let opId: string
   try {
-    opId = crypto.randomUUID()
+    opId = operationId ?? crypto.randomUUID()
   } catch {
     abortTransaction(transaction)
     return

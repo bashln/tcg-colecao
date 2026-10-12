@@ -328,3 +328,45 @@ describe('pull_collection_operations', () => {
     await anon.end();
   });
 });
+
+describe('sync conflict listing and resolution', () => {
+  test('lists only caller conflicts and resolution retries idempotently', async () => {
+    const owner = '00000000-0000-0000-0000-0000000000aa';
+    const otherOwner = '00000000-0000-0000-0000-0000000000bb';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    const other = await cluster.connectActor({ role: 'authenticated', sub: otherOwner });
+    const ownCollection = await cluster.admin.query('select public._tcg_ensure_collection($1::uuid) as id', [owner]);
+    const foreignCollection = await cluster.admin.query('select public._tcg_ensure_collection($1::uuid) as id', [otherOwner]);
+    const ownId = randomUUID();
+    const foreignId = randomUUID();
+    await cluster.admin.query(
+      `insert into public.sync_conflicts (id, collection_id, item_id, reason, payload, owner)
+       values ($1, $2, 'item-own-000001', 'stale', '{"local":{"quantity":1},"remote":{"quantity":2}}', $3),
+              ($4, $5, 'item-foreign-01', 'stale', '{"local":{"quantity":1},"remote":{"quantity":3}}', $6)`,
+      [ownId, ownCollection.rows[0].id, owner, foreignId, foreignCollection.rows[0].id, otherOwner],
+    );
+
+    const listed = await actor.query('select public.read_collection_conflicts() as result');
+    assert.deepEqual(listed.rows[0].result.map((row) => row.id), [ownId]);
+    assert.equal(listed.rows[0].result[0].payload.remote.quantity, 2);
+    const resolved = await actor.query(
+      'select public.resolve_collection_conflict($1::uuid, $2::text, $3::text) as result',
+      [ownId, 'keep-local', DEVICE_A1],
+    );
+    assert.equal(resolved.rows[0].result.status, 'resolved');
+    const replay = await actor.query(
+      'select public.resolve_collection_conflict($1::uuid, $2::text, $3::text) as result',
+      [ownId, 'keep-local', DEVICE_A1],
+    );
+    assert.equal(replay.rows[0].result.status, 'already-resolved');
+    const foreign = await actor.query(
+      'select public.resolve_collection_conflict($1::uuid, $2::text, $3::text) as result',
+      [foreignId, 'keep-cloud', DEVICE_A1],
+    );
+    assert.equal(foreign.rows[0].result.status, 'not-found');
+    const otherList = await other.query('select public.read_collection_conflicts() as result');
+    assert.deepEqual(otherList.rows[0].result.map((row) => row.id), [foreignId]);
+    await actor.end();
+    await other.end();
+  });
+});

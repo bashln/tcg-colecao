@@ -440,7 +440,7 @@ class AccountViewModelTest {
             result = app.tcg.app.data.sync.SyncResult.Conflicts(
                 count = 1,
                 pending = 1,
-                details = listOf(app.tcg.app.data.sync.SyncConflictDetail("item-1", "stale-revision")),
+                details = listOf(app.tcg.app.data.sync.SyncConflictDetail(itemId = "item-1", reason = "stale-revision")),
             ),
         )
         advanceUntilIdle()

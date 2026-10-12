@@ -31,11 +31,13 @@ data class SyncStatus(
 class SyncLifecycle(
     private val scope: CoroutineScope,
     private val onIdentityChanged: (String?) -> Unit = {},
+    private val resolveConflictAction: suspend (String, SyncConflictResolution) -> SyncResult = { _, _ -> SyncResult.Error(0) },
     private val syncAction: suspend (SyncResult?) -> SyncResult,
 ) {
     private val identity = AtomicReference<String?>(null)
     private val bindingGeneration = AtomicLong(0)
     private val bindingTransitions = Mutex()
+    private val syncTransitions = Mutex()
     private val _status = MutableStateFlow(SyncStatus())
     val status: StateFlow<SyncStatus> = _status.asStateFlow()
 
@@ -44,6 +46,23 @@ class SyncLifecycle(
         val pending = CompletableDeferred<SyncResult>()
         enqueue(pending)
         return pending
+    }
+
+    fun resolveConflict(conflictId: String, resolution: SyncConflictResolution): Deferred<SyncResult> = scope.async {
+        val expectedIdentity = identity.get() ?: return@async SyncResult.Offline(0)
+        syncTransitions.withLock {
+            if (identity.get() != expectedIdentity) return@withLock SyncResult.Offline(0)
+            _status.value = _status.value.copy(running = true)
+            val result = try {
+                resolveConflictAction(conflictId, resolution)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SyncResult.Error(0)
+            }
+            _status.value = _status.value.copy(running = false, result = result)
+            result
+        }
     }
 
     /**
@@ -169,7 +188,7 @@ class SyncLifecycle(
             }
             _status.value = _status.value.copy(running = true)
             val result = try {
-                syncAction(_status.value.result)
+                syncTransitions.withLock { syncAction(_status.value.result) }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {

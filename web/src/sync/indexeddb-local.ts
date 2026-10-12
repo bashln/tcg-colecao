@@ -4,6 +4,9 @@ import {
   applyRemoteOperation,
   getCachedCard,
   lastSyncSequence,
+  listSyncConflicts,
+  resolveSyncConflict,
+  finishSyncConflict,
   listPendingOperations,
   saveSyncSequence,
 } from '../collection/store.ts'
@@ -22,6 +25,11 @@ export function createIndexedDbSyncLocalStore(input: {
       }
       return applyRemoteOperation(identity, sequence, operation, card)
     },
+    listConflicts: listSyncConflicts,
+    resolveConflict(identity, conflictId, resolution) {
+      return resolveSyncConflict(identity, conflictId, resolution, input.resolveCard)
+    },
+    finishConflict: finishSyncConflict,
     lastSequence: lastSyncSequence,
     saveSequence: saveSyncSequence,
   }

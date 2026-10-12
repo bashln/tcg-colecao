@@ -28,6 +28,27 @@ import java.util.concurrent.atomic.AtomicReference
  */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SyncLifecycleTest {
+    @Test
+    fun conflict_resolution_uses_lifecycle_identity_and_publishes_result() = runTest {
+        var request: Pair<String, SyncConflictResolution>? = null
+        val lifecycle = SyncLifecycle(
+            scope = this,
+            resolveConflictAction = { conflictId, resolution ->
+                request = conflictId to resolution
+                SyncResult.Complete(applied = 1, pending = 0)
+            },
+            syncAction = { SyncResult.Complete(applied = 0, pending = 0) },
+        )
+        lifecycle.bindIdentity("user-a")
+
+        val result = lifecycle.resolveConflict("user-a:5", SyncConflictResolution.KeepCloud)
+        advanceUntilIdle()
+
+        assertEquals(SyncResult.Complete(applied = 1, pending = 0), result.await())
+        assertEquals("user-a:5" to SyncConflictResolution.KeepCloud, request)
+        assertEquals(SyncResult.Complete(applied = 0, pending = 0), lifecycle.status.value.result)
+    }
+
 
     @Test
     fun `concurrent request producers resolve every queued request`() = runBlocking {

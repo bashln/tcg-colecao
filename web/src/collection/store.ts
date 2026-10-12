@@ -5,9 +5,10 @@ import type { CardSummary, CollectionEntry, CollectionItem, ItemId, ParsedDraft 
 import { importSignature, parseCollectionBackup, parseImportMarkers } from './backup.ts'
 import { isSyncBinding, recordCollectionDelete, recordCollectionWrite, type OutboxEntry, type SyncBinding } from '../sync/outbox.ts'
 import type { CollectionOperation, SyncItem } from '../sync/policy.ts'
+import type { RemoteApplyResult, SyncConflictDetail } from '../sync/coordinator.ts'
 
 const DATABASE_NAME = 'tcg-colecao-web'
-const VERSION = 4
+const VERSION = 5
 const CHANGE_EVENT = 'tcg-collection-changed'
 let databasePromise: Promise<IDBDatabase> | null = null
 
@@ -114,6 +115,7 @@ function openDatabase(): Promise<IDBDatabase> {
           }
         }
       }
+      if (event.oldVersion < 5) db.createObjectStore('syncConflicts', { keyPath: 'id' }).createIndex('identity', 'identity')
     }
     request.onsuccess = () => {
       request.result.onversionchange = () => request.result.close()
@@ -275,15 +277,18 @@ export async function applyRemoteOperation(
   sequence: number,
   operation: CollectionOperation,
   card?: CardSummary,
-): Promise<boolean> {
-  if (!Number.isSafeInteger(sequence) || sequence < 1) return false
+): Promise<RemoteApplyResult> {
+  if (!Number.isSafeInteger(sequence) || sequence < 1) return { kind: 'conflict', detail: makeSyncConflict(identity, sequence, operation, null, 'invalid-sequence') }
   const remoteItem = operation.kind === 'delete' ? null : operation.item
-  if (remoteItem !== null && card !== undefined && card.id !== remoteItem.cardId) return false
+  if (remoteItem !== null && card !== undefined && card.id !== remoteItem.cardId) {
+    return { kind: 'conflict', detail: makeSyncConflict(identity, sequence, operation, null, 'invalid-card') }
+  }
   const database = await openDatabase()
-  return new Promise<boolean>((resolve) => {
-    const transaction = database.transaction(['items', 'cards', 'sync'], 'readwrite')
+  return new Promise<RemoteApplyResult>((resolve) => {
+    const transaction = database.transaction(['items', 'cards', 'sync', 'syncConflicts'], 'readwrite')
     const items = transaction.objectStore('items')
     const sync = transaction.objectStore('sync')
+    const conflicts = transaction.objectStore('syncConflicts')
     const bindingRequest = sync.get('binding')
     const cursorRequest = sync.get(`cursor:${identity}`)
     const itemId = operation.kind === 'delete' ? operation.itemId : operation.item.id
@@ -294,7 +299,7 @@ export async function applyRemoteOperation(
     let bindingReady = false
     let cursorReady = false
     let itemReady = false
-    let applied = false
+    let result: RemoteApplyResult = { kind: 'conflict', detail: makeSyncConflict(identity, sequence, operation, null, 'invalid-local') }
     let changed = false
     let complete = false
 
@@ -307,6 +312,13 @@ export async function applyRemoteOperation(
       const existing = current === undefined ? undefined : isItem(current) ? current : null
       if (existing === null) { complete = true; abort(); return }
 
+      const conflict = (reason: string, localItem = existing) => {
+        const detail = makeSyncConflict(identity, sequence, operation, localItem === undefined ? null : toSyncItem(localItem), reason)
+        conflicts.put({ ...detail, identity })
+        result = { kind: 'conflict', detail }
+        complete = true
+      }
+
       const remote = remoteItem
       const isSameItem = (item: CollectionItem, value: NonNullable<typeof remote>) =>
         item.id === value.id && item.cardId === value.cardId && item.quantity === value.quantity &&
@@ -315,8 +327,7 @@ export async function applyRemoteOperation(
 
       if (operation.kind === 'delete') {
         if (existing !== undefined && existing.revision !== operation.baseRevision) {
-          complete = true
-          abort()
+          conflict('stale-revision')
           return
         }
         if (existing !== undefined) {
@@ -328,8 +339,7 @@ export async function applyRemoteOperation(
         const key = configurationKey(remote.cardId, remote.variant, remote.condition)
         if (operation.kind === 'create' && existing !== undefined) {
           if (existing.revision !== 1 || !isSameItem(existing, remote)) {
-            complete = true
-            abort()
+            conflict('id-collision')
             return
           }
         } else if (operation.kind === 'replace' && existing !== undefined &&
@@ -340,8 +350,8 @@ export async function applyRemoteOperation(
           if ((expectedRevision === null && existing !== undefined) ||
             (expectedRevision !== null && (existing === undefined || existing.revision !== expectedRevision)) ||
             card === undefined) {
+            conflict(expectedRevision !== null && existing === undefined ? 'missing-local' : 'stale-revision')
             complete = true
-            abort()
             return
           }
           const queueItem = () => {
@@ -363,8 +373,7 @@ export async function applyRemoteOperation(
           duplicateRequest.onsuccess = () => {
             const duplicate: unknown = duplicateRequest.result
             if (duplicate !== undefined && (!isItem(duplicate) || duplicate.id !== itemId)) {
-              complete = true
-              abort()
+              conflict('duplicate-configuration', isItem(duplicate) ? duplicate : undefined)
               return
             }
             queueItem()
@@ -382,7 +391,7 @@ export async function applyRemoteOperation(
         ? cursor.sequence
         : 0
       if (sequence > storedSequence) sync.put({ key: `cursor:${identity}`, sequence })
-      applied = true
+      result = { kind: 'applied' }
       complete = true
     }
 
@@ -392,10 +401,216 @@ export async function applyRemoteOperation(
     bindingRequest.onerror = cursorRequest.onerror = itemRequest.onerror = abort
     transaction.oncomplete = () => {
       if (changed) announceChange()
-      resolve(applied)
+      resolve(result)
     }
-    transaction.onabort = transaction.onerror = () => resolve(false)
+    transaction.onabort = transaction.onerror = () => resolve(result)
   })
+}
+
+function toSyncItem(item: CollectionItem): SyncItem {
+  return {
+    id: item.id, cardId: item.cardId, quantity: item.quantity, variant: item.variant,
+    condition: item.condition, pricePaid: item.pricePaid, addedAt: item.addedAt,
+  }
+}
+
+function makeSyncConflict(
+  identity: string,
+  sequence: number,
+  remote: CollectionOperation,
+  local: SyncItem | null,
+  reason: string,
+): SyncConflictDetail {
+  return {
+    id: `${identity}:${sequence}`,
+    identity,
+    sequence,
+    itemId: remote.kind === 'delete' ? remote.itemId : remote.item.id,
+    reason,
+    local,
+    remote,
+  }
+}
+
+export async function listSyncConflicts(identity: string): Promise<SyncConflictDetail[]> {
+  const database = await openDatabase()
+  const transaction = database.transaction('syncConflicts', 'readonly')
+  const end = transactionEnd(transaction)
+  const rows = await requestResult<unknown[]>(transaction.objectStore('syncConflicts').index('identity').getAll(identity))
+  await end
+  return rows.filter((row): row is SyncConflictDetail => isRecord(row) && row.identity === identity && !('resolvedAt' in row) &&
+    typeof row.id === 'string' && typeof row.sequence === 'number' && typeof row.itemId === 'string' &&
+    typeof row.reason === 'string' && isCollectionOperation(row.remote) &&
+    (row.resolutionOperation === undefined || isCollectionOperation(row.resolutionOperation)))
+}
+
+function isCollectionOperation(value: unknown): value is CollectionOperation {
+  if (!isRecord(value) || typeof value.opId !== 'string' || typeof value.deviceId !== 'string') return false
+  if (value.kind === 'delete') return parseItemId(value.itemId) !== null && Number.isSafeInteger(value.baseRevision)
+  if (value.kind !== 'create' && value.kind !== 'replace') return false
+  if (value.kind === 'replace' && !Number.isSafeInteger(value.baseRevision)) return false
+  const item = value.item
+  if (!isRecord(item) || parseItemId(item.id) === null || parseCardId(item.cardId) === null ||
+    typeof item.quantity !== 'number' || !Number.isSafeInteger(item.quantity) || item.quantity < 1 ||
+    typeof item.addedAt !== 'number' || !Number.isSafeInteger(item.addedAt) ||
+    typeof item.variant !== 'string' || !VARIANTS.some((candidate) => candidate === item.variant) ||
+    typeof item.condition !== 'string' || !CONDITIONS.some((candidate) => candidate === item.condition)) return false
+  const pricePaid = item.pricePaid
+  if (pricePaid === null) return true
+  if (!isRecord(pricePaid)) return false
+  return typeof pricePaid.amount === 'number' && Number.isFinite(pricePaid.amount) &&
+    typeof pricePaid.currency === 'string' && CURRENCIES.some((candidate) => candidate === pricePaid.currency)
+}
+
+export async function resolveSyncConflict(
+  identity: string,
+  conflictId: string,
+  resolution: 'keep-local' | 'keep-cloud',
+  resolveCard: (cardId: string) => Promise<CardSummary>,
+): Promise<CollectionOperation | null> {
+  const current = (await listSyncConflicts(identity)).find((conflict) => conflict.id === conflictId)
+  if (current?.remote === undefined) return null
+  if (current.resolutionOperation !== undefined) return current.resolutionOperation
+  const remote = current.remote
+  const remoteItem = remote.kind === 'delete' ? null : remote.item
+  const card = resolution === 'keep-cloud' && remoteItem !== null
+    ? await resolveCard(remoteItem.cardId)
+    : undefined
+  const database = await openDatabase()
+  let queued: CollectionOperation | null = null
+  await new Promise<void>((resolve, reject) => {
+    const stores = resolution === 'keep-local'
+      ? ['items', 'sync', 'syncConflicts', 'outbox', 'outboxOrder']
+      : ['items', 'cards', 'sync', 'syncConflicts']
+    const transaction = database.transaction(stores, 'readwrite')
+    const items = transaction.objectStore('items')
+    const sync = transaction.objectStore('sync')
+    const conflicts = transaction.objectStore('syncConflicts')
+    const conflictRequest = conflicts.get(conflictId)
+    const bindingRequest = sync.get('binding')
+    const localId = current.local?.id
+    const localRequest = localId === undefined ? null : items.get(localId)
+    let conflictRow: unknown
+    let localRow: unknown
+    let bindingRow: unknown
+    let conflictReady = false
+    let localReady = localRequest === null
+    let bindingReady = false
+    const abort = () => { try { transaction.abort() } catch { /* Transaction already ended. */ } }
+    const apply = () => {
+      if (!conflictReady || !localReady || !bindingReady) return
+      if (!isCurrentBinding(bindingRow, identity)) {
+        abort()
+        return
+      }
+      if (!isRecord(conflictRow) || conflictRow.identity !== identity || conflictRow.resolvedAt !== undefined) {
+        abort()
+        return
+      }
+      const local = localRow === undefined ? null : isItem(localRow) ? localRow : null
+      if (localId !== undefined && local === null) { abort(); return }
+      if (resolution === 'keep-cloud') {
+        if (remoteItem === null) {
+          if (remote.kind !== 'delete') { abort(); return }
+          items.delete(remote.itemId)
+        } else {
+          if (card === undefined || card.id !== remoteItem.cardId) { abort(); return }
+          if (local !== null && local.id !== remoteItem.id) items.delete(local.id)
+          items.put({ ...remoteItem, revision: remote.kind === 'create' ? 1 : remote.baseRevision + 1,
+            configurationKey: configurationKey(remoteItem.cardId, remoteItem.variant, remoteItem.condition) })
+          transaction.objectStore('cards').put(card)
+        }
+        advanceLocalCursor(sync, identity, current.sequence ?? 0)
+        conflicts.put({ ...conflictRow, resolvedAt: Date.now(), resolution })
+      } else {
+        if (local === null || current.local === undefined) { abort(); return }
+        const opId = crypto.randomUUID()
+        let next: CollectionItem
+        let previous: CollectionItem | null
+        if (remoteItem === null) {
+          next = { ...local, id: newItemId(), revision: 1 }
+          previous = null
+        } else {
+          const remoteRevision = remote.kind === 'create' ? 1 : remote.baseRevision + 1
+          next = { ...local, id: remoteItem.id, revision: remoteRevision + 1 }
+          previous = { ...remoteItem, revision: remoteRevision,
+            configurationKey: configurationKey(remoteItem.cardId, remoteItem.variant, remoteItem.condition) }
+          if (local.id !== next.id) items.delete(local.id)
+        }
+        items.put(next)
+        recordCollectionWrite(transaction, next, previous, opId)
+        removeQueuedOperations(transaction, identity, [local.id, ...(remoteItem === null ? [] : [remoteItem.id])], opId)
+        const binding = isRecord(bindingRow) && isRecord(bindingRow.binding) ? bindingRow.binding : null
+        if (binding === null || binding.identity !== identity) { abort(); return }
+        queued = previous === null
+          ? { kind: 'create', opId, deviceId: String(binding.deviceId), item: toSyncItem(next) }
+          : { kind: 'replace', opId, deviceId: String(binding.deviceId), baseRevision: previous.revision, item: toSyncItem(next) }
+        if (queued === null) { abort(); return }
+        conflicts.put({ ...conflictRow, resolution, resolutionOperationId: opId, resolutionOperation: queued })
+      }
+    }
+    conflictRequest.onsuccess = () => { conflictRow = conflictRequest.result; conflictReady = true; apply() }
+    conflictRequest.onerror = abort
+    bindingRequest.onsuccess = () => { bindingRow = bindingRequest.result; bindingReady = true; apply() }
+    bindingRequest.onerror = abort
+    if (localRequest !== null) {
+      localRequest.onsuccess = () => { localRow = localRequest.result; localReady = true; apply() }
+      localRequest.onerror = abort
+    }
+    transaction.oncomplete = () => resolve()
+    transaction.onabort = transaction.onerror = () => reject(transaction.error ?? new Error('Conflict resolution failed'))
+  })
+  return queued
+}
+
+export async function finishSyncConflict(identity: string, conflictId: string, operationId: string): Promise<boolean> {
+  const database = await openDatabase()
+  const transaction = database.transaction(['sync', 'syncConflicts'], 'readwrite')
+  const end = transactionEnd(transaction)
+  const sync = transaction.objectStore('sync')
+  const conflicts = transaction.objectStore('syncConflicts')
+  const bindingRequest = sync.get('binding')
+  const conflictRequest = conflicts.get(conflictId)
+  let bindingRow: unknown
+  let conflictRow: unknown
+  let bindingReady = false
+  let conflictReady = false
+  let finished = false
+  const finishIfReady = () => {
+    if (!bindingReady || !conflictReady || !isCurrentBinding(bindingRow, identity)) return
+    if (!isRecord(conflictRow) || conflictRow.identity !== identity || conflictRow.resolutionOperationId !== operationId) return
+    advanceLocalCursor(sync, identity, Number(conflictRow.sequence))
+    conflicts.put({ ...conflictRow, resolvedAt: Date.now() })
+    finished = true
+  }
+  bindingRequest.onsuccess = () => { bindingRow = bindingRequest.result; bindingReady = true; finishIfReady() }
+  conflictRequest.onsuccess = () => { conflictRow = conflictRequest.result; conflictReady = true; finishIfReady() }
+  await end
+  return finished
+}
+
+function advanceLocalCursor(sync: IDBObjectStore, identity: string, sequence: number) {
+  const request = sync.get(`cursor:${identity}`)
+  request.onsuccess = () => {
+    const stored: unknown = request.result
+    const previous = isRecord(stored) && typeof stored.sequence === 'number' ? stored.sequence : 0
+    if (sequence > previous) sync.put({ key: `cursor:${identity}`, sequence })
+  }
+}
+
+function removeQueuedOperations(transaction: IDBTransaction, identity: string, itemIds: string[], exceptOpId: string) {
+  const outbox = transaction.objectStore('outbox')
+  const request = outbox.index('identity').getAll(identity)
+  request.onsuccess = () => {
+    for (const row of request.result as OutboxEntry[]) {
+      const operationItemId = row.operation.kind === 'delete' ? row.operation.itemId : row.operation.item.id
+      if (row.opId === exceptOpId || !itemIds.includes(operationItemId)) continue
+      outbox.delete(row.opId)
+      transaction.objectStore('outboxOrder').index('opId').openCursor(row.opId).onsuccess = (event) => {
+        (event.target as IDBRequest<IDBCursorWithValue | null>).result?.delete()
+      }
+    }
+  }
 }
 
 export async function completeSyncLink(input: {

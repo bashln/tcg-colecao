@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { CollectionOperation } from '../src/sync/policy.ts'
+import { linkThroughUi, mockSyncRpc, seedLocalCollection, seedSignedInSession } from './helpers.ts'
 
 const card = {
   id: 'base1-4', name: 'Charizard', localId: '4', image: null,
@@ -160,7 +161,8 @@ test('failed sync leaves the local collection and pending operation intact', asy
       local: {
         listPendingOperations: store.listPendingOperations,
         acknowledgeOperation: async (opId: string, identity: string) => store.acknowledgeOperation(opId, identity),
-        applyRemoteOperation: async () => true,
+        applyRemoteOperation: async () => ({ kind: 'applied' as const }),
+        listConflicts: async () => [],
         lastSequence: store.lastSyncSequence,
         saveSequence: store.saveSyncSequence,
       },
@@ -403,14 +405,210 @@ test('remote operations update local items and cursor atomically without creatin
       itemId: '00000000-0000-4000-8000-000000000001',
     })
     return {
-      applied: [created, replaced, deleted],
+      applied: [created.kind, replaced.kind, deleted.kind],
       entries: await store.listCollection(),
       pending: await store.listPendingOperations('account-a'),
       cursor: await store.lastSyncSequence('account-a'),
     }
   })
 
-  expect(result).toEqual({ applied: [true, true, true], entries: [], pending: [], cursor: 3 })
+  expect(result).toEqual({ applied: ['applied', 'applied', 'applied'], entries: [], pending: [], cursor: 3 })
+})
+
+test('unapplied pull conflict persists both values and leaves cursor before conflicted sequence', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const domain = await import(`${location.origin}/src/domain/model.ts`)
+    const card = {
+      id: 'base1-4', name: 'Charizard', setId: 'base1', setName: 'Base Set', collectorNumber: '4',
+      imageUrl: null, variants: ['NORMAL'], prices: [], setTotal: 102,
+    }
+    await store.setSyncBinding({ identity: 'account-a', deviceId: 'device-a' })
+    const draft = domain.parseItemDraft(domain.emptyDraft(card))
+    if (draft.kind !== 'valid') throw new Error('invalid local item')
+    await store.addToCollection(card, draft)
+    const local = (await store.listCollection())[0]!.item
+    const applied = await store.applyRemoteOperation('account-a', 4, {
+      kind: 'create', opId: 'remote-conflict', deviceId: 'device-b',
+      item: {
+        id: '00000000-0000-4000-8000-000000000099', cardId: 'base1-4', quantity: 7,
+        variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 2,
+      },
+    }, card)
+    return {
+      applied,
+      conflicts: await store.listSyncConflicts('account-a'),
+      entries: await store.listCollection(),
+      cursor: await store.lastSyncSequence('account-a'),
+      localId: local.id,
+    }
+  })
+
+  expect(result.applied).toMatchObject({ kind: 'conflict', detail: { sequence: 4, reason: 'duplicate-configuration' } })
+  expect(result.conflicts).toHaveLength(1)
+  expect(result.conflicts[0]).toMatchObject({ sequence: 4, local: { id: result.localId }, remote: { item: { quantity: 7 } } })
+  expect(result.entries).toHaveLength(1)
+  expect(result.cursor).toBe(0)
+})
+
+test('keep-cloud applies remote conflict and advances cursor only after local write', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const domain = await import(`${location.origin}/src/domain/model.ts`)
+    const card = {
+      id: 'base1-4', name: 'Charizard', setId: 'base1', setName: 'Base Set', collectorNumber: '4',
+      imageUrl: null, variants: ['NORMAL'], prices: [], setTotal: 102,
+    }
+    await store.setSyncBinding({ identity: 'account-a', deviceId: 'device-a' })
+    const draft = domain.parseItemDraft(domain.emptyDraft(card))
+    if (draft.kind !== 'valid') throw new Error('invalid local item')
+    await store.addToCollection(card, draft)
+    const remote = {
+      kind: 'create' as const, opId: 'remote-conflict', deviceId: 'device-b',
+      item: { id: '00000000-0000-4000-8000-000000000099', cardId: 'base1-4', quantity: 7,
+        variant: 'NORMAL' as const, condition: 'NEAR_MINT' as const, pricePaid: null, addedAt: 2 },
+    }
+    await store.applyRemoteOperation('account-a', 4, remote, card)
+    const conflict = (await store.listSyncConflicts('account-a'))[0]!
+    await store.resolveSyncConflict('account-a', conflict.id, 'keep-cloud', async () => card)
+    return {
+      entries: await store.listCollection(),
+      conflicts: await store.listSyncConflicts('account-a'),
+      cursor: await store.lastSyncSequence('account-a'),
+    }
+  })
+
+  expect(result.entries).toHaveLength(1)
+  expect(result.entries[0]?.item).toMatchObject({ id: '00000000-0000-4000-8000-000000000099', quantity: 7 })
+  expect(result.conflicts).toHaveLength(0)
+  expect(result.cursor).toBe(4)
+})
+
+test('keep-local queues a replacement and waits for server acknowledgment before cursor advance', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const domain = await import(`${location.origin}/src/domain/model.ts`)
+    const card = {
+      id: 'base1-4', name: 'Charizard', setId: 'base1', setName: 'Base Set', collectorNumber: '4',
+      imageUrl: null, variants: ['NORMAL'], prices: [], setTotal: 102,
+    }
+    await store.setSyncBinding({ identity: 'account-a', deviceId: 'device-a' })
+    const draft = domain.parseItemDraft(domain.emptyDraft(card))
+    if (draft.kind !== 'valid') throw new Error('invalid local item')
+    await store.addToCollection(card, draft)
+    const remote = {
+      kind: 'create' as const, opId: 'remote-conflict', deviceId: 'device-b',
+      item: { id: '00000000-0000-4000-8000-000000000099', cardId: 'base1-4', quantity: 7,
+        variant: 'NORMAL' as const, condition: 'NEAR_MINT' as const, pricePaid: null, addedAt: 2 },
+    }
+    await store.applyRemoteOperation('account-a', 4, remote, card)
+    const conflict = (await store.listSyncConflicts('account-a'))[0]!
+    await store.resolveSyncConflict('account-a', conflict.id, 'keep-local', async () => card)
+    const pending = await store.listPendingOperations('account-a')
+    const beforeAck = await store.lastSyncSequence('account-a')
+    if (pending[0] !== undefined) {
+      await store.acknowledgeOperation(pending[0].opId, 'account-a')
+      await store.finishSyncConflict('account-a', conflict.id, pending[0].opId)
+    }
+    return { pending, beforeAck, cursor: await store.lastSyncSequence('account-a'), entries: await store.listCollection() }
+  })
+
+  expect(result.pending).toHaveLength(1)
+  expect(result.pending[0]).toMatchObject({ kind: 'replace', baseRevision: 1, item: { id: '00000000-0000-4000-8000-000000000099', quantity: 1 } })
+  expect(result.beforeAck).toBe(0)
+  expect(result.cursor).toBe(4)
+  expect(result.entries).toHaveLength(1)
+  expect(result.entries[0]?.item).toMatchObject({ id: '00000000-0000-4000-8000-000000000099', quantity: 1 })
+})
+
+test('retrying keep-local returns the original operation instead of creating another', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const domain = await import(`${location.origin}/src/domain/model.ts`)
+    const card = {
+      id: 'base1-4', name: 'Charizard', setId: 'base1', setName: 'Base Set', collectorNumber: '4',
+      imageUrl: null, variants: ['NORMAL'], prices: [], setTotal: 102,
+    }
+    await store.setSyncBinding({ identity: 'account-a', deviceId: 'device-a' })
+    const draft = domain.parseItemDraft(domain.emptyDraft(card))
+    if (draft.kind !== 'valid') throw new Error('invalid local item')
+    await store.addToCollection(card, draft)
+    await store.applyRemoteOperation('account-a', 4, {
+      kind: 'create', opId: 'remote-conflict', deviceId: 'device-b',
+      item: { id: '00000000-0000-4000-8000-000000000099', cardId: 'base1-4', quantity: 7,
+        variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 2 },
+    }, card)
+    const conflict = (await store.listSyncConflicts('account-a'))[0]!
+    const first = await store.resolveSyncConflict('account-a', conflict.id, 'keep-local', async () => card)
+    const retry = await store.resolveSyncConflict('account-a', conflict.id, 'keep-local', async () => card)
+    return { first, retry, pending: await store.listPendingOperations('account-a') }
+  })
+
+  expect(result.first?.opId).toBeDefined()
+  expect(result.retry?.opId).toBe(result.first?.opId)
+  expect(result.pending).toHaveLength(1)
+})
+
+test('conflict completion cannot advance an old account cursor after identity switch', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const domain = await import(`${location.origin}/src/domain/model.ts`)
+    const card = {
+      id: 'base1-4', name: 'Charizard', setId: 'base1', setName: 'Base Set', collectorNumber: '4',
+      imageUrl: null, variants: ['NORMAL'], prices: [], setTotal: 102,
+    }
+    await store.setSyncBinding({ identity: 'account-a', deviceId: 'device-a' })
+    const draft = domain.parseItemDraft(domain.emptyDraft(card))
+    if (draft.kind !== 'valid') throw new Error('invalid local item')
+    await store.addToCollection(card, draft)
+    await store.applyRemoteOperation('account-a', 4, {
+      kind: 'create', opId: 'remote-conflict', deviceId: 'device-b',
+      item: { id: '00000000-0000-4000-8000-000000000099', cardId: 'base1-4', quantity: 7,
+        variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 2 },
+    }, card)
+    const conflict = (await store.listSyncConflicts('account-a'))[0]!
+    const operation = await store.resolveSyncConflict('account-a', conflict.id, 'keep-local', async () => card)
+    if (operation === null) throw new Error('resolution did not queue operation')
+    await store.setSyncBinding({ identity: 'account-b', deviceId: 'device-b' })
+    const finished = await store.finishSyncConflict('account-a', conflict.id, operation.opId)
+    return { finished, cursorA: await store.lastSyncSequence('account-a') }
+  })
+
+  expect(result.finished).toBe(false)
+  expect(result.cursorA).toBe(0)
+})
+
+test('profile exposes conflict choices and keep-local resolves through acknowledged replacement', async ({ page }) => {
+  const remoteId = '00000000-0000-4000-8000-000000000099'
+  const harness = await mockSyncRpc(page, {
+    pullOperation: {
+      serverSequence: 9, kind: 'create', opId: '10000000-0000-4000-8000-000000000008', deviceId: 'device-cloud',
+      item: { id: remoteId, cardId: 'base1-4', quantity: 3, variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 2 },
+    },
+  })
+  await seedSignedInSession(page, 'ana@example.test', 'user-ana')
+  await page.goto('/')
+  await seedLocalCollection(page)
+  await linkThroughUi(page)
+  await page.getByRole('button', { name: 'Perfil' }).first().click().catch(() => {})
+  await expect(page.getByText('1 conflito de sincronização precisa da sua atenção.', { exact: false })).toBeVisible()
+  await expect(page.getByText(/Local: 1 · NORMAL · NEAR_MINT\. Nuvem: 3 · NORMAL · NEAR_MINT\./)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Manter minha coleção' }).click()
+
+  await expect(page.getByText('Sincronizado. Nenhuma alteração pendente.')).toBeVisible()
+  const resolutionPush = harness.calls.find((call) => call.fn === 'push_collection_operations' &&
+    Array.isArray(call.body.p_operations) && (call.body.p_operations as { kind: string }[]).some((operation) => operation.kind === 'replace'))
+  expect(resolutionPush).toBeDefined()
+  expect(resolutionPush?.body.p_operations).toEqual(expect.arrayContaining([
+    expect.objectContaining({ kind: 'replace', baseRevision: 1, item: expect.objectContaining({ id: remoteId, quantity: 1 }) }),
+  ]))
+  expect(await page.evaluate(async () => (await (await import(`${location.origin}/src/collection/store.ts`)).listCollection()).length)).toBe(1)
 })
 
 test('production local adapter pulls authenticated transport operations into IndexedDB', async ({ page }) => {

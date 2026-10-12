@@ -1,4 +1,4 @@
-import type { CollectionOperation } from './policy.ts'
+import type { CollectionOperation, SyncItem } from './policy.ts'
 
 export interface SyncTransport {
   push(identity: string, operations: readonly CollectionOperation[]): Promise<{
@@ -15,15 +15,26 @@ export interface SyncTransport {
 export interface SyncLocalStore {
   listPendingOperations(identity: string): Promise<CollectionOperation[]>
   acknowledgeOperation(opId: string, identity: string): Promise<boolean>
-  applyRemoteOperation(operation: CollectionOperation, identity: string, sequence: number): Promise<boolean>
+  applyRemoteOperation(operation: CollectionOperation, identity: string, sequence: number): Promise<RemoteApplyResult>
+  listConflicts(identity: string): Promise<SyncConflictDetail[]>
+  resolveConflict?(identity: string, conflictId: string, resolution: 'keep-local' | 'keep-cloud'): Promise<CollectionOperation | null>
+  finishConflict?(identity: string, conflictId: string, operationId: string): Promise<boolean>
   lastSequence(identity: string): Promise<number>
   saveSequence(identity: string, sequence: number): Promise<boolean>
 }
 
 export interface SyncConflictDetail {
+  identity?: string
   itemId: string
   reason: string
+  id?: string
+  sequence?: number
+  local?: SyncItem | null
+  remote?: CollectionOperation
+  resolutionOperation?: CollectionOperation
 }
+
+export type RemoteApplyResult = { kind: 'applied' } | { kind: 'conflict'; detail: SyncConflictDetail }
 
 export type SyncResult =
   | { kind: 'complete'; applied: number; pending: number }
@@ -35,6 +46,7 @@ export interface SyncCoordinator {
   bindIdentity(identity: string | null): void
   syncOnce(): Promise<SyncResult>
   status(): Promise<{ identity: string | null; pending: number; lastSequence: number }>
+  resolveConflict?(identity: string, conflictId: string, resolution: 'keep-local' | 'keep-cloud'): Promise<SyncResult>
 }
 
 export function createSyncCoordinator(input: {
@@ -80,15 +92,19 @@ export function createSyncCoordinator(input: {
           if (identity !== boundIdentity) return { kind: 'offline', pending: pending.length }
           const applied = await input.local.applyRemoteOperation(entry.operation, boundIdentity, entry.sequence)
           if (identity !== boundIdentity) return { kind: 'offline', pending: pending.length }
-          if (!applied) return { kind: 'error', pending: (await input.local.listPendingOperations(boundIdentity)).length }
+          if (applied.kind === 'conflict') {
+            const remaining = (await input.local.listPendingOperations(boundIdentity)).length
+            return { kind: 'conflicts', conflicts: 1, pending: remaining, details: [applied.detail] }
+          }
         }
         if (identity !== boundIdentity) return { kind: 'offline', pending: pending.length }
         const cursorSaved = await input.local.saveSequence(boundIdentity, page.highWaterMark)
         if (identity !== boundIdentity || !cursorSaved) return { kind: 'offline', pending: pending.length }
 
         const remaining = (await input.local.listPendingOperations(boundIdentity)).length
-        return conflictDetails.length > 0
-          ? { kind: 'conflicts', conflicts: conflictDetails.length, pending: remaining, details: conflictDetails }
+        const storedConflicts = await input.local.listConflicts(boundIdentity)
+        return conflictDetails.length > 0 || storedConflicts.length > 0
+          ? { kind: 'conflicts', conflicts: conflictDetails.length + storedConflicts.length, pending: remaining, details: [...conflictDetails, ...storedConflicts] }
           : { kind: 'complete', applied, pending: remaining }
       } catch {
         if (identity !== boundIdentity) return { kind: 'offline', pending: 0 }
@@ -108,6 +124,30 @@ export function createSyncCoordinator(input: {
       return identity === currentIdentity
         ? { identity: currentIdentity, pending: pending.length, lastSequence }
         : { identity, pending: 0, lastSequence: 0 }
+    },
+    async resolveConflict(requestedIdentity, conflictId, resolution) {
+      if (identity !== requestedIdentity) return { kind: 'offline', pending: 0 }
+      try {
+        if (input.local.resolveConflict === undefined || input.local.finishConflict === undefined) {
+          return { kind: 'error', pending: (await input.local.listPendingOperations(requestedIdentity)).length }
+        }
+        const operation = await input.local.resolveConflict(requestedIdentity, conflictId, resolution)
+        if (operation !== null) {
+          const [outcome] = await input.transport.push(requestedIdentity, [operation])
+          if (identity !== requestedIdentity) return { kind: 'offline', pending: 0 }
+          if (outcome === undefined || outcome.kind === 'conflict') {
+            return { kind: 'conflicts', conflicts: 1, pending: (await input.local.listPendingOperations(requestedIdentity)).length,
+              details: await input.local.listConflicts(requestedIdentity) }
+          }
+          if (!await input.local.acknowledgeOperation(operation.opId, requestedIdentity) ||
+            !await input.local.finishConflict(requestedIdentity, conflictId, operation.opId)) {
+            return { kind: 'error', pending: (await input.local.listPendingOperations(requestedIdentity)).length }
+          }
+        }
+        return this.syncOnce()
+      } catch {
+        return { kind: 'error', pending: (await input.local.listPendingOperations(requestedIdentity).catch(() => [])).length }
+      }
     },
   }
 }

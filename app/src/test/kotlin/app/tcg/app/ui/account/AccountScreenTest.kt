@@ -4,6 +4,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import app.tcg.app.data.sync.LinkPreview
 import app.tcg.app.data.sync.LinkPreviewSummary
 import app.tcg.app.data.sync.SyncConflictDetail
+import app.tcg.app.data.sync.SyncConflictResolution
+import app.tcg.app.data.sync.SyncItem
+import app.tcg.app.data.sync.SyncOperation
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToLog
@@ -29,6 +32,7 @@ class AccountScreenTest {
         onCancelLink: () -> Unit = {},
         onRequestLink: () -> Unit = {},
         onSyncNow: () -> Unit = {},
+        onResolveConflict: (String, SyncConflictResolution) -> Unit = { _, _ -> },
     ) {
         compose.setContent {
             AccountScreen(
@@ -38,6 +42,7 @@ class AccountScreenTest {
                 onConfirmLink = onConfirmLink,
                 onCancelLink = onCancelLink,
                 onSyncNow = onSyncNow,
+                onResolveConflict = onResolveConflict,
                 onSignOut = {}, onDismissError = {},
             )
         }
@@ -146,12 +151,38 @@ class AccountScreenTest {
                 linkState = LinkState.Linked("user-a"),
                 syncStatus = SyncStatusView.Conflicts(
                     count = 1, pending = 1,
-                    details = listOf(SyncConflictDetail("item-1", "stale-revision")),
+                    details = listOf(SyncConflictDetail(itemId = "item-1", reason = "stale-revision")),
                 ),
             ),
         )
         compose.onNodeWithText("1 conflito de sincronização precisa da sua atenção", substring = true).assertExists()
         compose.onNodeWithText("stale-revision", substring = true).assertExists()
+    }
+
+    @Test
+    fun conflict_choices_are_explicit_and_call_requested_resolution() {
+        val choices = mutableListOf<Pair<String, SyncConflictResolution>>()
+        screen(
+            state = AccountUiState(
+                signedIn = true, email = "a@example.com", linkState = LinkState.Linked("user-a"),
+                syncStatus = SyncStatusView.Conflicts(1, 0, listOf(SyncConflictDetail(
+                    id = "user-a:9", identity = "user-a", sequence = 9, itemId = "item-1",
+                    reason = "stale-revision", local = SyncItem("item-1", "base1-4", 2, app.tcg.core.domain.model.CardVariant.NORMAL,
+                        app.tcg.core.domain.model.Condition.NEAR_MINT, null, 1L),
+                    remote = SyncOperation.Create("remote-op", "device-b", SyncItem("item-1", "base1-4", 3,
+                        app.tcg.core.domain.model.CardVariant.NORMAL, app.tcg.core.domain.model.Condition.NEAR_MINT, null, 2L)),
+                ))),
+            ),
+            onResolveConflict = { id, resolution -> choices += id to resolution },
+        )
+
+        compose.onNodeWithText("Manter minha coleção").performClick()
+        compose.onNodeWithText("Usar versão da nuvem").performClick()
+
+        assertEquals(listOf(
+            "user-a:9" to SyncConflictResolution.KeepLocal,
+            "user-a:9" to SyncConflictResolution.KeepCloud,
+        ), choices)
     }
 
     @Test

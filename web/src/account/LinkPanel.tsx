@@ -37,7 +37,7 @@ function cloudOnlyCopy(count: number): string {
  * A signed-in person without a binding always lands on the preview flow; after the
  * atomic completion succeeds the panel switches to the linked state.
  */
-export function LinkPanel({ auth, identity, deviceId, entries, binding, onLinked, isIdentityCurrent, completeLink, syncState, onSyncNow }: {
+export function LinkPanel({ auth, identity, deviceId, entries, binding, onLinked, isIdentityCurrent, completeLink, syncState, onSyncNow, onResolveConflict }: {
   auth: SupabaseWebAuth
   identity: string
   deviceId: string
@@ -48,6 +48,7 @@ export function LinkPanel({ auth, identity, deviceId, entries, binding, onLinked
   completeLink: (input: CompleteLinkInput) => Promise<boolean>
   syncState: SyncRunnerState
   onSyncNow: () => void
+  onResolveConflict: (conflictId: string, resolution: 'keep-local' | 'keep-cloud') => Promise<void>
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [error, setError] = useState('')
@@ -58,7 +59,7 @@ export function LinkPanel({ auth, identity, deviceId, entries, binding, onLinked
   if (binding !== null && binding.identity === identity) {
     return <div className="link-status" role="status">
       <p><strong>Coleção vinculada a esta conta.</strong></p>
-      <SyncStatusPanel state={syncState} entries={entries} onSyncNow={onSyncNow} />
+      <SyncStatusPanel state={syncState} entries={entries} onSyncNow={onSyncNow} onResolveConflict={onResolveConflict} />
       <p className="storage-footnote">As alterações feitas neste navegador sincronizam automaticamente com a conta enquanto a página estiver aberta e on-line. Sair da conta preserva a coleção local.</p>
     </div>
   }
@@ -157,8 +158,18 @@ function conflictDetailLine(detail: SyncConflictDetail, entries: CollectionEntry
   return `${name}: ${reason}`
 }
 
-function SyncStatusPanel({ state, entries, onSyncNow }: {
+function conflictValues(detail: SyncConflictDetail): string {
+  if (detail.local === undefined && detail.remote === undefined) return ''
+  const value = (item: import('../sync/policy.ts').SyncItem | null | undefined) => item === null || item === undefined
+    ? 'ausente'
+    : `${item.quantity} · ${item.variant} · ${item.condition}${item.pricePaid === null ? '' : ` · ${item.pricePaid.amount.toFixed(2)} ${item.pricePaid.currency}`}`
+  const remote = detail.remote?.kind === 'delete' ? null : detail.remote?.item
+  return `Local: ${value(detail.local)}. Nuvem: ${value(remote)}.`
+}
+
+function SyncStatusPanel({ state, entries, onSyncNow, onResolveConflict }: {
   state: SyncRunnerState; entries: CollectionEntry[]; onSyncNow: () => void
+  onResolveConflict: (conflictId: string, resolution: 'keep-local' | 'keep-cloud') => Promise<void>
 }) {
   const result: SyncResult | null = state.result
   return <div className="sync-status">
@@ -178,7 +189,13 @@ function SyncStatusPanel({ state, entries, onSyncNow }: {
           : 'Não foi possível sincronizar agora. Suas alterações continuam pendentes e nada foi perdido.'}
     </p>
     {result !== null && result.kind === 'conflicts' ? <ul className="link-summary">
-      {result.details.map((detail) => <li key={detail.itemId}>{conflictDetailLine(detail, entries)}</li>)}
+      {result.details.map((detail) => <li key={detail.id ?? detail.itemId}>
+        {conflictDetailLine(detail, entries)}{conflictValues(detail) === '' ? '' : <span className="conflict-values"> {conflictValues(detail)}</span>}
+        {detail.id !== undefined && detail.remote !== undefined ? <div className="conflict-actions" aria-label="Resolver conflito">
+          <button type="button" className="secondary-button" disabled={state.running} onClick={() => { void onResolveConflict(detail.id!, 'keep-local') }}>Manter minha coleção</button>
+          <button type="button" className="secondary-button" disabled={state.running} onClick={() => { void onResolveConflict(detail.id!, 'keep-cloud') }}>Usar versão da nuvem</button>
+        </div> : null}
+      </li>)}
     </ul> : null}
     <button type="button" className="secondary-button" disabled={state.running} onClick={onSyncNow}>
       {state.running ? 'Sincronizando...' : 'Sincronizar agora'}

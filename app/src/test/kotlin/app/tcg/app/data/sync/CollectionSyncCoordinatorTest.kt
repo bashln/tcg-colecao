@@ -128,6 +128,35 @@ class CollectionSyncCoordinatorTest {
         assertEquals(0, transport.pushCount)
         assertEquals(1, local.pending("user-a").size)
     }
+
+    @Test
+    fun resolving_keep_local_pushes_replacement_before_finishing_conflict() = runTest {
+        var pushCount = 0
+        val transport = object : SyncTransport {
+            override suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome> {
+                pushCount += operations.size
+                return operations.map { PushOutcome.Applied(4L, it.opId) }
+            }
+            override suspend fun pull(identity: String, afterSequence: Long) = PullPage(emptyList(), 3L)
+        }
+        val local = TestLocalSyncStore()
+        val replacement = SyncOperation.Replace(
+            "resolution-op", "device-a", 4L,
+            SyncItem("item-a", "card-a", 2, CardVariant.NORMAL, Condition.NEAR_MINT, null, 1L),
+        )
+        local.enqueue(replacement)
+        local.resolutionOperation = replacement
+        local.finishResolution = true
+        val coordinator = CollectionSyncCoordinator(transport, local)
+        coordinator.bindIdentity("user-a")
+
+        val result = coordinator.resolveConflict("user-a:3", SyncConflictResolution.KeepLocal)
+
+        assertTrue(result is SyncResult.Complete)
+        assertEquals(1, pushCount)
+        assertTrue(local.finishedConflict)
+        assertEquals(3L, local.lastSequence("user-a"))
+    }
 }
 
 private class TestLocalSyncStore : SyncLocalStore {
@@ -137,6 +166,9 @@ private class TestLocalSyncStore : SyncLocalStore {
     var failNextAcknowledge = false
     var pendingStarted: CompletableDeferred<Unit>? = null
     var releasePending: CompletableDeferred<Unit>? = null
+    var resolutionOperation: SyncOperation? = null
+    var finishResolution = false
+    var finishedConflict = false
 
     fun blockNextPending() {
         pendingStarted = CompletableDeferred()
@@ -163,13 +195,21 @@ private class TestLocalSyncStore : SyncLocalStore {
         return operationsByIdentity[identity]?.removeAll { it.opId == opId } ?: false
     }
 
-    override suspend fun applyRemote(identity: String, entry: SequencedOperation): Boolean {
+    override suspend fun applyRemote(identity: String, entry: SequencedOperation): RemoteApplyResult {
         when (val operation = entry.operation) {
             is SyncOperation.Create -> items[operation.item.id] = operation.item
             is SyncOperation.Replace -> items[operation.item.id] = operation.item
             is SyncOperation.Delete -> items.remove(operation.itemId)
         }
-        return true
+        return RemoteApplyResult.Applied
+    }
+
+    override suspend fun conflicts(identity: String): List<SyncConflictDetail> = emptyList()
+    override suspend fun resolveConflict(identity: String, conflictId: String, resolution: SyncConflictResolution): SyncOperation? = resolutionOperation
+    override suspend fun finishConflict(identity: String, conflictId: String, operationId: String): Boolean {
+        finishedConflict = resolutionOperation?.opId == operationId && finishResolution
+        if (finishedConflict) cursors[identity] = 3L
+        return finishedConflict
     }
 
     override suspend fun lastSequence(identity: String): Long = cursors[identity] ?: 0

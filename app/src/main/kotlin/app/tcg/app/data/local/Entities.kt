@@ -60,6 +60,21 @@ data class SyncCursorEntity(
     val lastSequence: Long,
 )
 
+@Entity(tableName = "sync_conflict_records")
+data class SyncConflictEntity(
+    @PrimaryKey val id: String,
+    val identity: String,
+    val sequence: Long,
+    val itemId: String,
+    val reason: String,
+    val localPayload: String?,
+    val remotePayload: String,
+    val resolution: String? = null,
+    val resolutionOperationId: String? = null,
+    val resolutionOperation: String? = null,
+    val resolvedAt: Long? = null,
+)
+
 @Entity(
     tableName = "sync_outbox",
     indices = [Index(value = ["opId"], unique = true), Index(value = ["identity", "sequence"])],
