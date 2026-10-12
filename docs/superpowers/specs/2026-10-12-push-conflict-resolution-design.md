@@ -32,7 +32,7 @@ The response carries enough state to render a resolution immediately. A separate
 
 ### Persist conflicts locally
 
-Web and Android save each push conflict with its server conflict ID, account identity, rejected operation, local item, current cloud item or tombstone, reason, and observed sequence. They associate the conflict with the rejected outbox operation. Saving the conflict must not acknowledge or remove that operation.
+Web and Android save each push conflict with its server conflict ID, account identity, rejected operation, local item, current cloud item or tombstone, reason, and observed server high-water mark. They associate the conflict with the rejected outbox operation. This high-water mark is a snapshot label, not a pull cursor. Saving or resolving a push conflict must not advance the pull cursor. Saving the conflict must not acknowledge or remove that operation.
 
 On later syncs, clients do not resend operations associated with unresolved server conflicts. They can still send unrelated pending operations. When the server reports that a conflict is already resolved, clients refresh the conflict and local state instead of creating a second choice.
 
