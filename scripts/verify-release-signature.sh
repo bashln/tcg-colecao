@@ -7,18 +7,18 @@ if [[ ! "$expected" =~ ^[[:xdigit:]]{64}$ ]]; then
   exit 1
 fi
 
-mapfile -t signers < <(
-  sed -nE 's/^Signer #([0-9]+) certificate SHA-256 digest: ([[:xdigit:]]{64})$/\1:\2/p'
+mapfile -t certificates < <(
+  sed -nE 's/^(Signer #[0-9]+ |V[1-4] Signer: )certificate SHA-256 digest: ([[:xdigit:]]{64})$/\2/p' \
+    | tr '[:upper:]' '[:lower:]' \
+    | sort -u
 )
 
-if (( ${#signers[@]} != 1 )); then
-  echo "release-signature: expected exactly one SHA-256 signer certificate" >&2
+if (( ${#certificates[@]} != 1 )); then
+  echo "release-signature: expected exactly one distinct SHA-256 signer certificate" >&2
   exit 1
 fi
 
-signer="${signers[0]%%:*}"
-actual="${signers[0]#*:}"
-if [[ "$signer" != "1" || "${actual,,}" != "${expected,,}" ]]; then
+if [[ "${certificates[0]}" != "${expected,,}" ]]; then
   echo "release-signature: APK certificate does not match the pinned release key" >&2
   exit 1
 fi

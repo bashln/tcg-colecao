@@ -29,12 +29,19 @@ expect_fail() {
 }
 
 expect_ok "certificado da release anterior é aceito" "$valid" "$expected"
+expect_ok "formato V2 Signer do apksigner é aceito" "V2 Signer: certificate SHA-256 digest: $expected" "$expected"
+expect_ok "mesmo certificado em formatos legacy e V2 é deduplicado" "$valid
+V2 Signer: certificate SHA-256 digest: $expected" "$expected"
 expect_ok "comparação do fingerprint ignora caixa" "Signer #1 certificate SHA-256 digest: ${expected^^}" "$expected"
 expect_fail "mesmo CN com chave diferente é recusado" "Signer #1 certificate DN: CN=TCG Colecao
 Signer #1 certificate SHA-256 digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$expected"
 expect_fail "certificado ausente é recusado" "No signers found" "$expected"
-expect_fail "assinatura com múltiplos signers é recusada" "$valid
-Signer #2 certificate SHA-256 digest: $expected" "$expected"
+expect_fail "certificados de signers diferentes são recusados" "$valid
+V2 Signer: certificate SHA-256 digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$expected"
+expect_fail "certificado de signer #2 diferente é recusado" "$valid
+Signer #2 certificate SHA-256 digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$expected"
+expect_fail "fingerprint curto é recusado" "Signer #1 certificate SHA-256 digest: ${expected:1}" "$expected"
+expect_fail "fingerprint longo é recusado" "Signer #1 certificate SHA-256 digest: ${expected}a" "$expected"
 expect_fail "fingerprint esperado malformado é recusado" "$valid" "not-a-digest"
 
 echo "----"
