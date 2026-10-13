@@ -23,6 +23,7 @@ jobs:
         run: |
           ./scripts/validate-release.test.sh
           ./scripts/verify-release-tag.test.sh
+          ./scripts/verify-release-signature.test.sh
 
       - name: Exigir keystore de release
         if: env.KEYSTORE_BASE64 == ''
@@ -78,6 +79,9 @@ jobs:
           fi
           certs="$("$apksigner" verify --print-certs "$apk")"
           if ! printf '%s\n' "$certs" | ./scripts/verify-release-signature.sh "$EXPECTED_SIGNING_CERT_SHA256"; then
+            echo "::group::apksigner certificate output (public certificate metadata)"
+            printf '%s\n' "$certs"
+            echo "::endgroup::"
             echo "::error::O APK nao esta assinado com o certificado de release fixado. Nada e publicado."
             exit 1
           fi
