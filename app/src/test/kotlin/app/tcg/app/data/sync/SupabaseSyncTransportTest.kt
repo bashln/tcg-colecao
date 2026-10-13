@@ -165,9 +165,9 @@ class SupabaseSyncTransportTest {
         val engine = MockEngine {
             respond(
                 content = """{"status":"ok","results":[
-                  {"opId":"op-1","status":"conflict","reason":"stale","revision":null},
+                  {"opId":"op-1","status":"conflict","reason":"stale","revision":null,"conflictId":"30000000-0000-4000-8000-000000000001","highWater":7,"rejectedOperation":{"kind":"create","opId":"10000000-0000-4000-8000-000000000001","deviceId":"20000000-0000-4000-8000-000000000001","item":{"id":"00000000-0000-4000-8000-000000000001","cardId":"base1-4","quantity":2,"variant":"NORMAL","condition":"NEAR_MINT","pricePaid":null,"addedAt":1791667200000}},"cloudItem":null,"conflictingItem":null},
                   {"opId":"op-1","status":"already-applied","reason":null,"revision":4},
-                  {"opId":"op-1","status":"rejected","reason":"invalid-payload","revision":null}
+                  {"opId":"op-1","status":"rejected","reason":"invalid-payload","revision":null,"conflictId":"30000000-0000-4000-8000-000000000002"}
                 ],"highWater":4}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
@@ -181,8 +181,71 @@ class SupabaseSyncTransportTest {
         assertEquals("stale", (outcomes[0] as PushOutcome.Conflict).reason)
         assertTrue(outcomes[1] is PushOutcome.AlreadyApplied)
         assertEquals(4L, (outcomes[1] as PushOutcome.AlreadyApplied).sequence)
-        assertTrue("server rejection surfaces as conflict", outcomes[2] is PushOutcome.Conflict)
-        assertEquals("invalid-payload", (outcomes[2] as PushOutcome.Conflict).reason)
+        assertTrue("permanent rejection stays distinct from content conflict", outcomes[2] is PushOutcome.Rejected)
+        assertEquals("invalid-payload", (outcomes[2] as PushOutcome.Rejected).reason)
+    }
+
+    @Test
+    fun `push parses durable content conflict and validated cloud snapshot`() = runTest {
+        val engine = MockEngine {
+            respond(
+                content = """{"status":"ok","results":[{"opId":"10000000-0000-4000-8000-000000000001","status":"conflict","reason":"stale","conflictId":"30000000-0000-4000-8000-000000000001","highWater":7,"rejectedOperation":{"kind":"create","opId":"10000000-0000-4000-8000-000000000001","deviceId":"20000000-0000-4000-8000-000000000001","item":{"id":"00000000-0000-4000-8000-000000000001","cardId":"base1-4","quantity":2,"variant":"NORMAL","condition":"NEAR_MINT","pricePaid":null,"addedAt":1791667200000}},"cloudItem":{"itemId":"00000000-0000-4000-8000-000000000001","cardId":"base1-4","quantity":3,"variant":"NORMAL","condition":"NEAR_MINT","pricePaid":null,"addedAt":1791667200000,"revision":4,"deleted":false},"conflictingItem":null}],"highWater":7}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val operation = SyncOperation.Create("10000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000001", item("00000000-0000-4000-8000-000000000001"))
+
+        val outcome = transport(engine).push("account-a", listOf(operation)).single() as PushOutcome.Conflict
+
+        assertEquals("30000000-0000-4000-8000-000000000001", outcome.conflictId)
+        assertEquals(7L, outcome.highWater)
+        assertEquals(3, (outcome.cloudItem as PushCloudItem.Present).item.quantity)
+    }
+
+    @Test
+    fun `push conflict list recovers lost response and resolution receipt replays through acknowledgment`() = runTest {
+        val conflictId = "30000000-0000-4000-8000-000000000001"
+        val resolutionId = "40000000-0000-4000-8000-000000000001"
+        val requests = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            val path = request.url.encodedPath
+            requests += path
+            val response = when (path.substringAfterLast('/')) {
+                "read_collection_push_conflicts" -> """[{"id":"$conflictId","opId":"10000000-0000-4000-8000-000000000001","itemId":"00000000-0000-4000-8000-000000000001","reason":"stale","deviceId":"20000000-0000-4000-8000-000000000001","rejectedOperation":{"kind":"create","opId":"10000000-0000-4000-8000-000000000001","deviceId":"20000000-0000-4000-8000-000000000001","item":{"id":"00000000-0000-4000-8000-000000000001","cardId":"base1-4","quantity":2,"variant":"NORMAL","condition":"NEAR_MINT","pricePaid":null,"addedAt":1791667200000}},"cloudItem":null,"conflictingItem":null,"highWater":7,"resolution":null}]"""
+                "resolve_collection_push_conflict" -> """{"status":"resolved","conflictId":"$conflictId","choice":"keep-cloud","resolutionId":"$resolutionId","result":{"kind":"keep-cloud","itemId":"00000000-0000-4000-8000-000000000001","cloudItem":null}}"""
+                else -> """{"status":"resolved","conflictId":"$conflictId","choice":"keep-cloud","resolutionId":"$resolutionId"}"""
+            }
+            respond(response, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val sync = transport(engine)
+
+        val conflicts = sync.listPushConflicts("account-a")
+        val receipt = sync.resolvePushConflict(conflictId, PushConflictChoice.KEEP_CLOUD, "20000000-0000-4000-8000-000000000001", "account-a")
+        val ack = sync.acknowledgePushConflictResolution(conflictId, resolutionId, "account-a")
+
+        assertEquals(conflictId, conflicts.single().id)
+        assertEquals(resolutionId, receipt.resolutionId)
+        assertEquals("resolved", ack.status)
+        assertEquals(listOf("read_collection_push_conflicts", "resolve_collection_push_conflict", "ack_collection_push_conflict_resolution"), requests.map { it.substringAfterLast('/') })
+    }
+
+    @Test
+    fun `push conflict list rejects malformed snapshot and resolution refuses changed account before dispatch`() = runTest {
+        val malformed = MockEngine {
+            respond("""[{"id":"bad","opId":null,"itemId":"bad","reason":"stale","deviceId":"bad","rejectedOperation":{},"cloudItem":{"itemId":"bad","deleted":false},"conflictingItem":null,"highWater":-1,"resolution":null}]""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val failure = runCatching { transport(malformed).listPushConflicts("account-a") }.exceptionOrNull()
+        assertTrue(failure is SupabaseSyncException)
+        assertEquals(SyncErrorKind.INVALID_RESPONSE, (failure as SupabaseSyncException).kind)
+
+        var requests = 0
+        val changed = MockEngine { requests++; respond("{}", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json")) }
+        val identityFailure = runCatching {
+            transport(changed, userId = "account-b").resolvePushConflict("30000000-0000-4000-8000-000000000001", PushConflictChoice.KEEP_LOCAL, "20000000-0000-4000-8000-000000000001", "account-a")
+        }.exceptionOrNull()
+        assertEquals(SyncErrorKind.UNAUTHORIZED, (identityFailure as SupabaseSyncException).kind)
+        assertEquals(0, requests)
     }
 
     @Test
@@ -305,7 +368,7 @@ class SupabaseSyncTransportTest {
         val responses = ArrayDeque(listOf(
             """{"status":"linked","push":{"status":"ok","results":[{"opId":"op-1","status":"applied","reason":null,"revision":1}],"highWater":9}}""",
             """{"status":"stale-preview"}""",
-            """{"status":"partial","push":{"status":"ok","results":[{"opId":"op-1","status":"conflict","reason":"id-collision","revision":null}],"highWater":10}}""",
+            """{"status":"partial","push":{"status":"ok","results":[{"opId":"op-1","status":"conflict","reason":"id-collision","revision":null,"conflictId":"30000000-0000-4000-8000-000000000001","highWater":7,"rejectedOperation":{"kind":"create","opId":"10000000-0000-4000-8000-000000000001","deviceId":"20000000-0000-4000-8000-000000000001","item":{"id":"00000000-0000-4000-8000-000000000001","cardId":"base1-4","quantity":2,"variant":"NORMAL","condition":"NEAR_MINT","pricePaid":null,"addedAt":1791667200000}},"cloudItem":null,"conflictingItem":null}],"highWater":10}}""",
         ))
         lateinit var lastBody: String
         val engine = MockEngine { request ->
@@ -346,7 +409,8 @@ class SupabaseSyncTransportTest {
         val partial = transport(engine).commitLink(plan, deviceId, listOf(operation), "account-a")
         assertTrue(partial is LinkCommitResult.Partial)
         assertEquals(10L, (partial as LinkCommitResult.Partial).highWater)
-        assertEquals(PushOutcome.Conflict("id-collision", "op-1"), partial.outcomes.single())
+        assertTrue(partial.outcomes.single() is PushOutcome.Conflict)
+        assertEquals("id-collision", (partial.outcomes.single() as PushOutcome.Conflict).reason)
     }
 
     @Test

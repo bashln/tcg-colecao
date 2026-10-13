@@ -347,7 +347,7 @@ test('confirmLink reports structured partial commit and never binds locally', as
   const result = await confirmLink({
     transport: transport({
       prepare: plan,
-      commit: { kind: 'partial', highWater: 4, outcomes: [{ kind: 'conflict', reason: 'id-collision', opId: 'op-1' }] },
+      commit: { kind: 'partial', highWater: 4, outcomes: [{ kind: 'rejected', reason: 'invalid-payload', opId: 'op-1' }] },
     }),
     identity: 'user-1', deviceId: 'device-1', preview: plan,
     readEntries: async () => [entry(localItem(localId))], resolveCard: async () => cloudCard,
@@ -355,6 +355,7 @@ test('confirmLink reports structured partial commit and never binds locally', as
   })
 
   assert.equal(result.kind, 'partial')
+  assert.match((result as { message: string }).message, /invalid-payload/)
   assert.equal(spy.calls.length, 0)
 })
 

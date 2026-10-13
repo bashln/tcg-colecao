@@ -7,7 +7,7 @@ import type { CollectionOperation } from './policy.ts'
 const itemId = parseItemId('00000000-0000-4000-8000-000000000001')!
 const cardId = parseCardId('base1-4')!
 
-function createOp(opId: string, deviceId: string, quantity = 2): CollectionOperation {
+function createOp(opId: string, deviceId: string, quantity = 2): Extract<CollectionOperation, { kind: 'create' }> {
   return {
     kind: 'create',
     opId,
@@ -119,9 +119,12 @@ test('push maps conflict, already-applied and server rejection distinctly', asyn
     push_collection_operations: {
       status: 'ok',
       results: [
-        { opId: base.opId, status: 'conflict', reason: 'stale', revision: null },
+        { opId: base.opId, status: 'conflict', reason: 'stale', revision: null,
+          conflictId: '30000000-0000-4000-8000-000000000001', highWater: 4,
+          rejectedOperation: { kind: 'create', opId: base.opId, deviceId: base.deviceId, item: { ...base.item, pricePaid: null } },
+          cloudItem: null, conflictingItem: null },
         { opId: base.opId, status: 'already-applied', reason: null, revision: 4 },
-        { opId: base.opId, status: 'rejected', reason: 'invalid-payload', revision: null },
+        { opId: base.opId, status: 'rejected', reason: 'invalid-payload', revision: null, conflictId: '30000000-0000-4000-8000-000000000002' },
       ],
       highWater: 4,
     },
@@ -132,7 +135,91 @@ test('push maps conflict, already-applied and server rejection distinctly', asyn
 
   assert.equal(outcomes[0]?.kind, 'conflict')
   assert.equal(outcomes[1]?.kind, 'already-applied')
-  assert.equal(outcomes[2]?.kind, 'conflict', 'server rejection surfaces to the caller as a conflict')
+  assert.equal(outcomes[2]?.kind, 'rejected', 'permanent server rejection is not a resolvable content conflict')
+})
+
+test('push conflict exposes validated cloud snapshot and permanent outcome stays distinct', async () => {
+  const op = createOp('10000000-0000-4000-8000-000000000011', '20000000-0000-4000-8000-000000000001')
+  const { http } = httpStub({ push_collection_operations: {
+    status: 'ok', highWater: 7, results: [
+      { opId: op.opId, status: 'conflict', conflictId: '30000000-0000-4000-8000-000000000001', reason: 'stale', highWater: 7,
+        rejectedOperation: { kind: 'create', opId: op.opId, deviceId: op.deviceId, item: { ...op.item, pricePaid: null } },
+        cloudItem: { itemId, cardId, quantity: 3, variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 1_791_667_200_000, revision: 4, deleted: false },
+        conflictingItem: null },
+      { opId: op.opId, status: 'rejected', reason: 'invalid-payload', conflictId: '30000000-0000-4000-8000-000000000002', highWater: 7 },
+    ],
+  } })
+
+  const [conflict, rejected] = await createSupabaseTransport({ http }).push('account-a', [op])
+
+  assert.equal(conflict?.kind, 'conflict')
+  if (conflict?.kind !== 'conflict') throw new Error('expected content conflict')
+  assert.equal(conflict.conflictId, '30000000-0000-4000-8000-000000000001')
+  assert.equal(conflict.cloudItem?.kind, 'present')
+  assert.equal(conflict.cloudItem?.item.quantity, 3)
+  assert.equal(conflict.highWater, 7)
+  assert.equal(rejected?.kind, 'rejected')
+})
+
+test('push conflict listing recovers same durable conflict after lost push response', async () => {
+  const conflictId = '30000000-0000-4000-8000-000000000001'
+  const { http, record } = httpStub({ read_collection_push_conflicts: [{
+    id: conflictId, opId: '10000000-0000-4000-8000-000000000011', itemId, reason: 'stale',
+    deviceId: '20000000-0000-4000-8000-000000000001',
+    rejectedOperation: { kind: 'create', opId: '10000000-0000-4000-8000-000000000011', deviceId: '20000000-0000-4000-8000-000000000001', item: {
+      id: itemId, cardId, quantity: 2, variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 1_791_667_200_000,
+    } },
+    cloudItem: { itemId, cardId, quantity: 3, variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 1_791_667_200_000, revision: 4, deleted: false },
+    conflictingItem: null, highWater: 7, resolution: null,
+  }] })
+
+  const identity = '00000000-0000-4000-8000-0000000000aa'
+  const conflicts = await createSupabaseTransport({ http }).listPushConflicts(identity)
+
+  assert.equal(record[0]?.fn, 'read_collection_push_conflicts')
+  assert.equal(record[0]?.expectedUserId, identity)
+  assert.equal(conflicts[0]?.id, conflictId)
+  assert.equal(conflicts[0]?.cloudItem?.kind, 'present')
+})
+
+test('push conflict resolution replays receipt and acknowledges local completion with identity pinning', async () => {
+  const conflictId = '30000000-0000-4000-8000-000000000001'
+  const resolutionId = '40000000-0000-4000-8000-000000000001'
+  const { http, record } = httpStub({
+    resolve_collection_push_conflict: { status: 'resolved', conflictId, choice: 'keep-cloud', resolutionId,
+      result: { kind: 'keep-cloud', itemId, localItemId: itemId, cloudItem: null, conflictingItem: null } },
+    ack_collection_push_conflict_resolution: { status: 'resolved', conflictId, choice: 'keep-cloud', resolutionId },
+  })
+  const transport = createSupabaseTransport({ http })
+
+  const identity = '00000000-0000-4000-8000-0000000000aa'
+  const receipt = await transport.resolvePushConflict({ conflictId, choice: 'keep-cloud', deviceId: '20000000-0000-4000-8000-000000000001', expectedIdentity: identity })
+  const ack = await transport.acknowledgePushConflictResolution({ conflictId, resolutionId, expectedIdentity: identity })
+
+  assert.equal(receipt.status, 'resolved')
+  assert.equal(receipt.resolutionId, resolutionId)
+  assert.equal(ack.status, 'resolved')
+  assert.deepEqual(record.map((call) => call.expectedUserId), [identity, identity])
+  assert.deepEqual(record[0]?.body, { p_conflict_id: conflictId, p_choice: 'keep-cloud', p_device_id: '20000000-0000-4000-8000-000000000001' })
+  assert.deepEqual(record[1]?.body, { p_conflict_id: conflictId, p_resolution_id: resolutionId })
+})
+
+test('push conflict boundary rejects malformed snapshots and refuses dispatch after identity change', async () => {
+  const bad = httpStub({ read_collection_push_conflicts: [{ id: 'bad', opId: null, itemId: 'bad', reason: 'stale', deviceId: 'bad',
+    rejectedOperation: {}, cloudItem: { itemId: 'bad', deleted: false }, conflictingItem: null, highWater: -1, resolution: null }] })
+  await assert.rejects(() => createSupabaseTransport({ http: bad.http }).listPushConflicts('00000000-0000-4000-8000-0000000000aa'),
+    (error: unknown) => error instanceof SupabaseSyncError && error.kind === 'invalid-response')
+
+  let calls = 0
+  const changed: SupabaseHttp = {
+    async rpc() { calls += 1; throw new Error('must not dispatch') },
+    async user() { return { id: 'account-b', email: null } },
+  }
+  await assert.rejects(() => createSupabaseTransport({ http: changed }).resolvePushConflict({
+    conflictId: '30000000-0000-4000-8000-000000000001', choice: 'keep-local',
+    deviceId: '20000000-0000-4000-8000-000000000001', expectedIdentity: 'account-a',
+  }))
+  assert.equal(calls, 0)
 })
 
 test('push surfaces a revoked device and anonymous denial without retry-looping', async () => {
@@ -332,7 +419,10 @@ test('commitLink preserves structured partial outcomes instead of reporting link
       status: 'partial',
       push: {
         status: 'ok',
-        results: [{ opId: operation.opId, status: 'conflict', reason: 'id-collision', revision: null }],
+        results: [{ opId: operation.opId, status: 'conflict', reason: 'id-collision', revision: null,
+          conflictId: '30000000-0000-4000-8000-000000000001', highWater: 4,
+          rejectedOperation: { kind: 'create', opId: operation.opId, deviceId: operation.deviceId, item: { ...operation.item, pricePaid: null } },
+          cloudItem: null, conflictingItem: null }],
         highWater: 4,
       },
     },
@@ -347,7 +437,8 @@ test('commitLink preserves structured partial outcomes instead of reporting link
 
   assert.deepEqual(result, {
     kind: 'partial', highWater: 4,
-    outcomes: [{ kind: 'conflict', reason: 'id-collision', opId: operation.opId }],
+    outcomes: [{ kind: 'conflict', reason: 'id-collision', opId: operation.opId, conflictId: '30000000-0000-4000-8000-000000000001', highWater: 4,
+      rejectedOperation: { kind: 'create', opId: operation.opId, deviceId: operation.deviceId, item: operation.item }, cloudItem: null, conflictingItem: null }],
   })
 })
 

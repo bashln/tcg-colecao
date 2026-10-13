@@ -2,7 +2,7 @@ import type { CollectionOperation, SyncItem } from './policy.ts'
 
 export interface SyncTransport {
   push(identity: string, operations: readonly CollectionOperation[]): Promise<{
-    kind: 'applied' | 'already-applied' | 'conflict'
+    kind: 'applied' | 'already-applied' | 'conflict' | 'rejected'
     reason?: string
     sequence?: number
   }[]>

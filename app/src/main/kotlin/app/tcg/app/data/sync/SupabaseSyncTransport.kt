@@ -182,6 +182,48 @@ class SupabaseSyncTransport(
         return results.map { entry -> mapPushOutcome(entry as? JsonObject ?: throw unavailable("Resultado de push inválido")) }
     }
 
+    override suspend fun listPushConflicts(expectedIdentity: String): List<PushConflict> {
+        val response = callElement("read_collection_push_conflicts", JsonObject(emptyMap()), expectedIdentity)
+        val rows = response as? JsonArray ?: throw invalidResponse("A lista de conflitos remotos é inválida")
+        return rows.map { parsePushConflict(it as? JsonObject ?: throw invalidResponse("Conflito remoto inválido")) }
+    }
+
+    override suspend fun resolvePushConflict(
+        conflictId: String,
+        choice: PushConflictChoice,
+        deviceId: String,
+        expectedIdentity: String,
+    ): PushResolutionResponse {
+        if (!isUuid(conflictId) || !isDeviceId(deviceId)) throw SupabaseSyncException(SyncErrorKind.PRE_DISPATCH, "Conflito ou dispositivo inválido")
+        val response = call(
+            "resolve_collection_push_conflict",
+            JsonObject(mapOf(
+                "p_conflict_id" to JsonPrimitive(conflictId),
+                "p_choice" to JsonPrimitive(choice.wireValue),
+                "p_device_id" to JsonPrimitive(deviceId),
+            )),
+            expectedIdentity,
+        )
+        return parsePushResolution(response, requireReceipt = true)
+    }
+
+    override suspend fun acknowledgePushConflictResolution(
+        conflictId: String,
+        resolutionId: String,
+        expectedIdentity: String,
+    ): PushResolutionResponse {
+        if (!isUuid(conflictId) || !isUuid(resolutionId)) throw SupabaseSyncException(SyncErrorKind.PRE_DISPATCH, "Recibo de resolução inválido")
+        val response = call(
+            "ack_collection_push_conflict_resolution",
+            JsonObject(mapOf(
+                "p_conflict_id" to JsonPrimitive(conflictId),
+                "p_resolution_id" to JsonPrimitive(resolutionId),
+            )),
+            expectedIdentity,
+        )
+        return parsePushResolution(response, requireReceipt = false)
+    }
+
     override suspend fun pull(identity: String, afterSequence: Long): PullPage {
         val payload = JsonObject(
             mapOf(
@@ -349,7 +391,10 @@ class SupabaseSyncTransport(
         }
     }
 
-    private suspend fun call(function: String, payload: JsonObject, expectedIdentity: String? = null): JsonObject {
+    private suspend fun call(function: String, payload: JsonObject, expectedIdentity: String? = null): JsonObject =
+        callElement(function, payload, expectedIdentity) as? JsonObject ?: throw invalidResponse("Resposta inválida do servidor")
+
+    private suspend fun callElement(function: String, payload: JsonObject, expectedIdentity: String? = null): JsonElement {
         val session = sessionProvider()
         if (expectedIdentity != null && session?.userId != expectedIdentity) {
             throw SupabaseSyncException(SyncErrorKind.UNAUTHORIZED, "A conta mudou antes da sincronização")
@@ -375,14 +420,14 @@ class SupabaseSyncTransport(
         }
 
         val body = try {
-            json.parseToJsonElement(response.bodyAsText()).jsonObject
+            json.parseToJsonElement(response.bodyAsText())
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             throw SupabaseSyncException(SyncErrorKind.INVALID_RESPONSE, "Resposta inválida do servidor")
         }
 
-        val message = body.string("message").orEmpty()
+        val message = (body as? JsonObject)?.string("message").orEmpty()
         if (UNAUTHORIZED_PATTERN.containsMatchIn(message)) {
             throw SupabaseSyncException(SyncErrorKind.UNAUTHORIZED, message)
         }
@@ -397,8 +442,95 @@ class SupabaseSyncTransport(
         return when (status) {
             "applied" -> PushOutcome.Applied(sequence ?: throw unavailable("Applied sem revisão"), opId)
             "already-applied" -> PushOutcome.AlreadyApplied(sequence ?: throw unavailable("AlreadyApplied sem revisão"), opId)
-            else -> PushOutcome.Conflict(reason ?: "rejected", opId)
+            "conflict" -> PushOutcome.Conflict(
+                reason = reason ?: throw invalidResponse("Conflito sem motivo"),
+                opId = opId,
+                conflictId = row.string("conflictId")?.takeIf(::isUuid) ?: throw invalidResponse("Conflito sem id válido"),
+                highWater = row.jsonPrimitiveOrNull("highWater") ?: throw invalidResponse("Conflito sem high-water"),
+                rejectedOperation = parseRejectedOperation(row["rejectedOperation"]),
+                cloudItem = parsePushCloudItem(row["cloudItem"]),
+                conflictingItem = parsePushCloudItem(row["conflictingItem"]),
+            )
+            "rejected" -> PushOutcome.Rejected(
+                reason ?: throw invalidResponse("Rejection sem motivo"),
+                opId,
+                row.string("conflictId")?.takeIf(::isUuid) ?: throw invalidResponse("Rejection sem conflito persistido"),
+            )
+            else -> throw invalidResponse("Status de push desconhecido")
         }
+    }
+
+    private fun parsePushConflict(row: JsonObject): PushConflict {
+        val id = row.string("id")?.takeIf(::isUuid) ?: throw invalidResponse("Conflito sem id válido")
+        val itemId = row.string("itemId")?.takeIf(::isDeviceId) ?: throw invalidResponse("Conflito sem item válido")
+        val opId = when (val value = row["opId"]) {
+            null, JsonNull -> null
+            else -> value.jsonPrimitive.contentOrNull?.takeIf(::isUuid) ?: throw invalidResponse("Conflito com opId inválido")
+        }
+        val deviceId = row.string("deviceId")?.takeIf(::isDeviceId) ?: throw invalidResponse("Conflito sem dispositivo válido")
+        val reason = row.string("reason")?.takeIf(String::isNotBlank) ?: throw invalidResponse("Conflito sem motivo")
+        val highWater = row.jsonPrimitiveOrNull("highWater")?.takeIf { it >= 0 } ?: throw invalidResponse("Conflito sem high-water válido")
+        val operation = parseRejectedOperation(row["rejectedOperation"])
+        val resolution = when (val receipt = row["resolution"]) {
+            null, JsonNull -> null
+            else -> parsePushReceipt(receipt as? JsonObject ?: throw invalidResponse("Recibo remoto inválido"))
+        }
+        return PushConflict(
+            id, opId, itemId, reason, deviceId, operation,
+            parsePushCloudItem(row["cloudItem"]), parsePushCloudItem(row["conflictingItem"]), highWater, resolution,
+        )
+    }
+
+    private fun parsePushCloudItem(element: JsonElement?): PushCloudItem? {
+        if (element == null || element is JsonNull) return null
+        val row = element as? JsonObject ?: throw invalidResponse("Snapshot de conflito inválido")
+        val id = row.string("itemId")?.takeIf(::isDeviceId) ?: throw invalidResponse("Snapshot sem item válido")
+        val revision = row.jsonPrimitiveOrNull("revision")?.takeIf { it >= 0 } ?: throw invalidResponse("Snapshot sem revisão válida")
+        return when (row["deleted"]?.jsonPrimitive?.contentOrNull) {
+            "true" -> PushCloudItem.Deleted(id, revision)
+            "false" -> {
+                if (revision < 1) throw invalidResponse("Snapshot sem revisão válida")
+                val item = parseItem(JsonObject(row + ("id" to JsonPrimitive(id))))
+                PushCloudItem.Present(item, revision)
+            }
+            else -> throw invalidResponse("Snapshot sem estado válido")
+        }
+    }
+
+    private fun parseRejectedOperation(element: JsonElement?): SyncOperation {
+        val row = element as? JsonObject ?: throw invalidResponse("Operação rejeitada inválida")
+        val opId = row.string("opId")?.takeIf(::isUuid) ?: throw invalidResponse("Operação sem id válido")
+        val deviceId = row.string("deviceId")?.takeIf(::isDeviceId) ?: throw invalidResponse("Operação sem dispositivo válido")
+        return when (row.string("kind")) {
+            "create" -> SyncOperation.Create(opId, deviceId, parseItem(row["item"]))
+            "replace" -> SyncOperation.Replace(opId, deviceId, row.jsonPrimitiveOrNull("baseRevision")?.takeIf { it >= 0 } ?: throw invalidResponse("Operação sem revisão base"), parseItem(row["item"]))
+            "delete" -> SyncOperation.Delete(opId, deviceId, row.jsonPrimitiveOrNull("baseRevision")?.takeIf { it >= 0 } ?: throw invalidResponse("Operação sem revisão base"), row.string("itemId")?.takeIf(::isDeviceId) ?: throw invalidResponse("Operação sem item válido"))
+            else -> throw invalidResponse("Tipo de operação rejeitada inválido")
+        }
+    }
+
+    private fun parsePushReceipt(row: JsonObject): PushResolutionReceipt {
+        val id = row.string("id")?.takeIf(::isUuid) ?: throw invalidResponse("Recibo sem id válido")
+        val choice = parseChoice(row.string("choice")) ?: throw invalidResponse("Recibo sem escolha válida")
+        val result = row["result"] as? JsonObject ?: throw invalidResponse("Recibo sem resultado")
+        return PushResolutionReceipt(id, choice, result)
+    }
+
+    private fun parsePushResolution(row: JsonObject, requireReceipt: Boolean): PushResolutionResponse {
+        val status = row.string("status")?.takeIf { it in setOf("resolved", "already-resolved", "stale-conflict", "not-found", "device-revoked", "invalid-resolution") }
+            ?: throw invalidResponse("Status de resolução inválido")
+        val conflictId = row.string("conflictId")?.takeIf(::isUuid) ?: throw invalidResponse("Resposta de resolução sem conflito válido")
+        val choice = parseChoice(row.string("choice"))
+        val resolutionId = row.string("resolutionId")?.takeIf(::isUuid)
+        val result = row["result"] as? JsonObject
+        if (requireReceipt && status in setOf("resolved", "already-resolved") && (choice == null || resolutionId == null || result == null)) throw invalidResponse("Recibo de resolução incompleto")
+        return PushResolutionResponse(status, conflictId, choice, resolutionId, row.string("reason"), result)
+    }
+
+    private fun parseChoice(value: String?): PushConflictChoice? = when (value) {
+        "keep-local" -> PushConflictChoice.KEEP_LOCAL
+        "keep-cloud" -> PushConflictChoice.KEEP_CLOUD
+        else -> null
     }
 
     private fun parseSequenced(row: JsonObject): SequencedOperation {
@@ -571,5 +703,11 @@ class SupabaseSyncTransport(
         const val MINOR_UNIT_SCALE = 2
         const val MINOR_UNITS_PER_MAJOR = 100.0
         val UNAUTHORIZED_PATTERN = Regex("not authenticated|permission denied|jwt", RegexOption.IGNORE_CASE)
+        val UUID_PATTERN = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", RegexOption.IGNORE_CASE)
+        val ITEM_ID_PATTERN = Regex("^[a-zA-Z0-9-]{8,80}$")
     }
+
+    private fun isUuid(value: String): Boolean = UUID_PATTERN.matches(value)
+
+    private fun isDeviceId(value: String): Boolean = ITEM_ID_PATTERN.matches(value)
 }

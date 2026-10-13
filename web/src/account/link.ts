@@ -146,7 +146,7 @@ export async function confirmLink(input: {
     }
   }
   if (commit.kind === 'partial') {
-    const reasons = [...new Set(commit.outcomes.filter((outcome) => outcome.kind === 'conflict').map((outcome) => outcome.reason).filter(Boolean))]
+    const reasons = [...new Set(commit.outcomes.filter((outcome) => outcome.kind === 'conflict' || outcome.kind === 'rejected').map((outcome) => outcome.reason).filter(Boolean))]
     return {
       kind: 'partial',
       message: `A nuvem recebeu parte das operações; o vínculo local não foi concluído${reasons.length === 0 ? '' : ` (${reasons.join(', ')})`}. Gere uma nova prévia e confira qualquer conflito antes de confirmar novamente.`,
@@ -219,7 +219,7 @@ function seedRevisions(
   for (let index = 0; index < operations.length; index += 1) {
     const operation = operations[index]
     const outcome = byOpId.get(operation?.opId ?? '') ?? outcomes[index]
-    if (operation === undefined || outcome === undefined || outcome.kind === 'conflict') return null
+    if (operation === undefined || outcome === undefined || outcome.kind === 'conflict' || outcome.kind === 'rejected') return null
     if (outcome.sequence === undefined || !Number.isSafeInteger(outcome.sequence) || outcome.sequence < 1) return null
     const itemId = operation.kind === 'delete' ? operation.itemId : operation.item.id
     seeds.set(itemId, outcome.sequence)

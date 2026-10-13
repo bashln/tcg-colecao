@@ -64,6 +64,11 @@ class CollectionSyncCoordinator(
                         reason = outcome.reason,
                         local = operation.localItem(),
                     )
+                    is PushOutcome.Rejected -> conflicts += SyncConflictDetail(
+                        itemId = operation.itemId(),
+                        reason = outcome.reason,
+                        local = operation.localItem(),
+                    )
                     is PushOutcome.Applied, is PushOutcome.AlreadyApplied -> {
                         if (!local.acknowledge(boundIdentity, operation.opId)) {
                             return SyncResult.Error(pending.size)

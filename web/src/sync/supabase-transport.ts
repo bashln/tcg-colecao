@@ -16,11 +16,50 @@ export interface SequencedOperation {
 }
 
 export interface PushOutcome {
-  kind: 'applied' | 'already-applied' | 'conflict'
+  kind: 'applied' | 'already-applied' | 'conflict' | 'rejected'
   reason?: string
   sequence?: number
   /** Server echoes the operation id so callers can map results without relying on order. */
   opId?: string
+  conflictId?: string
+  highWater?: number
+  rejectedOperation?: CollectionOperation
+  cloudItem?: PushCloudItem
+  conflictingItem?: PushCloudItem
+}
+
+export type PushCloudItem =
+  | { kind: 'present'; item: SyncItem; revision: number }
+  | { kind: 'deleted'; itemId: string; revision: number }
+  | { kind: 'missing'; itemId: string }
+  | null
+
+export interface PushConflict {
+  id: string
+  opId: string | null
+  itemId: string
+  reason: string
+  deviceId: string
+  rejectedOperation: CollectionOperation
+  cloudItem: PushCloudItem
+  conflictingItem: PushCloudItem
+  highWater: number
+  resolution: PushResolutionReceipt | null
+}
+
+export interface PushResolutionReceipt {
+  id: string
+  choice: 'keep-local' | 'keep-cloud'
+  result: Record<string, unknown>
+}
+
+export interface PushResolutionResponse {
+  status: 'resolved' | 'already-resolved' | 'stale-conflict' | 'not-found' | 'device-revoked' | 'invalid-resolution'
+  conflictId: string
+  choice?: 'keep-local' | 'keep-cloud'
+  resolutionId?: string
+  reason?: string
+  result?: Record<string, unknown>
 }
 
 export interface PullPage {
@@ -168,6 +207,11 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
     return response
   }
 
+  async function assertIdentity(expectedIdentity: string): Promise<void> {
+    const current = await input.http.user()
+    if (current?.id !== expectedIdentity) throw new SupabaseSyncError('unauthorized', 'A conta mudou antes da sincronização')
+  }
+
   return {
     async user() {
       return input.http.user()
@@ -246,7 +290,7 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
           if (push.status !== 'device-revoked' && outcomes.length !== operations.length) {
             throw new SupabaseSyncError('invalid-response', 'O resultado não corresponde às operações enviadas')
           }
-          if (response.status === 'linked' && outcomes.some((outcome) => outcome.kind === 'conflict')) {
+          if (response.status === 'linked' && outcomes.some((outcome) => outcome.kind === 'conflict' || outcome.kind === 'rejected')) {
             throw new SupabaseSyncError('invalid-response', 'O servidor marcou como concluído um vínculo com operações recusadas')
           }
           const result = { highWater: push.highWater, outcomes }
@@ -285,6 +329,31 @@ export function createSupabaseTransport(input: { http: SupabaseHttp }) {
 
       const results = Array.isArray(response.results) ? response.results : []
       return parsePushOutcomes(results)
+    },
+
+    async listPushConflicts(expectedIdentity: string): Promise<PushConflict[]> {
+      await assertIdentity(expectedIdentity)
+      const response = await call('read_collection_push_conflicts', {}, expectedIdentity)
+      if (!Array.isArray(response)) throw new SupabaseSyncError('invalid-response', 'A lista de conflitos remotos é inválida')
+      return response.map(parsePushConflict)
+    },
+
+    async resolvePushConflict(input: { conflictId: string; choice: 'keep-local' | 'keep-cloud'; deviceId: string; expectedIdentity: string }): Promise<PushResolutionResponse> {
+      if (!isUuid(input.conflictId) || !isDeviceId(input.deviceId)) throw new SupabaseSyncError('preflight', 'Conflito ou dispositivo inválido')
+      await assertIdentity(input.expectedIdentity)
+      const response = await call('resolve_collection_push_conflict', {
+        p_conflict_id: input.conflictId, p_choice: input.choice, p_device_id: input.deviceId,
+      }, input.expectedIdentity)
+      return parsePushResolution(response, true)
+    },
+
+    async acknowledgePushConflictResolution(input: { conflictId: string; resolutionId: string; expectedIdentity: string }): Promise<PushResolutionResponse> {
+      if (!isUuid(input.conflictId) || !isUuid(input.resolutionId)) throw new SupabaseSyncError('preflight', 'Recibo de resolução inválido')
+      await assertIdentity(input.expectedIdentity)
+      const response = await call('ack_collection_push_conflict_resolution', {
+        p_conflict_id: input.conflictId, p_resolution_id: input.resolutionId,
+      }, input.expectedIdentity)
+      return parsePushResolution(response, false)
     },
 
     async pull(identity: string, afterSequence: number): Promise<PullPage> {
@@ -357,8 +426,121 @@ function parsePushOutcomes(results: readonly unknown[]): PushOutcome[] {
     }
     if (row.status === 'applied') return { kind: 'applied', ...extra }
     if (row.status === 'already-applied') return { kind: 'already-applied', ...extra }
-    return { kind: 'conflict', ...extra }
+    if (row.status !== 'conflict' && row.status !== 'rejected') throw new SupabaseSyncError('invalid-response', 'Resultado de push desconhecido')
+    if (row.status === 'rejected') {
+      const conflictId = parseUuid(row.conflictId)
+      if (conflictId === null || typeof row.reason !== 'string' || row.reason.length === 0) {
+        throw new SupabaseSyncError('invalid-response', 'Rejeição permanente sem conflito válido')
+      }
+      return { kind: 'rejected', ...extra, conflictId }
+    }
+    const conflictId = parseUuid(row.conflictId)
+    const highWater = parseNonNegativeInteger(row.highWater)
+    if (conflictId === null || highWater === null || typeof row.reason !== 'string' || row.reason.length === 0 ||
+      row.rejectedOperation === null || typeof row.rejectedOperation !== 'object') {
+      throw new SupabaseSyncError('invalid-response', 'Conflito de push incompleto')
+    }
+    return {
+      kind: 'conflict', ...extra, conflictId, highWater,
+      rejectedOperation: parseRejectedOperation(row.rejectedOperation),
+      cloudItem: parsePushCloudItem(row.cloudItem),
+      conflictingItem: parsePushCloudItem(row.conflictingItem),
+    }
   })
+}
+
+function parsePushConflict(value: unknown): PushConflict {
+  const row = asRecord(value)
+  const id = parseUuid(row.id)
+  const itemId = parseItemId(row.itemId)
+  const opId = row.opId === null ? null : parseUuid(row.opId)
+  const deviceId = parseItemId(row.deviceId)
+  const highWater = parseNonNegativeInteger(row.highWater)
+  if (!id || !itemId || opId === undefined || !deviceId || highWater === null || typeof row.reason !== 'string' || row.reason.length === 0) {
+    throw new SupabaseSyncError('invalid-response', 'Conflito de push inválido')
+  }
+  const resolution = row.resolution === null ? null : parsePushResolutionReceipt(row.resolution)
+  return {
+    id, opId, itemId, reason: row.reason, deviceId,
+    rejectedOperation: parseRejectedOperation(row.rejectedOperation),
+    cloudItem: parsePushCloudItem(row.cloudItem),
+    conflictingItem: parsePushCloudItem(row.conflictingItem),
+    highWater, resolution,
+  }
+}
+
+function parsePushCloudItem(value: unknown): PushCloudItem {
+  if (value === null) return null
+  const row = asRecord(value)
+  const itemId = parseItemId(row.itemId)
+  if (itemId === null) throw new SupabaseSyncError('invalid-response', 'Snapshot de conflito contém item inválido')
+  if (row.deleted === true) {
+    const revision = parseNonNegativeInteger(row.revision)
+    if (revision === null) throw new SupabaseSyncError('invalid-response', 'Tombstone de conflito sem revisão válida')
+    return { kind: 'deleted', itemId, revision }
+  }
+  if (row.deleted !== false) throw new SupabaseSyncError('invalid-response', 'Snapshot de conflito sem estado válido')
+  const revision = parseNonNegativeInteger(row.revision)
+  if (revision === null || revision < 1) throw new SupabaseSyncError('invalid-response', 'Snapshot de conflito sem revisão válida')
+  const parsed = parseSnapshotItem({ ...row, id: itemId })
+  return { kind: 'present', item: parsed, revision }
+}
+
+function parseRejectedOperation(value: unknown): CollectionOperation {
+  const row = asRecord(value)
+  if (row.kind === 'delete') {
+    const opId = parseUuid(row.opId)
+    const deviceId = parseItemId(row.deviceId)
+    const itemId = parseItemId(row.itemId)
+    const baseRevision = parseNonNegativeInteger(row.baseRevision)
+    if (!opId || !deviceId || !itemId || baseRevision === null) throw new SupabaseSyncError('invalid-response', 'Operação rejeitada inválida')
+    return { kind: 'delete', opId, deviceId, itemId, baseRevision }
+  }
+  if (row.kind !== 'create' && row.kind !== 'replace') throw new SupabaseSyncError('invalid-response', 'Tipo de operação rejeitada inválido')
+  const { revision: _revision, ...item } = parseSnapshotItem({ ...asRecord(row.item), revision: 1 })
+  const opId = parseUuid(row.opId)
+  const deviceId = parseItemId(row.deviceId)
+  if (!opId || !deviceId) throw new SupabaseSyncError('invalid-response', 'Identidade da operação rejeitada inválida')
+  if (row.kind === 'create') return { kind: 'create', opId, deviceId, item }
+  const baseRevision = parseNonNegativeInteger(row.baseRevision)
+  if (baseRevision === null) throw new SupabaseSyncError('invalid-response', 'Revisão base da operação inválida')
+  return { kind: 'replace', opId, deviceId, item, baseRevision }
+}
+
+function parsePushResolutionReceipt(value: unknown): PushResolutionReceipt {
+  const row = asRecord(value)
+  const id = parseUuid(row.id)
+  if (!id || (row.choice !== 'keep-local' && row.choice !== 'keep-cloud')) throw new SupabaseSyncError('invalid-response', 'Recibo de resolução inválido')
+  return { id, choice: row.choice, result: asRecord(row.result) }
+}
+
+function parsePushResolution(value: Record<string, unknown>, hasReceipt: boolean): PushResolutionResponse {
+  const conflictId = parseUuid(value.conflictId)
+  const statuses = ['resolved', 'already-resolved', 'stale-conflict', 'not-found', 'device-revoked', 'invalid-resolution'] as const
+  const status = statuses.find((candidate) => candidate === value.status)
+  if (status === undefined || conflictId === null) throw new SupabaseSyncError('invalid-response', 'Resposta de resolução inválida')
+  const choice = value.choice === 'keep-local' || value.choice === 'keep-cloud' ? value.choice : undefined
+  const resolutionId = value.resolutionId === undefined ? undefined : parseUuid(value.resolutionId) ?? undefined
+  if (hasReceipt && (status === 'resolved' || status === 'already-resolved') && (!choice || !resolutionId || value.result === null || typeof value.result !== 'object')) {
+    throw new SupabaseSyncError('invalid-response', 'Recibo de resolução incompleto')
+  }
+  return {
+    status, conflictId,
+    ...(choice === undefined ? {} : { choice }),
+    ...(resolutionId === undefined ? {} : { resolutionId }),
+    ...(typeof value.reason === 'string' ? { reason: value.reason } : {}),
+    ...(value.result !== null && typeof value.result === 'object' ? { result: asRecord(value.result) } : {}),
+  }
+}
+
+function parseUuid(value: unknown): string | null {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : null
+}
+
+function isUuid(value: string): boolean { return parseUuid(value) !== null }
+function isDeviceId(value: string): boolean { return parseItemId(value) !== null }
+function parseNonNegativeInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
 }
 
 function parseSnapshotItem(value: unknown): SyncItem & { revision: number } {
