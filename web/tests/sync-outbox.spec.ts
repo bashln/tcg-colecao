@@ -662,7 +662,7 @@ test('profile exposes conflict choices and keep-local resolves through acknowled
 })
 
 test('push-conflict IndexedDB keep-cloud removes affected queued operations and preserves unrelated work', async ({ page }) => {
-  const harness = await mockSyncRpc(page, { pushConflictReason: 'stale' })
+  await mockSyncRpc(page, { pushConflictReason: 'stale' })
   await seedSignedInSession(page, 'ana@example.test', 'user-ana')
   await page.goto('/')
   await seedLocalCollection(page)
@@ -715,7 +715,7 @@ test('push-conflict IndexedDB keep-cloud removes affected queued operations and 
   const cursorBefore = await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).lastSyncSequence('user-ana'))
   const applied = await page.evaluate(async () => {
     const store = await import(`${location.origin}/src/collection/store.ts`)
-    const conflict = (await store.listSyncConflicts('user-ana')).find((row) => row.source === 'push')
+    const conflict = (await store.listSyncConflicts('user-ana')).find((row: { source: string; id: string; pushConflict?: { itemId: string } }) => row.source === 'push')
     if (!conflict?.pushConflict) throw new Error('push conflict was not stored')
     const itemId = conflict.pushConflict.itemId
     return store.applyPushConflictResolution('user-ana', conflict.id, {
@@ -726,8 +726,8 @@ test('push-conflict IndexedDB keep-cloud removes affected queued operations and 
   expect(applied).toBe(true)
   expect(await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).listCollection())).toHaveLength(0)
 
-  const pendingAfterResolution = await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).listPendingOperations('user-ana'))
-  expect(pendingAfterResolution.map((operation) => operation.opId)).toEqual(['unrelated-op'])
+  const pendingIdsAfterResolution = await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).listPendingOperations('user-ana').then((operations: { opId: string }[]) => operations.map((operation) => operation.opId)))
+  expect(pendingIdsAfterResolution).toEqual(['unrelated-op'])
   const cursorAfter = await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).lastSyncSequence('user-ana'))
   expect(cursorAfter).toBe(cursorBefore)
 })
