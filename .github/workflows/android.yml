@@ -49,6 +49,14 @@ jobs:
       - name: Compilar APK de debug
         run: ./gradlew :app:assembleDebug --no-daemon
 
+      - name: Publicar APK debug para teste manual
+        uses: actions/upload-artifact@v4
+        with:
+          name: tcg-colecao-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Publicar relatorios de teste
         if: always()
         uses: actions/upload-artifact@v4

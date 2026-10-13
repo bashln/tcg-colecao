@@ -18,7 +18,7 @@ Accounts are optional. Initial linking requires a server preview and explicit co
 - Open `Perfil` and create an account or sign in.
 - Choose `Revisar vínculo`, inspect local and cloud counts, then choose `Confirmar vínculo` or `Cancelar prévia`.
 - Edit an item while linked. The app shows sync status without a manual sync action.
-- If a pulled change conflicts, compare local and cloud values, then choose `Manter minha coleção` or `Usar versão da nuvem`. Keep-cloud removes only superseded local outbox writes for that item; it never clears unrelated collection entries.
+- If a pulled or pushed change conflicts, compare local and cloud values, then choose `Manter minha coleção` or `Usar versão da nuvem` when safe. Duplicate configurations explain identifier replacement/removal; invalid payload, revoked device, and revision limit show repair guidance without resolution choices. Keep-cloud removes only superseded local outbox writes for that item; it never clears unrelated collection entries.
 - If the app cannot read the outbox, it says the pending count is unavailable rather than claiming there are zero changes. Retry sync when storage or network recovers.
 - Choose `Sair da conta` to stop sync and keep local cards.
 
@@ -43,5 +43,5 @@ Preconditions:
 - Do not merge ID collisions or duplicate configurations silently.
 - Hosted round-trip and RLS need dedicated isolated-account tests.
 - Custom SMTP and a production callback domain are not configured in this checkout.
-- Local verification (2026-10-12): PostgreSQL harness 39/39, Web unit 78/78, Chromium E2E 37/37, Android app 298 and core 65 tests, Web build and Android `assembleDebug` pass. These prove local client/RPC harness behavior only.
+- Local push-conflict verification (2026-10-12): PostgreSQL harness 56/56, Web unit 84/84, Chromium E2E 40/40, Android app 307 and core 65 tests, Web production build and Android `assembleDebug` pass. These prove local client/RPC harness behavior only.
 - Hosted Android↔Web round-trip and two-account isolation remain blocked until SMTP/domain and two confirmed isolated test accounts are available. No release or deployment was run. WebKit/iPhone remains unverified.

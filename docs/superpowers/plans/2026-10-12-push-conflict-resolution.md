@@ -113,16 +113,16 @@ Expected: resolved conflict work replays after interruption without duplicating 
 - Consumes: Task 3 durable conflict details and resolution actions.
 - Produces: visible local/cloud comparison, explicit `Manter minha coleção` and `Usar versão da nuvem` choices, duplicate-configuration identity/removal explanation, and distinct repair/re-authorize states for `invalid-payload`, `device-revoked`, and `revision-limit`.
 
-- [ ] **Step 1: Add RED Web E2E and Compose tests** for both choices, duplicate-configuration consequences, disabled duplicate action while resolving, permanent-error copy, and retry after network/storage failure.
-- [ ] **Step 2: Run focused tests and verify expected failures.**
-- [ ] **Step 3: Implement accessible conflict status and actions.** Keep local/cloud labels, progress, errors, focus behavior, and retry visible without claiming success before both server and local completion are confirmed.
-- [ ] **Step 4: Run focused account/conflict tests and complete Chromium E2E.**
+- [x] **Step 1: Add RED Web E2E and Compose tests** for both choices, duplicate-configuration consequences, disabled duplicate action while resolving, permanent-error copy, and retry after network/storage failure.
+- [x] **Step 2: Run focused tests and verify expected failures.**
+- [x] **Step 3: Implement accessible conflict status and actions.** Keep local/cloud labels, progress, errors, focus behavior, and retry visible without claiming success before both server and local completion are confirmed.
+- [x] **Step 4: Run focused account/conflict tests and complete Chromium E2E.** Web outbox 21/21, complete Chromium 40/40, Web unit 84/84 and build; Compose account tests 35/35; PostgreSQL harness 56/56; full Android app/core tests and assembleDebug passed. Fixed partial-link fixture with durable conflict fields and allowed background conflict-list read in link E2E.
 
 Run: `CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium CI=1 npx playwright test tests/sync-outbox.spec.ts` from `web/`; `./gradlew :app:testDebugUnitTest --tests app.tcg.app.ui.account.AccountScreenTest --tests app.tcg.app.ui.account.AccountViewModelTest`.
 
 Expected: both choices and non-resolvable errors are understandable and preserve local data.
 
-- [ ] **Step 5: Commit** as `feat(sync): add push conflict recovery UI`.
+- [x] **Step 5: Commit** as `feat(sync): add push conflict recovery UI` (`b69e9ae`).
 
 ### Task 5: Full verification and records
 
@@ -134,15 +134,15 @@ Expected: both choices and non-resolvable errors are understandable and preserve
 - Consumes: Tasks 1–4 implementation and tests.
 - Produces: local verified implementation, exact test evidence, explicit hosted-verification boundary, and one fresh whole-change review.
 
-- [ ] **Step 1: Run all local gates.**
+- [x] **Step 1: Run all local gates.** Web unit 84/84, build passed, Chromium 40/40, PostgreSQL 56/56, Android app 307/core 65 unit tests and assembleDebug passed. Release guard tests 14/14 and signature tests 6/6 passed.
 
 Run: `npm run test:unit`, `npm run build`, `CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium CI=1 npx playwright test` from `web/`; `npm test` from `supabase/tests`; `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug --rerun-tasks` from repository root.
 
 Expected: all suites and builds pass; report exact counts from command output and Android XML.
 
-- [ ] **Step 2: Inspect the full diff and run whitespace, JSON, and staged-secret checks.**
-- [ ] **Step 3: Request one fresh-context whole-change review.** Fix Critical and Important findings in one TDD pass, rerun all gates, and record deferred minor findings.
-- [ ] **Step 4: Update verification docs and process records.** State that hosted round-trip still requires SMTP/domain and two controlled confirmed accounts; do not claim local harness proves hosted isolation.
+- [x] **Step 2: Inspect the full diff and run whitespace, JSON, and staged-secret checks.** `git diff --check` and progress/errors JSON parse passed. Secret check remains before commit.
+- [ ] **Step 3: Request one fresh-context whole-change review.** Fix Critical and Important findings in one TDD pass, rerun all gates, and record deferred minor findings. Pending; no whole-change review result yet.
+- [x] **Step 4: Update verification docs and process records.** Existing verification guide and task ledger explicitly retain hosted round-trip block: SMTP/domain and two controlled confirmed accounts required; local harness does not prove hosted isolation.
 - [ ] **Step 5: Commit** as `test(sync): verify push conflict recovery`.
 
 ## Self-review
