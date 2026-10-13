@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +32,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import app.tcg.app.R
 import app.tcg.app.data.sync.LinkPreviewSummary
 import app.tcg.app.data.sync.SyncConflictResolution
@@ -247,6 +251,8 @@ private fun SyncStatusPanel(
     onSyncNow: () -> Unit,
     onResolveConflict: (String, SyncConflictResolution) -> Unit,
 ) {
+    var resolvingConflictId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(status) { resolvingConflictId = null }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -292,27 +298,47 @@ private fun SyncStatusPanel(
                     is app.tcg.app.data.sync.SyncOperation.Replace -> remote.item
                     is app.tcg.app.data.sync.SyncOperation.Delete, null -> null
                 }
-                if (detail.local != null || remoteItem != null) {
+                val push = detail.pushConflict
+                val cloudItem = when (val cloud = push?.cloudItem) {
+                    is app.tcg.app.data.sync.PushCloudItem.Present -> cloud.item
+                    else -> remoteItem
+                }
+                if (detail.local != null || cloudItem != null || push != null) {
                     Text(
                         text = stringResource(
                             R.string.account_sync_conflict_values,
                             detail.local?.let { "${it.quantity} × ${it.cardId} · ${it.variant}/${it.condition}" } ?: stringResource(R.string.account_sync_value_absent),
-                            remoteItem?.let { "${it.quantity} × ${it.cardId} · ${it.variant}/${it.condition}" } ?: stringResource(R.string.account_sync_value_absent),
+                            cloudItem?.let { "${it.quantity} × ${it.cardId} · ${it.variant}/${it.condition}" } ?: stringResource(R.string.account_sync_value_absent),
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                if (detail.id.isNotBlank() && detail.remote != null) {
+                if (detail.reason == "duplicate-configuration") {
+                    Text("Manter minha coleção substitui o identificador local pelo identificador da nuvem. Usar versão da nuvem mantém a posse existente e remove a duplicata local.")
+                }
+                val permanentError = when (detail.reason) {
+                    "invalid-payload" -> "Esta operação contém dados inválidos. Sua coleção local está salva; atualize a posse manualmente antes de sincronizar novamente."
+                    "device-revoked" -> "Este dispositivo perdeu autorização para sincronizar. Sua coleção local está salva; entre novamente na conta e tente sincronizar."
+                    "revision-limit" -> "Esta posse atingiu o limite de revisões do servidor. Nenhuma versão será escolhida automaticamente; sua coleção local permanece salva."
+                    else -> null
+                }
+                if (permanentError != null) Text(permanentError, color = MaterialTheme.colorScheme.error)
+                val resolvable = push?.rejectedOperation != null && detail.reason in setOf("stale", "missing", "deleted", "id-collision", "duplicate-configuration")
+                    || detail.source != "push" && detail.remote != null
+                if (detail.id.isNotBlank() && resolvable) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
-                            onClick = { onResolveConflict(detail.id, SyncConflictResolution.KeepLocal) },
+                            onClick = { resolvingConflictId = detail.id; onResolveConflict(detail.id, SyncConflictResolution.KeepLocal) },
+                            enabled = resolvingConflictId == null,
                         ) { Text(stringResource(R.string.account_sync_keep_local)) }
                         OutlinedButton(
-                            onClick = { onResolveConflict(detail.id, SyncConflictResolution.KeepCloud) },
+                            onClick = { resolvingConflictId = detail.id; onResolveConflict(detail.id, SyncConflictResolution.KeepCloud) },
+                            enabled = resolvingConflictId == null,
                         ) { Text(stringResource(R.string.account_sync_keep_cloud)) }
                     }
+                    if (resolvingConflictId == detail.id) Text("Aplicando escolha…", modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                 }
             }
         }

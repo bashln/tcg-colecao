@@ -88,8 +88,9 @@ export async function readOutboxIdentities(page: Page): Promise<{ identity: stri
  * Mocks the whole Supabase sync surface (prepare/snapshot/commit plus push/pull) with a
  * coherent server high-water sequence, so link and automatic sync flows run end to end.
  */
-export async function mockSyncRpc(page: Page, options: { conflicting?: boolean; pullOperation?: Record<string, unknown> } = {}): Promise<SyncHarness> {
+export async function mockSyncRpc(page: Page, options: { conflicting?: boolean; pullOperation?: Record<string, unknown>; pushConflictReason?: string } = {}): Promise<SyncHarness> {
   const harness: SyncHarness = { calls: [], highWater: 7, failPushes: false }
+  let pushConflict: Record<string, unknown> | null = null
   await page.route('**/rest/v1/rpc/**', async (route) => {
     const request = route.request()
     const fn = new URL(request.url()).pathname.split('/').pop() ?? 'unknown'
@@ -107,6 +108,23 @@ export async function mockSyncRpc(page: Page, options: { conflicting?: boolean; 
       }
       harness.calls.push({ fn, body })
       const operations = (body.p_operations ?? []) as { opId: string; kind: string; baseRevision?: number }[]
+      if (options.pushConflictReason !== undefined && operations.length > 0) {
+        const operation = operations[0] as typeof operations[number] & { deviceId: string; item?: SyncItem; itemId?: string }
+        const conflictId = '30000000-0000-4000-8000-000000000001'
+        const itemId = operation.item?.id ?? operation.itemId ?? '00000000-0000-4000-8000-000000000001'
+        pushConflict = {
+          id: conflictId, opId: operation.opId, itemId, reason: options.pushConflictReason,
+          deviceId: operation.deviceId,
+          rejectedOperation: operation,
+          cloudItem: null, conflictingItem: null, highWater: harness.highWater, resolution: null,
+        }
+        const permanent = ['invalid-payload', 'device-revoked', 'revision-limit'].includes(options.pushConflictReason)
+        return respond({ status: 'ok', highWater: harness.highWater, results: [{
+          opId: operation.opId, status: permanent ? 'rejected' : 'conflict', conflictId,
+          reason: options.pushConflictReason, highWater: harness.highWater,
+          rejectedOperation: operation, cloudItem: null, conflictingItem: null,
+        }] })
+      }
       const results = operations.map((operation) => {
         harness.highWater += 1
         return {
@@ -118,6 +136,20 @@ export async function mockSyncRpc(page: Page, options: { conflicting?: boolean; 
       return respond({ status: 'ok', results, highWater: harness.highWater })
     }
     harness.calls.push({ fn, body })
+    if (fn === 'read_collection_push_conflicts') return respond(pushConflict === null ? [] : [pushConflict])
+    if (fn === 'resolve_collection_push_conflict') {
+      const choice = body.p_choice as 'keep-local' | 'keep-cloud'
+      const operation = pushConflict?.rejectedOperation as { item?: SyncItem; itemId?: string } | undefined
+      return respond({
+        status: 'resolved', conflictId: body.p_conflict_id, choice,
+        resolutionId: '40000000-0000-4000-8000-000000000001',
+        result: { kind: choice, itemId: operation?.item?.id ?? operation?.itemId, localItemId: operation?.item?.id ?? operation?.itemId, cloudItem: null, conflictingItem: null, revision: 2 },
+      })
+    }
+    if (fn === 'ack_collection_push_conflict_resolution') {
+      pushConflict = null
+      return respond({ status: 'resolved', conflictId: body.p_conflict_id, resolutionId: body.p_resolution_id })
+    }
     if (fn === 'prepare_collection_link') {
       const items = (body.p_local_items ?? []) as SyncItem[]
       const localOnly = items.map((item) => item.id)

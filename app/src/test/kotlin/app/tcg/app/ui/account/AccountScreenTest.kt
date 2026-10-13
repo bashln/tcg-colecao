@@ -177,12 +177,57 @@ class AccountScreenTest {
         )
 
         compose.onNodeWithText("Manter minha coleção").performClick()
+        compose.onNodeWithText("Usar versão da nuvem").assertIsNotEnabled()
         compose.onNodeWithText("Usar versão da nuvem").performClick()
 
         assertEquals(listOf(
             "user-a:9" to SyncConflictResolution.KeepLocal,
-            "user-a:9" to SyncConflictResolution.KeepCloud,
         ), choices)
+    }
+
+    @Test
+    fun push_conflict_compares_authoritative_cloud_value_and_marks_duplicate_identity_change() {
+        val detail = SyncConflictDetail(
+            id = "server-id", itemId = "local-item", reason = "duplicate-configuration",
+            source = "push", serverConflictId = "server-id",
+            local = SyncItem("local-item", "base1-4", 2, app.tcg.core.domain.model.CardVariant.NORMAL,
+                app.tcg.core.domain.model.Condition.NEAR_MINT, null, 1L),
+            pushConflict = app.tcg.app.data.sync.PushConflict(
+                id = "server-id", opId = "op-id", itemId = "local-item", reason = "duplicate-configuration",
+                deviceId = "device-id", rejectedOperation = SyncOperation.Create("op-id", "device-id",
+                    SyncItem("local-item", "base1-4", 2, app.tcg.core.domain.model.CardVariant.NORMAL,
+                        app.tcg.core.domain.model.Condition.NEAR_MINT, null, 1L)),
+                cloudItem = null,
+                conflictingItem = app.tcg.app.data.sync.PushCloudItem.Present(
+                    SyncItem("cloud-owner", "base1-4", 1, app.tcg.core.domain.model.CardVariant.NORMAL,
+                        app.tcg.core.domain.model.Condition.NEAR_MINT, null, 2L), 3L,
+                ), highWater = 8L, resolution = null,
+            ),
+        )
+        screen(state = AccountUiState(
+            signedIn = true, email = "a@example.com", linkState = LinkState.Linked("user-a"),
+            syncStatus = SyncStatusView.Conflicts(1, 1, listOf(detail)),
+        ))
+
+        compose.onNodeWithText("Local:", substring = true).assertExists()
+        compose.onNodeWithText("Nuvem:", substring = true).assertExists()
+        compose.onNodeWithText("Manter minha coleção substitui o identificador local pelo identificador da nuvem.", substring = true).assertExists()
+        compose.onNodeWithText("Usar versão da nuvem mantém a posse existente e remove a duplicata local.", substring = true).assertExists()
+    }
+
+    @Test
+    fun permanent_push_error_explains_safe_next_step_without_resolution_choices() {
+        screen(state = AccountUiState(
+            signedIn = true, email = "a@example.com", linkState = LinkState.Linked("user-a"),
+            syncStatus = SyncStatusView.Conflicts(1, 1, listOf(SyncConflictDetail(
+                id = "permanent-id", itemId = "item-1", reason = "invalid-payload", source = "push",
+                serverConflictId = "permanent-id",
+            ))),
+        ))
+
+        compose.onNodeWithText("Esta operação contém dados inválidos.", substring = true).assertExists()
+        compose.onNodeWithText("Manter minha coleção").assertDoesNotExist()
+        compose.onNodeWithText("Usar versão da nuvem").assertDoesNotExist()
     }
 
     @Test

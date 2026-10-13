@@ -93,6 +93,13 @@ async function mockLinkRpc(
             results: operations.map((operation, index) => ({
               opId: operation.opId,
               status: index === 0 ? 'applied' : 'conflict',
+              ...(index === 0 ? {} : {
+                conflictId: '30000000-0000-4000-8000-000000000099',
+                highWater: 7 + seeded.size,
+                rejectedOperation: operation,
+                cloudItem: null,
+                conflictingItem: null,
+              }),
               reason: index === 0 ? null : 'id-collision',
               revision: index === 0 ? 1 : null,
             })),
@@ -135,7 +142,7 @@ test('first link shows a server preview and uploads only after explicit confirma
   await page.getByRole('button', { name: 'Confirmar vínculo' }).click()
   await expect(page.getByText('Coleção vinculada a esta conta.')).toBeVisible()
   // After the confirmed link the automatic sync may pull, but nothing else is pushed.
-  expect(calls.map((call) => call.fn).filter((fn) => fn !== 'pull_collection_operations')).toEqual([
+  expect(calls.map((call) => call.fn).filter((fn) => fn !== 'pull_collection_operations' && fn !== 'read_collection_push_conflicts')).toEqual([
     'prepare_collection_link', 'read_collection_link_snapshot', 'commit_collection_link',
   ])
   const commit = calls.find((call) => call.fn === 'commit_collection_link')

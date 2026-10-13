@@ -661,6 +661,55 @@ test('profile exposes conflict choices and keep-local resolves through acknowled
   expect(await page.evaluate(async () => (await (await import(`${location.origin}/src/collection/store.ts`)).listCollection()).length)).toBe(1)
 })
 
+test('push conflict shows local and cloud values and keep-cloud completes receipt before removing local row', async ({ page }) => {
+  const harness = await mockSyncRpc(page, { pushConflictReason: 'stale' })
+  await seedSignedInSession(page, 'ana@example.test', 'user-ana')
+  await page.goto('/')
+  await seedLocalCollection(page)
+  await linkThroughUi(page)
+  await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const card = { id: 'base1-4', name: 'Charizard', setId: 'base1', setName: 'Base Set', collectorNumber: '4', imageUrl: null, variants: ['NORMAL'], prices: [], setTotal: 102 }
+    const domain = await import(`${location.origin}/src/domain/model.ts`)
+    const draft = domain.parseItemDraft(domain.emptyDraft(card))
+    if (draft.kind !== 'valid') throw new Error('invalid local draft')
+    await store.addToCollection(card, draft)
+  })
+
+  await expect(page.getByText(/conflito de sincronização precisa da sua atenção/)).toBeVisible()
+  await expect(page.getByText(/Local: 2 · NORMAL · NEAR_MINT\. Nuvem: ausente\./)).toBeVisible()
+  const cursorBefore = await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).lastSyncSequence('user-ana'))
+  await page.getByRole('button', { name: 'Usar versão da nuvem' }).click()
+
+  await expect(page.getByText('Sincronizado. Nenhuma alteração pendente.')).toBeVisible()
+  expect(await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).listCollection())).toHaveLength(0)
+  const cursorAfter = await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).lastSyncSequence('user-ana'))
+  expect(cursorAfter).toBe(cursorBefore)
+  expect(harness.calls.some((call) => call.fn === 'resolve_collection_push_conflict' && call.body.p_choice === 'keep-cloud')).toBe(true)
+  expect(harness.calls.some((call) => call.fn === 'ack_collection_push_conflict_resolution')).toBe(true)
+})
+
+test('permanent invalid-payload conflict explains next step and offers no unsafe choice', async ({ page }) => {
+  await mockSyncRpc(page, { pushConflictReason: 'invalid-payload' })
+  await seedSignedInSession(page, 'ana@example.test', 'user-ana')
+  await page.goto('/')
+  await seedLocalCollection(page)
+  await linkThroughUi(page)
+  await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const card = { id: 'base1-4', name: 'Charizard', setId: 'base1', setName: 'Base Set', collectorNumber: '4', imageUrl: null, variants: ['NORMAL'], prices: [], setTotal: 102 }
+    const domain = await import(`${location.origin}/src/domain/model.ts`)
+    const draft = domain.parseItemDraft(domain.emptyDraft(card))
+    if (draft.kind !== 'valid') throw new Error('invalid local draft')
+    await store.addToCollection(card, draft)
+  })
+
+  await expect(page.getByText(/operação.*dados inválidos/i)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Manter minha coleção' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Usar versão da nuvem' })).toHaveCount(0)
+  expect(await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).listCollection())).toHaveLength(1)
+})
+
 test('production local adapter pulls authenticated transport operations into IndexedDB', async ({ page }) => {
   await page.goto('/')
   const result = await page.evaluate(async () => {

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { CollectionEntry } from '../domain/model.ts'
 import { listCollection } from '../collection/store.ts'
 import { resolveCardForSync } from '../sync/cards.ts'
-import { createSupabaseTransport, type LinkPreview } from '../sync/supabase-transport.ts'
+import { createSupabaseTransport, type LinkPreview, type PushCloudItem } from '../sync/supabase-transport.ts'
 import type { SyncConflictDetail, SyncResult } from '../sync/coordinator.ts'
 import type { SyncRunnerState } from '../sync/runner.ts'
 import type { SyncBinding } from '../sync/outbox.ts'
@@ -158,7 +158,23 @@ function conflictDetailLine(detail: SyncConflictDetail, entries: CollectionEntry
   return `${name}: ${reason}`
 }
 
+function pushCloudValue(item: PushCloudItem | undefined): string {
+  if (item === undefined || item === null || item.kind === 'missing') return 'ausente'
+  if (item.kind === 'deleted') return 'removida na nuvem'
+  return `${item.item.quantity} · ${item.item.variant} · ${item.item.condition}${item.item.pricePaid === null ? '' : ` · ${item.item.pricePaid.amount.toFixed(2)} ${item.item.pricePaid.currency}`}`
+}
+
 function conflictValues(detail: SyncConflictDetail): string {
+  if (detail.source === 'push' && detail.pushConflict !== undefined) {
+    const local = detail.local === null || detail.local === undefined
+      ? 'ausente'
+      : `${detail.local.quantity} · ${detail.local.variant} · ${detail.local.condition}${detail.local.pricePaid === null ? '' : ` · ${detail.local.pricePaid.amount.toFixed(2)} ${detail.local.pricePaid.currency}`}`
+    const cloud = pushCloudValue(detail.pushConflict.cloudItem)
+    const conflicting = detail.pushConflict.reason === 'duplicate-configuration'
+      ? ` Configuração existente na nuvem: ${pushCloudValue(detail.pushConflict.conflictingItem)}.`
+      : ''
+    return `Local: ${local}. Nuvem: ${cloud}.${conflicting}`
+  }
   if (detail.local === undefined && detail.remote === undefined) return ''
   const value = (item: import('../sync/policy.ts').SyncItem | null | undefined) => item === null || item === undefined
     ? 'ausente'
@@ -167,10 +183,25 @@ function conflictValues(detail: SyncConflictDetail): string {
   return `Local: ${value(detail.local)}. Nuvem: ${value(remote)}.`
 }
 
+function canResolvePushConflict(detail: SyncConflictDetail): boolean {
+  if (detail.source !== 'push') return detail.remote !== undefined
+  return detail.pushConflict?.rejectedOperation !== null &&
+    ['stale', 'missing', 'deleted', 'id-collision', 'duplicate-configuration'].includes(detail.reason)
+}
+
+function permanentConflictCopy(reason: string): string | null {
+  if (reason === 'invalid-payload') return 'Esta operação contém dados inválidos. Sua coleção local está salva; atualize a posse manualmente antes de sincronizar novamente.'
+  if (reason === 'device-revoked') return 'Este dispositivo perdeu autorização para sincronizar. Sua coleção local está salva; entre novamente na conta e tente sincronizar.'
+  if (reason === 'revision-limit') return 'Esta posse atingiu o limite de revisões do servidor. Nenhuma versão será escolhida automaticamente; sua coleção local permanece salva.'
+  return null
+}
+
 function SyncStatusPanel({ state, entries, onSyncNow, onResolveConflict }: {
   state: SyncRunnerState; entries: CollectionEntry[]; onSyncNow: () => void
   onResolveConflict: (conflictId: string, resolution: 'keep-local' | 'keep-cloud') => Promise<void>
 }) {
+  const [resolvingConflictId, setResolvingConflictId] = useState<string | null>(null)
+  const [resolutionError, setResolutionError] = useState('')
   const result: SyncResult | null = state.result
   return <div className="sync-status">
     <p aria-live="polite">
@@ -195,9 +226,21 @@ function SyncStatusPanel({ state, entries, onSyncNow, onResolveConflict }: {
     {result !== null && result.kind === 'conflicts' ? <ul className="link-summary">
       {result.details.map((detail) => <li key={detail.id ?? detail.itemId}>
         {conflictDetailLine(detail, entries)}{conflictValues(detail) === '' ? '' : <span className="conflict-values"> {conflictValues(detail)}</span>}
-        {detail.id !== undefined && detail.remote !== undefined ? <div className="conflict-actions" aria-label="Resolver conflito">
-          <button type="button" className="secondary-button" disabled={state.running} onClick={() => { void onResolveConflict(detail.id!, 'keep-local') }}>Manter minha coleção</button>
-          <button type="button" className="secondary-button" disabled={state.running} onClick={() => { void onResolveConflict(detail.id!, 'keep-cloud') }}>Usar versão da nuvem</button>
+        {detail.reason === 'duplicate-configuration' ? <p className="storage-footnote">Manter minha coleção substitui o identificador local pelo identificador da nuvem. Usar versão da nuvem mantém a posse existente e remove a duplicata local.</p> : null}
+        {permanentConflictCopy(detail.reason) !== null ? <p className="form-error" role="alert">{permanentConflictCopy(detail.reason)}</p> : null}
+        {resolvingConflictId === detail.id ? <p aria-live="polite">Aplicando escolha e confirmando na nuvem…</p> : null}
+        {resolutionError !== '' && resolvingConflictId === detail.id ? <p role="alert" className="form-error">{resolutionError}</p> : null}
+        {detail.id !== undefined && canResolvePushConflict(detail) ? <div className="conflict-actions" aria-label="Resolver conflito" aria-busy={resolvingConflictId === detail.id}>
+          {(['keep-local', 'keep-cloud'] as const).map((choice) => <button key={choice} type="button" className="secondary-button"
+            disabled={state.running || resolvingConflictId !== null}
+            onClick={() => {
+              setResolvingConflictId(detail.id ?? null)
+              setResolutionError('')
+              void onResolveConflict(detail.id!, choice).catch(() => setResolutionError('Não foi possível concluir a escolha. A resolução continuará disponível para tentar novamente.'))
+                .finally(() => setResolvingConflictId(null))
+            }}>
+            {choice === 'keep-local' ? 'Manter minha coleção' : 'Usar versão da nuvem'}
+          </button>)}
         </div> : null}
       </li>)}
     </ul> : null}

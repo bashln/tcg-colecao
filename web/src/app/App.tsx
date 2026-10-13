@@ -306,7 +306,12 @@ export function App() {
         {screen.kind === 'home' ? <HomeScreen entries={entries} currency={currency} onCurrency={setCurrency} onCollection={() => navigate({ kind: 'collection' })} onScan={() => navigate({ kind: 'scan' })} /> : null}
         {screen.kind === 'profile' ? <ProfileScreen entries={entries} onRetry={refreshCollection} onNotice={setNotice} syncBinding={syncBinding} deviceId={deviceId} onLinked={() => { void refreshBinding() }} syncState={syncState} onSyncNow={() => { void syncRunner?.request() }} onResolveConflict={async (conflictId, resolution) => {
           if (authState.kind !== 'signed-in' || syncCoordinator?.resolveConflict === undefined) return
-          const result = await syncCoordinator.resolveConflict(authState.session.userId, conflictId, resolution)
+          const conflict = syncState.result?.kind === 'conflicts'
+            ? syncState.result.details.find((detail) => detail.id === conflictId)
+            : undefined
+          const result = conflict?.source === 'push' && syncCoordinator.resolvePushConflict !== undefined
+            ? await syncCoordinator.resolvePushConflict(authState.session.userId, conflictId, resolution)
+            : await syncCoordinator.resolveConflict(authState.session.userId, conflictId, resolution)
           setSyncState({ running: false, result })
           await refreshCollection()
         }} onImport={async (file) => {
