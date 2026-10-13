@@ -19,6 +19,34 @@ git push origin v1.0.0
 A release aparece em `https://github.com/<owner>/<repo>/releases`, com o
 arquivo `tcg-colecao-v1.0.0.apk`.
 
+## Alpha
+
+Alphas são GitHub pre-releases, instalados manualmente pelo arquivo APK. O app
+não os oferece no canal OTA estável. Use tags `vMAJOR.MINOR.0-alpha.N`; por
+exemplo, `v0.3.0-alpha.1` recebe `versionCode=201`, enquanto o futuro `v0.3.0`
+recebe `300`. Isso permite atualizar `v0.2.0` com o Alpha e depois atualizar o
+Alpha com o estável.
+
+Crie e envie tag Alpha somente depois de testar o commit escolhido. Como tags
+`v*` acionam o workflow, isso compila e publica automaticamente a pré-release:
+
+```bash
+git tag v0.3.0-alpha.1
+git push origin v0.3.0-alpha.1
+```
+
+O workflow consulta os releases já publicados, exige um código maior que todos
+eles, compila com os mesmos secrets de assinatura e verifica o certificado
+fixado antes de publicar. Se inventário, assinatura ou validação falhar, nada é
+publicado. Tags de release existentes, inclusive rascunhos, reservam seus códigos;
+não reutilize uma tag nem tente substituir um APK publicado.
+
+Antes de instalar, faça backup da coleção; Alpha pode conter falhas e usa os
+mesmos dados do app estável. Instale o APK manualmente e permita atualizações da
+origem escolhida quando o Android pedir. O Play Protect pode mostrar avisos, e a
+verificação de desenvolvedor do Android continua aplicável. A assinatura de
+release não remove esses avisos nem substitui o registro de desenvolvedor.
+
 ## Keystore
 
 Gere uma vez e guarde com cuidado. Se perder, não dá para atualizar um app já
@@ -64,13 +92,21 @@ não atualiza instalações existentes.
 ## Versão
 
 A versão vem da tag. O workflow deriva `TCG_VERSION_NAME` (a tag sem o `v`) e
-`TCG_VERSION_CODE` (`major*10000 + minor*100 + patch`) e os exporta antes do
-Gradle. Assim cada release tem `versionCode` e `versionName` próprios, como o
-Obtainium e as atualizações do Android exigem.
+`TCG_VERSION_CODE` e os exporta antes do Gradle. Versões estáveis usam
+`major*10000 + minor*100 + patch`; Alpha usa
+`major*10000 + minor*100 - 100 + N`. Assim `v0.3.0-alpha.1` recebe 201,
+`v0.3.0-alpha.99` recebe 299 e o futuro `v0.3.0` recebe 300.
 
 | Tag | versionName | versionCode |
 | --- | --- | --- |
 | `v1.2.3` | `1.2.3` | `10203` |
+| `v0.3.0-alpha.1` | `0.3.0-alpha.1` | `201` |
+| `v0.3.0` | `0.3.0` | `300` |
+
+Os códigos Alpha 201–299 compartilham a faixa com versões estáveis de correção
+`v0.2.1`–`v0.2.99`. Publicar essas correções consome números Alpha; depois que
+um código de correção maior for publicado, Alphas com código menor serão
+rejeitadas. Nunca reduza o código de versão para encaixar uma Alpha.
 
 ## Build local
 

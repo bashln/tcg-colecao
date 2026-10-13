@@ -1,46 +1,53 @@
 #!/usr/bin/env bash
-# Guard de release: valida o contrato tag/versão/ativo ANTES de publicar. Fail-closed.
-# Uso: validate-release.sh TAG NOME_APK [TAG_ESTAVEL_EXISTENTE ...]
-# Imprime o versionCode calculado (major*10000 + minor*100 + patch) no sucesso; sai != 0 em erro.
+# Validate stable and Alpha tag/version/asset contracts before publication.
+# Usage: validate-release.sh TAG APK_NAME [EXISTING_TAG ...]
 set -euo pipefail
 
 err() { echo "release-guard: $*" >&2; exit 1; }
 
-tag="${1:?uso: validate-release.sh TAG NOME_APK [TAG_EXISTENTE ...]}"
-apk_file="${2:?uso: validate-release.sh TAG NOME_APK [TAG_EXISTENTE ...]}"
+tag="${1:?usage: validate-release.sh TAG APK_NAME [EXISTING_TAG ...]}"
+apk_file="${2:?usage: validate-release.sh TAG APK_NAME [EXISTING_TAG ...]}"
 shift 2
 existing=("$@")
 
-# Tag estável exata: vMAJOR.MINOR.PATCH, sem sufixo algum (drafts/prereleases são filtrados no consumidor).
-if [[ ! "$tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-  err "tag '$tag' não é um tag estável exato vMAJOR.MINOR.PATCH (sem sufixo)"
+version_code_for_tag() {
+  local candidate="$1" major minor patch alpha target
+  if [[ "$candidate" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    major="${BASH_REMATCH[1]}"
+    minor="${BASH_REMATCH[2]}"
+    patch="${BASH_REMATCH[3]}"
+    (( ${#major} <= 6 && ${#minor} <= 2 && ${#patch} <= 2 )) || return 1
+    (( 10#$minor <= 99 && 10#$patch <= 99 )) || return 1
+    REPLY=$(( 10#$major * 10000 + 10#$minor * 100 + 10#$patch ))
+  elif [[ "$candidate" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.0-alpha\.([1-9][0-9]?)$ ]]; then
+    major="${BASH_REMATCH[1]}"
+    minor="${BASH_REMATCH[2]}"
+    alpha="${BASH_REMATCH[3]}"
+    (( ${#major} <= 6 && ${#minor} <= 2 && 10#$minor <= 99 )) || return 1
+    target=$(( 10#$major * 10000 + 10#$minor * 100 ))
+    (( target >= 100 && 10#$alpha <= 99 )) || return 1
+    REPLY=$(( target - 100 + 10#$alpha ))
+  else
+    return 1
+  fi
+  (( REPLY >= 1 && REPLY <= 2100000000 )) || return 1
+}
+
+if ! version_code_for_tag "$tag"; then
+  err "tag '$tag' must be stable vMAJOR.MINOR.PATCH or Alpha vMAJOR.MINOR.0-alpha.N"
 fi
-major="${BASH_REMATCH[1]}"
-minor="${BASH_REMATCH[2]}"
-patch="${BASH_REMATCH[3]}"
-
-# minor/patch limitados a 0..99 no esquema major*10000 + minor*100 + patch.
-(( 10#$minor <= 99 )) || err "minor fora do intervalo 0..99: $minor"
-(( 10#$patch <= 99 )) || err "patch fora do intervalo 0..99: $patch"
-
-# versionCode dentro do limite positivo do Android; rejeita overflow.
-version_code=$(( 10#$major * 10000 + 10#$minor * 100 + 10#$patch ))
-(( version_code <= 2100000000 )) || err "versionCode overflow: $version_code"
-(( version_code >= 1 )) || err "versionCode inválido: $version_code"
-
-# Contrato do nome do ativo.
+version_code=$REPLY
 expected_apk="tcg-colecao-${tag}.apk"
-[[ "$apk_file" == "$expected_apk" ]] || err "nome do APK '$apk_file' difere do esperado '$expected_apk'"
+[[ "$apk_file" == "$expected_apk" ]] || err "APK name '$apk_file' differs from expected '$expected_apk'"
 
-# versionCode deve ser estritamente maior que o máximo já publicado (sem duplicata nem downgrade).
 max_existing=0
-for e in "${existing[@]:-}"; do
-  [[ -z "$e" ]] && continue
-  if [[ "$e" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-    ec=$(( 10#${BASH_REMATCH[1]} * 10000 + 10#${BASH_REMATCH[2]} * 100 + 10#${BASH_REMATCH[3]} ))
-    (( ec > max_existing )) && max_existing=$ec
+for existing_tag in "${existing[@]:-}"; do
+  [[ -n "$existing_tag" ]] || continue
+  if version_code_for_tag "$existing_tag"; then
+    existing_code=$REPLY
+    (( existing_code > max_existing )) && max_existing=$existing_code
   fi
 done
-(( version_code > max_existing )) || err "versionCode $version_code não é maior que o máximo publicado $max_existing (sem duplicata/downgrade)"
+(( version_code > max_existing )) || err "versionCode $version_code is not greater than published maximum $max_existing"
 
 echo "$version_code"
