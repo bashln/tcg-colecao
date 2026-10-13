@@ -1,14 +1,15 @@
 import {
   CONDITIONS, CURRENCIES, VARIANTS, configurationKey, newItemId, nextRevision, parseCardId, parseItemId,
 } from '../domain/model.ts'
-import type { CardSummary, CollectionEntry, CollectionItem, ItemId, ParsedDraft } from '../domain/model.ts'
+import type { CardSummary, CollectionEntry, CollectionItem, Currency, ItemId, ParsedDraft } from '../domain/model.ts'
 import { importSignature, parseCollectionBackup, parseImportMarkers } from './backup.ts'
 import { isSyncBinding, recordCollectionDelete, recordCollectionWrite, type OutboxEntry, type SyncBinding } from '../sync/outbox.ts'
 import type { CollectionOperation, SyncItem } from '../sync/policy.ts'
 import type { RemoteApplyResult, SyncConflictDetail } from '../sync/coordinator.ts'
+import type { PushCloudItem, PushConflict, PushResolutionResponse } from '../sync/supabase-transport.ts'
 
 const DATABASE_NAME = 'tcg-colecao-web'
-const VERSION = 5
+const VERSION = 6
 const CHANGE_EVENT = 'tcg-collection-changed'
 let databasePromise: Promise<IDBDatabase> | null = null
 
@@ -184,6 +185,11 @@ export async function currentSyncBinding(): Promise<SyncBinding | null> {
   return raw.binding
 }
 
+export async function syncDeviceId(identity: string): Promise<string | null> {
+  const binding = await currentSyncBinding()
+  return binding?.identity === identity ? binding.deviceId : null
+}
+
 export async function getCachedCard(cardId: string): Promise<CardSummary | null> {
   const database = await openDatabase()
   const transaction = database.transaction('cards', 'readonly')
@@ -197,15 +203,19 @@ export async function getCachedCard(cardId: string): Promise<CardSummary | null>
 
 export async function listPendingOperations(identity: string): Promise<CollectionOperation[]> {
   const database = await openDatabase()
-  const transaction = database.transaction(['outbox', 'sync'], 'readonly')
+  const transaction = database.transaction(['outbox', 'sync', 'syncConflicts'], 'readonly')
   const end = transactionEnd(transaction)
   const bindingRequest = requestResult<unknown>(transaction.objectStore('sync').get('binding'))
   const entriesRequest = requestResult<unknown[]>(transaction.objectStore('outbox').index('identity').getAll(identity))
-  const [bindingRow, entries] = await Promise.all([bindingRequest, entriesRequest])
+  const conflictsRequest = requestResult<unknown[]>(transaction.objectStore('syncConflicts').index('identity').getAll(identity))
+  const [bindingRow, entries, conflictRows] = await Promise.all([bindingRequest, entriesRequest, conflictsRequest])
   await end
   if (!isCurrentBinding(bindingRow, identity)) return []
   if (!entries.every(isOutboxEntry)) throw new Error('Operações locais inválidas')
-  return entries.sort((left, right) => left.sequence - right.sequence).map((entry) => entry.operation)
+  const blocked = new Set(conflictRows.filter((row): row is Record<string, unknown> => isRecord(row) && row.source === 'push' && row.resolvedAt === undefined)
+    .map((row) => typeof row.opId === 'string' ? row.opId : null)
+    .filter((opId): opId is string => opId !== null))
+  return entries.filter((entry) => !blocked.has(entry.opId)).sort((left, right) => left.sequence - right.sequence).map((entry) => entry.operation)
 }
 
 export async function acknowledgeOperation(opId: string, identity: string): Promise<boolean> {
@@ -438,10 +448,221 @@ export async function listSyncConflicts(identity: string): Promise<SyncConflictD
   const end = transactionEnd(transaction)
   const rows = await requestResult<unknown[]>(transaction.objectStore('syncConflicts').index('identity').getAll(identity))
   await end
-  return rows.filter((row): row is SyncConflictDetail => isRecord(row) && row.identity === identity && !('resolvedAt' in row) &&
-    typeof row.id === 'string' && typeof row.sequence === 'number' && typeof row.itemId === 'string' &&
-    typeof row.reason === 'string' && isCollectionOperation(row.remote) &&
-    (row.resolutionOperation === undefined || isCollectionOperation(row.resolutionOperation)))
+  return rows.flatMap((row): SyncConflictDetail[] => {
+    if (!isRecord(row) || row.identity !== identity || 'resolvedAt' in row || typeof row.id !== 'string' ||
+      typeof row.itemId !== 'string' || typeof row.reason !== 'string') return []
+    if (row.source === 'push') {
+      if (!isPushConflict(row.pushConflict) || typeof row.serverConflictId !== 'string') return []
+      return [{
+        id: row.id, identity, itemId: row.itemId, reason: row.reason, source: 'push',
+        serverConflictId: row.serverConflictId,
+        local: isSyncItem(row.local) ? row.local : null,
+        ...(row.pushConflict.rejectedOperation === null ? {} : { remote: row.pushConflict.rejectedOperation }),
+        pushConflict: row.pushConflict,
+      }]
+    }
+    if (typeof row.sequence !== 'number' || !isCollectionOperation(row.remote) ||
+      (row.resolutionOperation !== undefined && !isCollectionOperation(row.resolutionOperation))) return []
+    return [row as unknown as SyncConflictDetail]
+  })
+}
+
+function isPushConflict(value: unknown): value is PushConflict {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.itemId !== 'string' ||
+    typeof value.reason !== 'string' || typeof value.deviceId !== 'string' ||
+    (value.opId !== null && typeof value.opId !== 'string') || !Number.isSafeInteger(value.highWater) ||
+    !('cloudItem' in value) || !('conflictingItem' in value) ||
+    (value.rejectedOperation !== null && !isCollectionOperation(value.rejectedOperation))) return false
+  return true
+}
+
+function isSyncItem(value: unknown): value is SyncItem {
+  if (!isRecord(value)) return false
+  const validPrice = value.pricePaid === null || (isRecord(value.pricePaid) && typeof value.pricePaid.amount === 'number' &&
+    Number.isFinite(value.pricePaid.amount) && value.pricePaid.amount >= 0 && isCurrencyValue(value.pricePaid.currency))
+  return parseItemId(value.id) !== null && parseCardId(value.cardId) !== null &&
+    Number.isSafeInteger(value.quantity) && typeof value.quantity === 'number' && value.quantity > 0 &&
+    isVariant(value.variant) && isCondition(value.condition) && Number.isSafeInteger(value.addedAt) && validPrice
+}
+
+function isCurrencyValue(value: unknown): value is Currency {
+  return CURRENCIES.some((currency) => currency === value)
+}
+
+export async function savePushConflict(identity: string, conflict: PushConflict): Promise<boolean> {
+  const database = await openDatabase()
+  const transaction = database.transaction(['sync', 'syncConflicts', 'items', 'outbox'], 'readwrite')
+  const end = transactionEnd(transaction)
+  const sync = transaction.objectStore('sync')
+  const conflicts = transaction.objectStore('syncConflicts')
+  const bindingRequest = sync.get('binding')
+  const existingRequest = conflicts.get(conflict.id)
+  const itemRequest = transaction.objectStore('items').get(conflict.itemId)
+  const binding = await requestResult<unknown>(bindingRequest)
+  const [existing, localRow] = await Promise.all([requestResult<unknown>(existingRequest), requestResult<unknown>(itemRequest)])
+  const outbox = await requestResult<unknown[]>(transaction.objectStore('outbox').index('identity').getAll(identity))
+  if (!isCurrentBinding(binding, identity) || !isPushConflict(conflict) || !outbox.every(isOutboxEntry)) {
+    transaction.abort()
+    await end.catch(() => undefined)
+    return false
+  }
+  const local = isItem(localRow) ? toSyncItem(localRow) : null
+  const prior = isRecord(existing) && existing.identity === identity ? existing : null
+  conflicts.put({
+    id: conflict.id, identity, source: 'push', serverConflictId: conflict.id,
+    opId: conflict.opId, itemId: conflict.itemId, reason: conflict.reason,
+    pushConflict: conflict, local, highWater: conflict.highWater,
+    ...(prior?.resolutionReceipt === undefined ? {} : { resolutionReceipt: prior.resolutionReceipt }),
+    ...(prior?.resolutionApplied === true ? { resolutionApplied: true } : {}),
+  })
+  try { await end } catch { return false }
+  return true
+}
+
+export async function applyPushConflictResolution(
+  identity: string,
+  conflictId: string,
+  receipt: PushResolutionResponse,
+): Promise<boolean> {
+  if ((receipt.status !== 'resolved' && receipt.status !== 'already-resolved') || receipt.result === undefined || receipt.resolutionId === undefined ||
+    (receipt.choice !== 'keep-local' && receipt.choice !== 'keep-cloud')) return false
+  const result = receipt.result
+  const database = await openDatabase()
+  const transaction = database.transaction(['sync', 'syncConflicts', 'items', 'cards', 'outbox', 'outboxOrder'], 'readwrite')
+  const end = transactionEnd(transaction)
+  const sync = transaction.objectStore('sync')
+  const conflicts = transaction.objectStore('syncConflicts')
+  const conflictRequest = conflicts.get(conflictId)
+  const bindingRequest = sync.get('binding')
+  let row: unknown
+  let binding: unknown
+  let ready = 0
+  let applied = false
+  let finished = false
+  const abort = () => { try { transaction.abort() } catch { /* Transaction already ended. */ } }
+  const apply = () => {
+    if (ready !== 2 || finished) return
+    finished = true
+    if (!isCurrentBinding(binding, identity) || !isRecord(row) || row.identity !== identity ||
+      row.source !== 'push' || !isPushConflict(row.pushConflict) || row.serverConflictId !== conflictId) { abort(); return }
+    const conflictRow: Record<string, unknown> = row
+    const pushConflict = row.pushConflict
+    if (row.resolutionApplied === true && isRecord(row.resolutionReceipt) && row.resolutionReceipt.resolutionId === receipt.resolutionId) {
+      applied = true
+      return
+    }
+    const rejected = pushConflict.rejectedOperation
+    const itemIds = new Set<string>([pushConflict.itemId])
+    if (typeof result.itemId === 'string') itemIds.add(result.itemId)
+    if (typeof result.localItemId === 'string') itemIds.add(result.localItemId)
+    if (typeof result.conflictingItemId === 'string') itemIds.add(result.conflictingItemId)
+
+    if (receipt.choice === 'keep-cloud') {
+      const remoteStates = [parseResolutionCloudItem(result.cloudItem), parseResolutionCloudItem(result.conflictingItem)]
+      const present = remoteStates.filter((state): state is Extract<PushCloudItem, { kind: 'present' }> => state?.kind === 'present')
+      const pendingCards = new Set(present.map((state) => state.item.cardId))
+      const cards = new Map<string, CardSummary>()
+      let remainingCards = pendingCards.size
+      const finishCloudApply = () => {
+        if (remainingCards > 0) return
+        for (const id of itemIds) if (!present.some((state) => state.item.id === id)) transaction.objectStore('items').delete(id)
+        for (const state of present) transaction.objectStore('items').put(toCollectionItem(state.item, state.revision))
+        for (const card of cards.values()) transaction.objectStore('cards').put(card)
+        removeRejectedOperation(transaction, rejected?.opId)
+        conflicts.put({ ...conflictRow, resolutionReceipt: { resolutionId: receipt.resolutionId, choice: receipt.choice, result }, resolutionApplied: true })
+        applied = true
+      }
+      if (remainingCards === 0) finishCloudApply()
+      for (const cardId of pendingCards) {
+        const cardRequest = transaction.objectStore('cards').get(cardId)
+        cardRequest.onsuccess = () => {
+          const card: unknown = cardRequest.result
+          if (!isCard(card) || card.id !== cardId) { abort(); return }
+          cards.set(cardId, card)
+          remainingCards--
+          finishCloudApply()
+        }
+        cardRequest.onerror = abort
+      }
+    } else if (receipt.choice === 'keep-local') {
+      if (rejected === null || typeof result.itemId !== 'string') { abort(); return }
+      if (rejected.kind === 'delete') {
+        for (const id of itemIds) transaction.objectStore('items').delete(id)
+        removeRejectedOperation(transaction, rejected?.opId)
+        conflicts.put({ ...conflictRow, resolutionReceipt: { resolutionId: receipt.resolutionId, choice: receipt.choice, result }, resolutionApplied: true })
+        applied = true
+        return
+      }
+      const chosen = rejected.item
+      const mapped = { ...chosen, id: parseItemId(result.itemId) }
+      if (mapped.id === null) { abort(); return }
+      const revision = typeof result.revision === 'number' && Number.isSafeInteger(result.revision) && result.revision > 0 ? result.revision : null
+      if (revision === null) { abort(); return }
+      const next = toCollectionItem({ ...mapped, id: mapped.id }, revision)
+      for (const id of itemIds) if (id !== next.id) transaction.objectStore('items').delete(id)
+      transaction.objectStore('items').put(next)
+      removeRejectedOperation(transaction, rejected.opId)
+      conflicts.put({ ...conflictRow, resolutionReceipt: { resolutionId: receipt.resolutionId, choice: receipt.choice, result }, resolutionApplied: true })
+      applied = true
+    } else { abort(); return }
+  }
+  conflictRequest.onsuccess = () => { row = conflictRequest.result; ready++; apply() }
+  bindingRequest.onsuccess = () => { binding = bindingRequest.result; ready++; apply() }
+  conflictRequest.onerror = bindingRequest.onerror = abort
+  try { await end } catch { return false }
+  return applied
+}
+
+export async function finishPushConflictResolution(identity: string, conflictId: string, resolutionId: string): Promise<boolean> {
+  const database = await openDatabase()
+  const transaction = database.transaction(['sync', 'syncConflicts'], 'readwrite')
+  const end = transactionEnd(transaction)
+  const sync = transaction.objectStore('sync')
+  const conflicts = transaction.objectStore('syncConflicts')
+  const bindingRequest = sync.get('binding')
+  const conflictRequest = conflicts.get(conflictId)
+  let finished = false
+  const maybeFinish = () => {
+    if (bindingRequest.readyState !== 'done' || conflictRequest.readyState !== 'done') return
+    const binding: unknown = bindingRequest.result
+    const row: unknown = conflictRequest.result
+    if (!isCurrentBinding(binding, identity) || !isRecord(row) || row.identity !== identity || row.source !== 'push' ||
+      !isRecord(row.resolutionReceipt) || row.resolutionReceipt.resolutionId !== resolutionId || row.resolutionApplied !== true) return
+    conflicts.put({ ...row, resolvedAt: Date.now() })
+    finished = true
+  }
+  bindingRequest.onsuccess = maybeFinish
+  conflictRequest.onsuccess = maybeFinish
+  bindingRequest.onerror = conflictRequest.onerror = () => { try { transaction.abort() } catch { /* ended */ } }
+  try { await end } catch { return false }
+  return finished
+}
+
+function parseResolutionCloudItem(value: unknown): PushCloudItem {
+  if (value === null) return null
+  if (!isRecord(value) || typeof value.itemId !== 'string' || typeof value.deleted !== 'boolean') throw new Error('Snapshot de resolução inválido')
+  if (value.deleted) {
+    if (typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision)) throw new Error('Tombstone de resolução inválido')
+    return { kind: 'deleted', itemId: value.itemId, revision: value.revision }
+  }
+  const id = parseItemId(value.itemId)
+  const cardId = parseCardId(value.cardId)
+  if (id === null || cardId === null || !isVariant(value.variant) || !isCondition(value.condition) ||
+    typeof value.quantity !== 'number' || !Number.isSafeInteger(value.quantity) || value.quantity < 1 ||
+    typeof value.addedAt !== 'number' || !Number.isSafeInteger(value.addedAt) ||
+    typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 1) throw new Error('Snapshot de resolução inválido')
+  let pricePaid: SyncItem['pricePaid'] = null
+  if (value.pricePaid !== null) {
+    const rawPrice = value.pricePaid
+    if (!isRecord(rawPrice) || typeof rawPrice.amount !== 'number' || !Number.isSafeInteger(rawPrice.amount) ||
+      !isCurrencyValue(rawPrice.currency)) throw new Error('Preço da resolução inválido')
+    pricePaid = { amount: rawPrice.amount / 100, currency: rawPrice.currency }
+  }
+  return { kind: 'present', item: { id, cardId, quantity: value.quantity, variant: value.variant, condition: value.condition, pricePaid, addedAt: value.addedAt }, revision: value.revision }
+}
+
+function toCollectionItem(item: SyncItem, revision: number): CollectionItem {
+  return { ...item, revision, configurationKey: configurationKey(item.cardId, item.variant, item.condition) }
 }
 
 function isCollectionOperation(value: unknown): value is CollectionOperation {
@@ -469,7 +690,7 @@ export async function resolveSyncConflict(
   resolveCard: (cardId: string) => Promise<CardSummary>,
 ): Promise<CollectionOperation | null> {
   const current = (await listSyncConflicts(identity)).find((conflict) => conflict.id === conflictId)
-  if (current?.remote === undefined) return null
+  if (current?.remote === undefined || current.source === 'push') return null
   if (current.resolutionOperation !== undefined) return current.resolutionOperation
   const remote = current.remote
   const remoteItem = remote.kind === 'delete' ? null : remote.item
@@ -609,6 +830,14 @@ function removeQueuedOperations(transaction: IDBTransaction, identity: string, i
         (event.target as IDBRequest<IDBCursorWithValue | null>).result?.delete()
       }
     }
+  }
+}
+
+function removeRejectedOperation(transaction: IDBTransaction, opId: string | undefined) {
+  if (opId === undefined) return
+  transaction.objectStore('outbox').delete(opId)
+  transaction.objectStore('outboxOrder').index('opId').openCursor(opId).onsuccess = (event) => {
+    (event.target as IDBRequest<IDBCursorWithValue | null>).result?.delete()
   }
 }
 

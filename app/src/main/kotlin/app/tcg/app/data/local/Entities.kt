@@ -73,6 +73,17 @@ data class SyncConflictEntity(
     val resolutionOperationId: String? = null,
     val resolutionOperation: String? = null,
     val resolvedAt: Long? = null,
+    val source: String = "pull",
+    val serverConflictId: String? = null,
+    val opId: String? = null,
+    val rejectedOperation: String? = null,
+    val cloudItem: String? = null,
+    val conflictingItem: String? = null,
+    val observedHighWater: Long? = null,
+    val resolutionId: String? = null,
+    val resolutionChoice: String? = null,
+    val resolutionResult: String? = null,
+    val resolutionApplied: Boolean = false,
 )
 
 @Entity(

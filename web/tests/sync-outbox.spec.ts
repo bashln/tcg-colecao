@@ -179,6 +179,54 @@ test('failed sync leaves the local collection and pending operation intact', asy
   await expect(page.getByRole('heading', { name: 'Charizard' })).toBeVisible()
 })
 
+test('durable push conflict blocks retry and applies keep-cloud before acknowledgment without moving pull cursor', async ({ page }) => {
+  await page.route('https://api.tcgdex.net/v2/pt/cards**', async (route) => {
+    const url = new URL(route.request().url())
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(url.pathname.endsWith('/base1-4') ? card : [card]) })
+  })
+  await page.goto('/')
+  await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    await store.setSyncBinding({ identity: 'account-a', deviceId: 'device-a' })
+  })
+  await page.getByRole('button', { name: 'Buscar no catálogo' }).click()
+  await page.getByRole('textbox', { name: 'Nome ou número da carta' }).fill('Charizard')
+  await page.getByRole('button', { name: 'Buscar', exact: true }).click()
+  await page.getByRole('button', { name: /Charizard Base Set/ }).click()
+  await page.getByRole('button', { name: 'Adicionar à coleção' }).click()
+
+  const result = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const pending = await store.listPendingOperations('account-a')
+    const rejected = pending[0]!
+    const conflictId = '30000000-0000-4000-8000-000000000001'
+    const conflict = {
+      id: conflictId, opId: rejected.opId, itemId: rejected.kind === 'delete' ? rejected.itemId : rejected.item.id,
+      reason: 'stale', deviceId: rejected.deviceId, rejectedOperation: rejected,
+      cloudItem: null, conflictingItem: null, highWater: 77, resolution: null,
+    }
+    const saved = await store.savePushConflict('account-a', conflict)
+    const blocked = await store.listPendingOperations('account-a')
+    await store.saveSyncSequence('account-a', 3)
+    const receipt = {
+      status: 'resolved', conflictId, choice: 'keep-cloud', resolutionId: '40000000-0000-4000-8000-000000000001',
+      result: { kind: 'keep-cloud', itemId: conflict.itemId, localItemId: conflict.itemId, cloudItem: null, conflictingItem: null },
+    }
+    const applied = await store.applyPushConflictResolution('account-a', conflictId, receipt)
+    const replayed = await store.applyPushConflictResolution('account-a', conflictId, receipt)
+    const acknowledged = await store.finishPushConflictResolution('account-a', conflictId, receipt.resolutionId)
+    return {
+      saved, blocked: blocked.length, applied, replayed, acknowledged,
+      remaining: (await store.listPendingOperations('account-a')).length,
+      cursor: await store.lastSyncSequence('account-a'),
+      conflicts: await store.listSyncConflicts('account-a'),
+      collection: await store.listCollection(),
+    }
+  })
+
+  expect(result).toMatchObject({ saved: true, blocked: 0, applied: true, replayed: true, acknowledged: true, remaining: 0, cursor: 3, conflicts: [], collection: [] })
+})
+
 test('operation ID failure aborts the collection transaction', async ({ page }) => {
   await page.route('https://api.tcgdex.net/v2/pt/cards**', async (route) => {
     const url = new URL(route.request().url())

@@ -40,7 +40,7 @@ export interface PushConflict {
   itemId: string
   reason: string
   deviceId: string
-  rejectedOperation: CollectionOperation
+  rejectedOperation: CollectionOperation | null
   cloudItem: PushCloudItem
   conflictingItem: PushCloudItem
   highWater: number
@@ -432,7 +432,19 @@ function parsePushOutcomes(results: readonly unknown[]): PushOutcome[] {
       if (conflictId === null || typeof row.reason !== 'string' || row.reason.length === 0) {
         throw new SupabaseSyncError('invalid-response', 'Rejeição permanente sem conflito válido')
       }
-      return { kind: 'rejected', ...extra, conflictId }
+      let rejectedOperation: CollectionOperation | undefined
+      try {
+        if (row.rejectedOperation !== null && typeof row.rejectedOperation === 'object') rejectedOperation = parseRejectedOperation(row.rejectedOperation)
+      } catch (error) {
+        if (row.reason !== 'invalid-payload') throw error
+      }
+      return {
+        kind: 'rejected', ...extra, conflictId,
+        ...(typeof row.highWater === 'number' && Number.isSafeInteger(row.highWater) && row.highWater >= 0 ? { highWater: row.highWater } : {}),
+        ...(rejectedOperation === undefined ? {} : { rejectedOperation }),
+        ...(row.cloudItem === null || row.cloudItem === undefined ? { cloudItem: null } : { cloudItem: parsePushCloudItem(row.cloudItem) }),
+        ...(row.conflictingItem === null || row.conflictingItem === undefined ? { conflictingItem: null } : { conflictingItem: parsePushCloudItem(row.conflictingItem) }),
+      }
     }
     const conflictId = parseUuid(row.conflictId)
     const highWater = parseNonNegativeInteger(row.highWater)
@@ -460,9 +472,16 @@ function parsePushConflict(value: unknown): PushConflict {
     throw new SupabaseSyncError('invalid-response', 'Conflito de push inválido')
   }
   const resolution = row.resolution === null ? null : parsePushResolutionReceipt(row.resolution)
+  let rejectedOperation: CollectionOperation | null
+  try {
+    rejectedOperation = parseRejectedOperation(row.rejectedOperation)
+  } catch (error) {
+    if (row.reason !== 'invalid-payload') throw error
+    rejectedOperation = null
+  }
   return {
     id, opId, itemId, reason: row.reason, deviceId,
-    rejectedOperation: parseRejectedOperation(row.rejectedOperation),
+    rejectedOperation,
     cloudItem: parsePushCloudItem(row.cloudItem),
     conflictingItem: parsePushCloudItem(row.conflictingItem),
     highWater, resolution,

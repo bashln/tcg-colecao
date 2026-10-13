@@ -174,11 +174,52 @@ class CollectionSyncCoordinatorTest {
         local.failPendingOnCall = null
         assertEquals(SyncResult.Complete(applied = 1, pending = 0), coordinator.syncOnce())
     }
+
+    @Test
+    fun lost_push_response_recovers_conflict_without_retrying_it_and_pushes_unrelated_work() = runTest {
+        val rejected = SyncOperation.Create("rejected-op", "device-a", SyncItem("item-a", "card-a", 2, CardVariant.NORMAL, Condition.NEAR_MINT, null, 1L))
+        val unrelated = SyncOperation.Create("other-op", "device-a", SyncItem("item-b", "card-b", 1, CardVariant.NORMAL, Condition.NEAR_MINT, null, 2L))
+        val conflict = PushConflict(
+            id = "server-conflict", opId = rejected.opId, itemId = rejected.item.id, reason = "stale", deviceId = rejected.deviceId,
+            rejectedOperation = rejected, cloudItem = null, conflictingItem = null, highWater = 12L, resolution = null,
+        )
+        var serverHasConflict = false
+        var loseResponse = true
+        val sent = mutableListOf<List<String>>()
+        val transport = object : SyncTransport {
+            override suspend fun listPushConflicts(expectedIdentity: String) = if (serverHasConflict) listOf(conflict) else emptyList()
+            override suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome> {
+                sent += operations.map { it.opId }
+                if (loseResponse) {
+                    loseResponse = false
+                    serverHasConflict = true
+                    error("response lost after durable server write")
+                }
+                return operations.map { PushOutcome.Applied(1, it.opId) }
+            }
+            override suspend fun pull(identity: String, afterSequence: Long) = PullPage(emptyList(), afterSequence)
+        }
+        val local = TestLocalSyncStore().apply {
+            enqueue(rejected)
+            enqueue(unrelated)
+        }
+        val coordinator = CollectionSyncCoordinator(transport, local)
+        coordinator.bindIdentity("user-a")
+
+        assertTrue(coordinator.syncOnce() is SyncResult.Error)
+        val recovered = coordinator.syncOnce()
+
+        assertTrue(recovered is SyncResult.Conflicts)
+        assertEquals(listOf(listOf(rejected.opId, unrelated.opId), listOf(unrelated.opId)), sent)
+        assertTrue(local.conflicts("user-a").any { it.serverConflictId == conflict.id })
+        assertEquals(0, local.pending("user-a").size)
+    }
 }
 
 private class TestLocalSyncStore : SyncLocalStore {
     private val operationsByIdentity = mutableMapOf<String, MutableList<SyncOperation>>()
     private val cursors = mutableMapOf<String, Long>()
+    private val pushConflicts = mutableMapOf<String, SyncConflictDetail>()
     val items = mutableMapOf<String, SyncItem>()
     var failNextAcknowledge = false
     var pendingStarted: CompletableDeferred<Unit>? = null
@@ -205,7 +246,8 @@ private class TestLocalSyncStore : SyncLocalStore {
         releasePending?.await()
         pendingStarted = null
         releasePending = null
-        return operationsByIdentity[identity].orEmpty().toList()
+        val blocked = pushConflicts.values.filter { it.identity == identity }.mapNotNull { it.pushConflict?.opId }.toSet()
+        return operationsByIdentity[identity].orEmpty().filterNot { it.opId in blocked }
     }
 
     override suspend fun acknowledge(identity: String, opId: String): Boolean {
@@ -225,7 +267,15 @@ private class TestLocalSyncStore : SyncLocalStore {
         return RemoteApplyResult.Applied
     }
 
-    override suspend fun conflicts(identity: String): List<SyncConflictDetail> = emptyList()
+    override suspend fun conflicts(identity: String): List<SyncConflictDetail> = pushConflicts.values.filter { it.identity == identity }
+    override suspend fun savePushConflict(identity: String, conflict: PushConflict): Boolean {
+        pushConflicts[conflict.id] = SyncConflictDetail(
+            id = conflict.id, identity = identity, itemId = conflict.itemId, reason = conflict.reason,
+            local = conflict.rejectedOperation?.let { operation -> when (operation) { is SyncOperation.Create -> operation.item; is SyncOperation.Replace -> operation.item; is SyncOperation.Delete -> null } },
+            remote = conflict.rejectedOperation, source = "push", serverConflictId = conflict.id, pushConflict = conflict,
+        )
+        return true
+    }
     override suspend fun resolveConflict(identity: String, conflictId: String, resolution: SyncConflictResolution): SyncOperation? = resolutionOperation
     override suspend fun finishConflict(identity: String, conflictId: String, operationId: String): Boolean {
         finishedConflict = resolutionOperation?.opId == operationId && finishResolution

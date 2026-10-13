@@ -41,7 +41,7 @@ function localStore(...operations: CollectionOperation[]) {
       return true
     },
     async applyRemoteOperation(operation: CollectionOperation, _identity: string, _nextSequence: number) { remoteReceived.push(operation.opId); return { kind: 'applied' as const } },
-    async listConflicts() { return [] },
+    async listConflicts(): Promise<SyncConflictDetail[]> { return [] },
     async lastSequence(_identity: string) { return sequence },
     async saveSequence(_identity: string, next: number) { sequence = next; return true },
   }
@@ -296,4 +296,97 @@ test('mid-flight account switch never pulls or acknowledges under the new identi
   assert.equal(pullCount, 0)
   assert.equal((await remote.pull('account-a', 0)).highWaterMark, 1)
   assert.equal((await remote.pull('account-b', 0)).highWaterMark, 0)
+})
+
+test('durable push conflict is recovered before retry and only unrelated outbox work is pushed', async () => {
+  const rejected = createOperation('10000000-0000-4000-8000-000000000030', '20000000-0000-4000-8000-000000000001')
+  const unrelated = { ...createOperation('10000000-0000-4000-8000-000000000031', '20000000-0000-4000-8000-000000000001'), item: { ...item, id: parseItemId('00000000-0000-4000-8000-000000000031')!, cardId: otherCardId } }
+  const conflict = {
+    id: '30000000-0000-4000-8000-000000000001', opId: rejected.opId, itemId: itemId!, reason: 'stale',
+    deviceId: rejected.deviceId, rejectedOperation: rejected, cloudItem: null, conflictingItem: null,
+    highWater: 12, resolution: null,
+  }
+  let listed = false
+  const savedDetails: SyncConflictDetail[] = []
+  const pushed: string[][] = []
+  let loseFirstResponse = true
+  const transport = {
+    async push(_identity: string, operations: readonly CollectionOperation[]) {
+      pushed.push(operations.map((operation) => operation.opId))
+      if (loseFirstResponse) {
+        loseFirstResponse = false
+        listed = true
+        throw new Error('push response lost after server persisted conflict')
+      }
+      return operations.map((operation) => operation.opId === rejected.opId
+        ? { kind: 'conflict' as const, reason: 'stale', opId: operation.opId, conflictId: conflict.id, highWater: 12, rejectedOperation: rejected, cloudItem: null, conflictingItem: null }
+        : { kind: 'applied' as const, opId: operation.opId, sequence: 1 })
+    },
+    async pull() { return { operations: [], highWaterMark: 0 } },
+    async listPushConflicts() { return listed ? [conflict] : [] },
+    async resolvePushConflict() { throw new Error('not used') },
+    async acknowledgePushConflictResolution() { throw new Error('not used') },
+  }
+  const local = localStore(rejected, unrelated) as ReturnType<typeof localStore> & { savedPushConflicts: string[]; savePushConflict(identity: string, row: typeof conflict): Promise<boolean> }
+  local.savedPushConflicts = []
+  local.listConflicts = async () => savedDetails
+  local.savePushConflict = async (identity, row) => {
+    listed = true
+    local.savedPushConflicts.push(row.id)
+    savedDetails.splice(0, savedDetails.length, {
+      identity, itemId: row.itemId, reason: row.reason, source: 'push', serverConflictId: row.id, pushConflict: row,
+      ...(row.rejectedOperation === null ? {} : { remote: row.rejectedOperation }),
+    })
+    return true
+  }
+  const coordinator = createSyncCoordinator({ transport, local })
+  coordinator.bindIdentity('account-a')
+
+  const first = await coordinator.syncOnce()
+  const second = await coordinator.syncOnce()
+
+  assert.equal(first.kind, 'error')
+  assert.equal(second.kind, 'conflicts')
+  assert.deepEqual(pushed, [[rejected.opId, unrelated.opId], [unrelated.opId]])
+  assert.ok(local.savedPushConflicts.includes(conflict.id))
+  assert.equal(local.pending.has(unrelated.opId), false)
+  assert.equal(local.pending.has(rejected.opId), true)
+})
+
+test('failed local resolution leaves server receipt replayable and does not acknowledge until local commit', async () => {
+  const operation = createOperation('10000000-0000-4000-8000-000000000040', '20000000-0000-4000-8000-000000000001')
+  const conflictId = '30000000-0000-4000-8000-000000000040'
+  const receiptId = '40000000-0000-4000-8000-000000000040'
+  let failLocalApply = true
+  let ackCalls = 0
+  let applyCalls = 0
+  const conflict = {
+    id: conflictId, opId: operation.opId, itemId: itemId!, reason: 'stale', deviceId: operation.deviceId,
+    rejectedOperation: operation, cloudItem: null, conflictingItem: null, highWater: 22, resolution: null,
+  }
+  const local = {
+    ...localStore(),
+    async listConflicts() { return ackCalls > 0 ? [] : [{ id: conflictId, identity: 'account-a', itemId: itemId!, reason: 'stale', source: 'push', serverConflictId: conflictId, pushConflict: conflict, remote: operation } satisfies SyncConflictDetail] },
+    async savePushConflict() { return true },
+    async deviceId() { return operation.deviceId },
+    async applyPushConflictResolution() { applyCalls++; if (failLocalApply) { failLocalApply = false; return false }; return true },
+    async finishPushConflictResolution() { return true },
+  }
+  const transport = {
+    async push() { return [] },
+    async pull(_identity: string, afterSequence: number) { return { operations: [], highWaterMark: afterSequence } },
+    async listPushConflicts() { return ackCalls > 0 ? [] : [conflict] },
+    async resolvePushConflict() { return { status: 'resolved' as const, conflictId, choice: 'keep-cloud' as const, resolutionId: receiptId, result: { kind: 'keep-cloud' } } },
+    async acknowledgePushConflictResolution() { ackCalls++; return { status: 'resolved' as const, conflictId } },
+  }
+  const coordinator = createSyncCoordinator({ transport, local })
+  coordinator.bindIdentity('account-a')
+  const resolve = coordinator.resolvePushConflict
+  assert.ok(resolve)
+
+  assert.equal((await resolve.call(coordinator, 'account-a', conflictId, 'keep-cloud')).kind, 'error')
+  assert.equal(ackCalls, 0)
+  assert.equal((await resolve.call(coordinator, 'account-a', conflictId, 'keep-cloud')).kind, 'complete')
+  assert.equal(applyCalls, 2)
+  assert.equal(ackCalls, 1)
 })

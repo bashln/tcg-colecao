@@ -12,6 +12,10 @@ interface SyncLocalStore {
     suspend fun finishConflict(identity: String, conflictId: String, operationId: String): Boolean
     suspend fun lastSequence(identity: String): Long
     suspend fun saveSequence(identity: String, sequence: Long): Boolean
+    suspend fun savePushConflict(identity: String, conflict: PushConflict): Boolean = false
+    suspend fun applyPushConflictResolution(identity: String, conflictId: String, receipt: PushResolutionResponse): Boolean = false
+    suspend fun finishPushConflictResolution(identity: String, conflictId: String, resolutionId: String): Boolean = false
+    suspend fun deviceId(identity: String): String? = null
 }
 
 enum class SyncConflictResolution { KeepLocal, KeepCloud }
@@ -24,6 +28,9 @@ data class SyncConflictDetail(
     val reason: String,
     val local: SyncItem? = null,
     val remote: SyncOperation? = null,
+    val source: String = "pull",
+    val serverConflictId: String? = null,
+    val pushConflict: PushConflict? = null,
 )
 
 sealed interface RemoteApplyResult {
@@ -51,7 +58,12 @@ class CollectionSyncCoordinator(
     suspend fun syncOnce(): SyncResult {
         val boundIdentity = identity.get() ?: return SyncResult.Offline(0)
         return try {
-            val pending = local.pending(boundIdentity)
+            transport.listPushConflicts(boundIdentity).forEach { conflict ->
+                if (identity.get() != boundIdentity || !local.savePushConflict(boundIdentity, conflict)) return SyncResult.Offline(null)
+            }
+            val allPending = local.pending(boundIdentity)
+            val blockedIds = local.conflicts(boundIdentity).filter { it.source == "push" }.mapNotNull { it.pushConflict?.opId }.toSet()
+            val pending = allPending.filterNot { it.opId in blockedIds }
             if (identity.get() != boundIdentity) return SyncResult.Offline(pending.size)
             val outcomes = transport.push(boundIdentity, pending)
             var applied = 0
@@ -63,11 +75,15 @@ class CollectionSyncCoordinator(
                         itemId = operation.itemId(),
                         reason = outcome.reason,
                         local = operation.localItem(),
+                        source = "push",
+                        serverConflictId = outcome.conflictId,
                     )
                     is PushOutcome.Rejected -> conflicts += SyncConflictDetail(
                         itemId = operation.itemId(),
                         reason = outcome.reason,
                         local = operation.localItem(),
+                        source = "push",
+                        serverConflictId = outcome.conflictId,
                     )
                     is PushOutcome.Applied, is PushOutcome.AlreadyApplied -> {
                         if (!local.acknowledge(boundIdentity, operation.opId)) {
@@ -79,6 +95,9 @@ class CollectionSyncCoordinator(
             }
 
             if (identity.get() != boundIdentity) return SyncResult.Offline(pending.size)
+            transport.listPushConflicts(boundIdentity).forEach { conflict ->
+                if (identity.get() != boundIdentity || !local.savePushConflict(boundIdentity, conflict)) return SyncResult.Offline(null)
+            }
             val page = transport.pull(boundIdentity, local.lastSequence(boundIdentity))
             if (identity.get() != boundIdentity) return SyncResult.Offline(pending.size)
             for (entry in page.operations) {
@@ -98,7 +117,8 @@ class CollectionSyncCoordinator(
 
             val remaining = local.pending(boundIdentity).size
             val storedConflicts = local.conflicts(boundIdentity)
-            if (conflicts.isNotEmpty() || storedConflicts.isNotEmpty()) SyncResult.Conflicts(conflicts.size + storedConflicts.size, remaining, conflicts + storedConflicts)
+            val allConflicts = (storedConflicts + conflicts).distinctBy { it.serverConflictId ?: it.id.ifEmpty { "${it.itemId}:${it.reason}" } }
+            if (allConflicts.isNotEmpty()) SyncResult.Conflicts(allConflicts.size, remaining, allConflicts)
             else SyncResult.Complete(applied, remaining)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -124,6 +144,38 @@ class CollectionSyncCoordinator(
                     !local.finishConflict(boundIdentity, conflictId, operation.opId)) {
                     return SyncResult.Error(local.pending(boundIdentity).size)
                 }
+            }
+            syncOnce()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            SyncResult.Error(runCatching { local.pending(boundIdentity).size }.getOrNull())
+        }
+    }
+
+    suspend fun resolvePushConflict(conflictId: String, choice: PushConflictChoice): SyncResult {
+        val boundIdentity = identity.get() ?: return SyncResult.Offline(0)
+        return try {
+            val conflict = local.conflicts(boundIdentity).firstOrNull { it.serverConflictId == conflictId && it.source == "push" }
+                ?: return SyncResult.Error(local.pending(boundIdentity).size)
+            val device = local.deviceId(boundIdentity) ?: conflict.pushConflict?.deviceId
+                ?: return SyncResult.Error(local.pending(boundIdentity).size)
+            val receipt = transport.resolvePushConflict(conflictId, choice, device, boundIdentity)
+            if (identity.get() != boundIdentity) return SyncResult.Offline(null)
+            if (receipt.status == "stale-conflict") {
+                transport.listPushConflicts(boundIdentity).forEach { local.savePushConflict(boundIdentity, it) }
+                return SyncResult.Conflicts(1, local.pending(boundIdentity).size, local.conflicts(boundIdentity))
+            }
+            val resolutionId = receipt.resolutionId
+            if (receipt.status !in setOf("resolved", "already-resolved") || resolutionId == null ||
+                !local.applyPushConflictResolution(boundIdentity, conflictId, receipt)) {
+                return SyncResult.Error(local.pending(boundIdentity).size)
+            }
+            if (identity.get() != boundIdentity) return SyncResult.Offline(null)
+            val ack = transport.acknowledgePushConflictResolution(conflictId, resolutionId, boundIdentity)
+            if (identity.get() != boundIdentity) return SyncResult.Offline(null)
+            if (ack.status != "resolved" || !local.finishPushConflictResolution(boundIdentity, conflictId, resolutionId)) {
+                return SyncResult.Error(local.pending(boundIdentity).size)
             }
             syncOnce()
         } catch (cancelled: CancellationException) {

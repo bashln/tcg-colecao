@@ -41,21 +41,21 @@
 - Consumes: `public.push_collection_operations(text, jsonb)` and `public.sync_conflicts`.
 - Produces: push result content-conflict fields `conflictId`, `reason`, `highWater`, `rejectedOperation`, `cloudItem`, and `conflictingItem`; owner-scoped `read_collection_push_conflicts()`, `resolve_collection_push_conflict(uuid, text, text)`, and `ack_collection_push_conflict_resolution(uuid, uuid)` RPCs. Resolution statuses include `resolved`, `already-resolved`, `stale-conflict`, `not-found`, `device-revoked`, and `invalid-resolution`. `highWater` labels the observed server snapshot; it is not a pull cursor.
 
-- [ ] **Step 1: Add RED PostgreSQL tests** for stable conflict ID on same-op retry, authoritative same-item and duplicate-item snapshots, no sequence advance on rejection, owner isolation, changed-state refusal, same-choice replay, conflicting-choice refusal, and local-ack idempotency.
-- [ ] **Step 2: Run focused tests and verify expected failures.**
+- [x] **Step 1: Add RED PostgreSQL tests** for stable conflict ID on same-op retry, authoritative same-item and duplicate-item snapshots, no sequence advance on rejection, owner isolation, changed-state refusal, same-choice replay, conflicting-choice refusal, and local-ack idempotency.
+- [x] **Step 2: Run focused tests and verify expected failures.**
 
 Run: `node --test --test-name-pattern='durable push conflict|push conflict resolution' rpc-operations.test.mjs`
 
 Expected: new contract tests fail because current push response omits conflict details and resolution protocol does not exist.
 
-- [ ] **Step 3: Implement the migration.** Reuse the unresolved conflict row for the same owner and operation ID. Return an authoritative current item or tombstone without advancing high water for rejected work. Persist an immutable choice/result under conflict-row and item locks; keep it replayable until owner-scoped acknowledgment.
-- [ ] **Step 4: Run focused and full PostgreSQL tests.**
+- [x] **Step 3: Implement the migration.** Reuse the unresolved conflict row for the same owner and operation ID. Return an authoritative current item or tombstone without advancing high water for rejected work. Persist an immutable choice/result under conflict-row and item locks; keep it replayable until owner-scoped acknowledgment.
+- [x] **Step 4: Run focused and full PostgreSQL tests.**
 
 Run: `node --test --test-name-pattern='durable push conflict|push conflict resolution' rpc-operations.test.mjs`, then `npm test` from `supabase/tests`.
 
 Expected: focused tests and the full harness pass; no remote migration is applied.
 
-- [ ] **Step 5: Commit** as `feat(sync): add durable push conflict rpc`.
+- [x] **Step 5: Commit** as `feat(sync): add durable push conflict rpc` (`94d1055`, hardened by `a9f665d`, `8e958cb`).
 
 ### Task 2: Typed conflict transport contracts
 
@@ -68,16 +68,16 @@ Expected: focused tests and the full harness pass; no remote migration is applie
 - Consumes: Task 1 push fields and RPC names.
 - Produces: typed `PushOutcome.Conflict` carrying the server conflict ID and validated cloud state; transport methods to list unresolved push conflicts, begin/replay one resolution, and acknowledge local completion. Every method receives expected account identity and registered device ID where required.
 
-- [ ] **Step 1: Add RED Web and Kotlin transport tests** for parsing conflict and cloud snapshots, listing after a lost response, typed permanent errors, identity mismatch before dispatch, resolution replay, and acknowledgment payloads.
-- [ ] **Step 2: Run focused tests and verify expected failures.**
-- [ ] **Step 3: Implement transport result types and parsers.** Parse external JSON at the boundary; reject malformed item IDs, values, revisions, statuses, or resolution IDs rather than inventing empty state.
-- [ ] **Step 4: Run focused transport tests and both platform sync test groups.**
+- [x] **Step 1: Add RED Web and Kotlin transport tests** for parsing conflict and cloud snapshots, listing after a lost response, typed permanent errors, identity mismatch before dispatch, resolution replay, and acknowledgment payloads.
+- [x] **Step 2: Run focused tests and verify expected failures.**
+- [x] **Step 3: Implement transport result types and parsers.** Parse external JSON at the boundary; reject malformed item IDs, values, revisions, statuses, or resolution IDs rather than inventing empty state.
+- [x] **Step 4: Run focused transport tests and both platform sync test groups.**
 
 Run: `node --experimental-strip-types --test --test-name-pattern='push conflict' src/sync/supabase-transport.test.ts` from `web/`; `./gradlew :app:testDebugUnitTest --tests app.tcg.app.data.sync.SupabaseSyncTransportTest`.
 
 Expected: transports return validated conflict/resolution data and refuse dispatch after an identity change.
 
-- [ ] **Step 5: Commit** as `feat(sync): expose push conflict transport contract`.
+- [x] **Step 5: Commit** as `feat(sync): expose push conflict transport contract` (`1089297`).
 
 ### Task 3: Persist conflicts and recover resolutions
 
@@ -91,16 +91,16 @@ Expected: transports return validated conflict/resolution data and refuse dispat
 - Consumes: Task 2 typed transport contract.
 - Produces: local conflict source `push` with server ID, rejected operation, current remote value, and replayable resolution receipt; coordinator pauses only outbox operations with unresolved push conflict IDs and permits unrelated operations to sync. Store observed server high-water separately from pull cursor and never advance pull cursor during push-conflict resolution.
 
-- [ ] **Step 1: Add RED store/coordinator tests** for durable conflict persistence, retry exclusion while allowing unrelated ops, lost-response recovery through conflict listing, same-ID duplicate configuration, identity switch, and local transaction failure before server acknowledgment.
-- [ ] **Step 2: Run focused tests and verify expected failures.**
-- [ ] **Step 3: Implement atomic local persistence and replay.** `keep-cloud` applies remote state and removes only affected queued operations in one transaction. `keep-local` applies the server-accepted replacement locally, removes the rejected operation, and stores acknowledgment work in that same transaction. A failed local write must leave the server resolution replayable.
-- [ ] **Step 4: Run focused and full Web unit tests, plus focused Android store/coordinator and Room migration tests.**
+- [x] **Step 1: Add RED store/coordinator tests** for durable conflict persistence, retry exclusion while allowing unrelated ops, lost-response recovery through conflict listing, same-ID duplicate configuration, identity switch, and local transaction failure before server acknowledgment.
+- [x] **Step 2: Run focused tests and verify expected failures.**
+- [x] **Step 3: Implement atomic local persistence and replay.** `keep-cloud` applies remote state and removes only affected queued operations in one transaction. `keep-local` applies the server-accepted replacement locally, removes the rejected operation, and stores acknowledgment work in that same transaction. A failed local write must leave the server resolution replayable.
+- [x] **Step 4: Run focused and full Web unit tests, plus focused Android store/coordinator and Room migration tests.**
 
-Run: `npm run test:unit` from `web/`; `./gradlew :app:testDebugUnitTest --tests app.tcg.app.data.sync.RoomSyncLocalStoreTest --tests app.tcg.app.data.sync.CollectionSyncCoordinatorTest --tests app.tcg.app.data.local.TcgDatabaseMigrationTest`.
+Run: `npm run test:unit` from `web/`; `./gradlew :app:testDebugUnitTest --tests app.tcg.app.data.sync.RoomSyncLocalStoreTest --tests app.tcg.app.data.sync.CollectionSyncCoordinatorTest --tests app.tcg.app.data.local.PushConflictMigrationTest`.
 
 Expected: resolved conflict work replays after interruption without duplicating operations, advancing unrelated state, or crossing account identity.
 
-- [ ] **Step 5: Commit** as `feat(sync): persist and replay push conflict choices`.
+- [x] **Step 5: Commit** as `feat(sync): persist and replay push conflict choices`.
 
 ### Task 4: Conflict UI and actionable permanent errors
 

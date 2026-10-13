@@ -11,6 +11,8 @@ import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -236,6 +238,73 @@ class RoomSyncLocalStoreTest {
 
         assertNull(db.collectionDao().getById("remote-1"))
         assertEquals(0L, store.lastSequence("acct"))
+    }
+
+    @Test
+    fun durable_push_conflict_blocks_only_rejected_outbox_and_local_resolution_is_atomic_without_cursor_advance() = runTest {
+        db.collectionDao().setSyncBinding(app.tcg.app.data.local.SyncBindingEntity(identity = "acct", deviceId = "device-0001"))
+        val localItem = syncItem("local-push-1", cardId = "base1-4", quantity = 2)
+        db.collectionDao().insertIfAbsent(app.tcg.app.data.local.CollectionItemEntity(
+            id = localItem.id, cardId = localItem.cardId, quantity = localItem.quantity,
+            condition = localItem.condition, variant = localItem.variant,
+            pricePaidAmount = null, pricePaidCurrency = null, addedAt = localItem.addedAt, revision = 1,
+        ))
+        db.collectionDao().insertSyncOperation(outbox("rejected-op", "acct", "replace", localItem.id, baseRevision = 1))
+        db.collectionDao().insertSyncOperation(outbox("unrelated-op", "acct", "create", "other-item", cardId = "base1-5"))
+        val rejected = SyncOperation.Replace("rejected-op", "device-0001", 1L, localItem)
+        val conflict = PushConflict(
+            id = "server-conflict-1", opId = rejected.opId, itemId = localItem.id, reason = "stale",
+            deviceId = "device-0001", rejectedOperation = rejected, cloudItem = null, conflictingItem = null,
+            highWater = 44L, resolution = null,
+        )
+
+        assertTrue(store.savePushConflict("acct", conflict))
+        assertEquals(listOf("unrelated-op"), store.pending("acct").map { it.opId })
+        assertEquals(2, db.collectionDao().getById(localItem.id)?.quantity)
+        assertEquals(0L, store.lastSequence("acct"))
+
+        val result = Json.parseToJsonElement("""{"kind":"keep-cloud","operationId":null,"itemId":"local-push-1","localItemId":"local-push-1","cloudItem":null,"conflictingItem":null}""").jsonObject
+        val receipt = PushResolutionResponse("resolved", conflict.id, PushConflictChoice.KEEP_CLOUD, "receipt-1", result = result)
+        assertTrue(store.applyPushConflictResolution("acct", conflict.id, receipt))
+        assertNull(db.collectionDao().getById(localItem.id))
+        assertEquals(listOf("unrelated-op"), store.pending("acct").map { it.opId })
+        assertEquals(0L, store.lastSequence("acct"))
+        assertTrue(store.finishPushConflictResolution("acct", conflict.id, "receipt-1"))
+        assertTrue(store.conflicts("acct").isEmpty())
+        assertEquals(0L, store.lastSequence("acct"))
+    }
+
+    @Test
+    fun duplicate_configuration_keep_local_adopts_cloud_id_and_replays_after_ack_loss() = runTest {
+        db.collectionDao().setSyncBinding(app.tcg.app.data.local.SyncBindingEntity(identity = "acct", deviceId = "device-0001"))
+        val localItem = syncItem("local-duplicate", cardId = "base1-5", quantity = 4)
+        val rejected = SyncOperation.Replace("rejected-duplicate", "device-0001", 1L, localItem)
+        db.collectionDao().insertIfAbsent(app.tcg.app.data.local.CollectionItemEntity(
+            id = localItem.id, cardId = localItem.cardId, quantity = localItem.quantity,
+            condition = localItem.condition, variant = localItem.variant,
+            pricePaidAmount = null, pricePaidCurrency = null, addedAt = localItem.addedAt, revision = 1,
+        ))
+        db.collectionDao().insertSyncOperation(outbox(rejected.opId, "acct", "replace", rejected.item.id, baseRevision = 1, cardId = "base1-5"))
+        db.collectionDao().insertSyncOperation(outbox("unrelated", "acct", "create", "unrelated-item"))
+        val conflict = PushConflict(
+            id = "duplicate-conflict", opId = rejected.opId, itemId = localItem.id, reason = "duplicate-configuration",
+            deviceId = rejected.deviceId, rejectedOperation = rejected, cloudItem = null, conflictingItem = null,
+            highWater = 18L, resolution = null,
+        )
+        assertTrue(store.savePushConflict("acct", conflict))
+        val result = Json.parseToJsonElement("""{"kind":"keep-local","operationId":"accepted-op","itemId":"cloud-owner","localItemId":"local-duplicate","cloudItem":null,"revision":3,"operation":{"opId":"accepted-op","kind":"replace","itemId":"cloud-owner","baseRevision":2,"item":{}}}""").jsonObject
+        val receipt = PushResolutionResponse("resolved", conflict.id, PushConflictChoice.KEEP_LOCAL, "receipt-2", result = result)
+
+        assertTrue(store.applyPushConflictResolution("acct", conflict.id, receipt))
+        assertEquals(4, db.collectionDao().getById("cloud-owner")?.quantity)
+        assertNull(db.collectionDao().getById("local-duplicate"))
+        assertEquals(listOf("unrelated"), store.pending("acct").map { it.opId })
+        assertEquals(0L, store.lastSequence("acct"))
+
+        val reopenedStore = RoomSyncLocalStore(db)
+        assertTrue(reopenedStore.applyPushConflictResolution("acct", conflict.id, receipt))
+        assertEquals(4, db.collectionDao().getById("cloud-owner")?.quantity)
+        assertEquals(listOf("unrelated"), reopenedStore.pending("acct").map { it.opId })
     }
 
     @Test

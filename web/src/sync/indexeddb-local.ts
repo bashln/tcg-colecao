@@ -7,6 +7,10 @@ import {
   listSyncConflicts,
   resolveSyncConflict,
   finishSyncConflict,
+  savePushConflict,
+  applyPushConflictResolution,
+  finishPushConflictResolution,
+  syncDeviceId,
   listPendingOperations,
   saveSyncSequence,
 } from '../collection/store.ts'
@@ -30,6 +34,10 @@ export function createIndexedDbSyncLocalStore(input: {
       return resolveSyncConflict(identity, conflictId, resolution, input.resolveCard)
     },
     finishConflict: finishSyncConflict,
+    savePushConflict,
+    applyPushConflictResolution,
+    finishPushConflictResolution,
+    deviceId: syncDeviceId,
     lastSequence: lastSyncSequence,
     saveSequence: saveSyncSequence,
   }

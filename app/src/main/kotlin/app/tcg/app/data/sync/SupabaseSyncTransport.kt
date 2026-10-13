@@ -470,7 +470,12 @@ class SupabaseSyncTransport(
         val deviceId = row.string("deviceId")?.takeIf(::isDeviceId) ?: throw invalidResponse("Conflito sem dispositivo válido")
         val reason = row.string("reason")?.takeIf(String::isNotBlank) ?: throw invalidResponse("Conflito sem motivo")
         val highWater = row.jsonPrimitiveOrNull("highWater")?.takeIf { it >= 0 } ?: throw invalidResponse("Conflito sem high-water válido")
-        val operation = parseRejectedOperation(row["rejectedOperation"])
+        val operation = try {
+            parseRejectedOperation(row["rejectedOperation"])
+        } catch (error: SupabaseSyncException) {
+            if (reason != "invalid-payload") throw error
+            null
+        }
         val resolution = when (val receipt = row["resolution"]) {
             null, JsonNull -> null
             else -> parsePushReceipt(receipt as? JsonObject ?: throw invalidResponse("Recibo remoto inválido"))

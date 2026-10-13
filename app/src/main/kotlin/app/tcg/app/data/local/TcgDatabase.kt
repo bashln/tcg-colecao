@@ -8,7 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class, SyncConflictEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -106,6 +106,22 @@ abstract class TcgDatabase : RoomDatabase() {
                     )""".trimIndent(),
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_sync_conflict_records_identity` ON `sync_conflict_records` (`identity`)")
+            }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `source` TEXT NOT NULL DEFAULT 'pull'")
+                db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `serverConflictId` TEXT")
+                db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `opId` TEXT")
+                db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `rejectedOperation` TEXT")
+                db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `cloudItem` TEXT")
+                db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `conflictingItem` TEXT")
+                db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `observedHighWater` INTEGER")
+                db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `resolutionId` TEXT")
+                db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `resolutionChoice` TEXT")
+                db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `resolutionResult` TEXT")
+                db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `resolutionApplied` INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

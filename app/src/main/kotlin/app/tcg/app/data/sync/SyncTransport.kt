@@ -70,7 +70,7 @@ data class PushConflict(
     val itemId: String,
     val reason: String,
     val deviceId: String,
-    val rejectedOperation: SyncOperation,
+    val rejectedOperation: SyncOperation?,
     val cloudItem: PushCloudItem?,
     val conflictingItem: PushCloudItem?,
     val highWater: Long,
@@ -93,7 +93,7 @@ data class PushResolutionResponse(
 interface SyncTransport {
     suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome>
     suspend fun pull(identity: String, afterSequence: Long): PullPage
-    suspend fun listPushConflicts(expectedIdentity: String): List<PushConflict> = unsupportedPushConflicts()
+    suspend fun listPushConflicts(expectedIdentity: String): List<PushConflict> = emptyList()
     suspend fun resolvePushConflict(conflictId: String, choice: PushConflictChoice, deviceId: String, expectedIdentity: String): PushResolutionResponse = unsupportedPushConflicts()
     suspend fun acknowledgePushConflictResolution(conflictId: String, resolutionId: String, expectedIdentity: String): PushResolutionResponse = unsupportedPushConflicts()
 }

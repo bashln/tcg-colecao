@@ -91,7 +91,13 @@ class RoomSyncLocalStore(private val db: TcgDatabase) : SyncLocalStore {
     }
 
     override suspend fun pending(identity: String): List<SyncOperation> =
-        dao.listPendingOperations(identity).mapNotNull { it.toSyncOperation() }
+        db.withTransaction {
+            val blocked = dao.listSyncConflicts(identity).filter { it.source == "push" }.mapNotNull { it.opId }.toSet()
+            dao.listPendingOperations(identity).filterNot { it.opId in blocked }.mapNotNull { it.toSyncOperation() }
+        }
+
+    override suspend fun deviceId(identity: String): String? =
+        dao.getSyncBinding()?.takeIf { it.identity == identity }?.deviceId
 
     override suspend fun acknowledge(identity: String, opId: String): Boolean =
         dao.acknowledgeOperation(opId, identity) > 0
@@ -114,6 +120,116 @@ class RoomSyncLocalStore(private val db: TcgDatabase) : SyncLocalStore {
 
     override suspend fun conflicts(identity: String): List<SyncConflictDetail> =
         dao.listSyncConflicts(identity).mapNotNull(SyncConflictEntity::toDetail)
+
+    override suspend fun savePushConflict(identity: String, conflict: PushConflict): Boolean = db.withTransaction {
+        val binding = dao.getSyncBinding() ?: return@withTransaction false
+        if (binding.identity != identity) return@withTransaction false
+        val current = dao.getSyncConflict(conflict.id)?.takeIf { it.identity == identity && it.source == "push" }
+        val serverReceipt = conflict.resolution
+        val local = dao.getById(conflict.itemId)?.toSyncItem()
+        val rejected = conflict.rejectedOperation
+        dao.upsertSyncConflict(
+            SyncConflictEntity(
+                id = conflict.id,
+                identity = identity,
+                sequence = 0L,
+                itemId = conflict.itemId,
+                reason = conflict.reason,
+                localPayload = local?.let(::encodeSyncItem) ?: current?.localPayload,
+                remotePayload = rejected?.let(::encodeSyncOperation) ?: current?.remotePayload ?: "{}",
+                resolvedAt = current?.resolvedAt,
+                source = "push",
+                serverConflictId = conflict.id,
+                opId = conflict.opId,
+                rejectedOperation = rejected?.let(::encodeSyncOperation),
+                cloudItem = conflict.cloudItem?.let(::encodePushCloudItem),
+                conflictingItem = conflict.conflictingItem?.let(::encodePushCloudItem),
+                observedHighWater = conflict.highWater,
+                resolutionId = serverReceipt?.id ?: current?.resolutionId,
+                resolutionChoice = serverReceipt?.choice?.wireValue ?: current?.resolutionChoice,
+                resolutionResult = serverReceipt?.result?.toString() ?: current?.resolutionResult,
+                resolutionApplied = current?.resolutionApplied ?: false,
+            ),
+        )
+        true
+    }
+
+    override suspend fun applyPushConflictResolution(identity: String, conflictId: String, receipt: PushResolutionResponse): Boolean = db.withTransaction {
+        val binding = dao.getSyncBinding() ?: return@withTransaction false
+        if (binding.identity != identity || receipt.conflictId != conflictId || receipt.status !in setOf("resolved", "already-resolved")) return@withTransaction false
+        val resolutionId = receipt.resolutionId ?: return@withTransaction false
+        val choice = receipt.choice ?: return@withTransaction false
+        val result = receipt.result?.let(::JsonObject) ?: return@withTransaction false
+        val row = dao.getSyncConflict(conflictId) ?: return@withTransaction false
+        if (row.identity != identity || row.source != "push" || row.serverConflictId != conflictId) return@withTransaction false
+        if (row.resolutionApplied && row.resolutionId == resolutionId) return@withTransaction true
+        val conflict = row.toDetail()?.pushConflict ?: return@withTransaction false
+        val rejected = conflict.rejectedOperation
+        val itemIds = buildSet {
+            add(conflict.itemId)
+            result.string("itemId")?.let(::add)
+            result.string("localItemId")?.let(::add)
+            result.string("conflictingItemId")?.let(::add)
+        }
+
+        when (choice) {
+            PushConflictChoice.KEEP_CLOUD -> {
+                val remoteStates = listOf(
+                    decodePushCloudItem(result["cloudItem"]),
+                    decodePushCloudItem(result["conflictingItem"]),
+                )
+                val present = remoteStates.filterIsInstance<PushCloudItem.Present>()
+                for (remote in present) {
+                    val card = db.cardDao().getById(remote.item.cardId) ?: return@withTransaction false
+                    if (card.id != remote.item.cardId) return@withTransaction false
+                }
+                itemIds.filter { id -> present.none { it.item.id == id } }.forEach { dao.deleteById(it) }
+                present.forEach { dao.upsertRemoteItem(it.item.toRemoteEntity(it.revision)) }
+                rejected?.let { dao.acknowledgeOperation(it.opId, identity) }
+            }
+            PushConflictChoice.KEEP_LOCAL -> {
+                if (rejected is SyncOperation.Delete) {
+                    itemIds.forEach { dao.deleteById(it) }
+                    rejected.let { dao.acknowledgeOperation(it.opId, identity) }
+                    dao.upsertSyncConflict(row.copy(
+                        resolutionId = resolutionId,
+                        resolutionChoice = choice.wireValue,
+                        resolutionResult = result.toString(),
+                        resolutionApplied = true,
+                    ))
+                    return@withTransaction true
+                }
+                val source = row.localPayload?.let { runCatching { decodeSyncItem(it) }.getOrNull() }
+                    ?: rejected?.toLocalItem()
+                    ?: return@withTransaction false
+                val targetId = result.string("itemId") ?: return@withTransaction false
+                val revision = result.long("revision")?.takeIf { it > 0 } ?: return@withTransaction false
+                val rejectedOpId = rejected?.opId ?: return@withTransaction false
+                val chosen = source.copy(id = targetId)
+                itemIds.filter { it != targetId }.forEach { dao.deleteById(it) }
+                dao.upsertRemoteItem(chosen.toRemoteEntity(revision))
+                dao.acknowledgeOperation(rejectedOpId, identity)
+            }
+        }
+        dao.upsertSyncConflict(
+            row.copy(
+                resolutionId = resolutionId,
+                resolutionChoice = choice.wireValue,
+                resolutionResult = result.toString(),
+                resolutionApplied = true,
+            ),
+        )
+        true
+    }
+
+    override suspend fun finishPushConflictResolution(identity: String, conflictId: String, resolutionId: String): Boolean = db.withTransaction {
+        val binding = dao.getSyncBinding() ?: return@withTransaction false
+        if (binding.identity != identity) return@withTransaction false
+        val row = dao.getSyncConflict(conflictId) ?: return@withTransaction false
+        if (row.identity != identity || row.source != "push" || row.resolutionId != resolutionId || !row.resolutionApplied) return@withTransaction false
+        if (row.resolvedAt == null) dao.upsertSyncConflict(row.copy(resolvedAt = System.currentTimeMillis()))
+        true
+    }
 
     override suspend fun resolveConflict(identity: String, conflictId: String, resolution: SyncConflictResolution): SyncOperation? =
         db.withTransaction {
@@ -311,6 +427,12 @@ private fun SyncItem.toRemoteEntity(revision: Long) = CollectionItemEntity(
     revision = revision,
 )
 
+private fun SyncOperation.toLocalItem(): SyncItem? = when (this) {
+    is SyncOperation.Create -> item
+    is SyncOperation.Replace -> item
+    is SyncOperation.Delete -> null
+}
+
 private fun CollectionItemEntity.toSyncItem() = SyncItem(
     id = id, cardId = cardId, quantity = quantity, variant = variant, condition = condition,
     pricePaid = pricePaidAmount?.let { amount -> Money(amount, Currency.valueOf(checkNotNull(pricePaidCurrency))) },
@@ -352,10 +474,78 @@ private fun SyncConflictDetail.toEntity() = SyncConflictEntity(
 )
 
 private fun SyncConflictEntity.toDetail(): SyncConflictDetail? {
+    if (source == "push") {
+        val conflictId = serverConflictId ?: return null
+        val rejected = rejectedOperation?.let { runCatching { decodeSyncOperation(it) }.getOrNull() }
+        val localItem = localPayload?.let { runCatching { decodeSyncItem(it) }.getOrNull() }
+        val cloud = cloudItem?.let { runCatching { decodePushCloudItem(Json.parseToJsonElement(it)) }.getOrNull() }
+        val conflicting = conflictingItem?.let { runCatching { decodePushCloudItem(Json.parseToJsonElement(it)) }.getOrNull() }
+        val choice = resolutionChoice?.let(::parsePushChoice)
+        val storedResolutionId = resolutionId
+        val storedResolutionResult = resolutionResult
+        val receipt = if (storedResolutionId != null && choice != null && storedResolutionResult != null) {
+            runCatching {
+                PushResolutionReceipt(storedResolutionId, choice, Json.parseToJsonElement(storedResolutionResult).jsonObject)
+            }.getOrNull()
+        } else null
+        val conflict = PushConflict(
+            id = conflictId, opId = opId, itemId = itemId, reason = reason,
+            deviceId = rejected?.deviceId ?: "unknown-device", rejectedOperation = rejected,
+            cloudItem = cloud, conflictingItem = conflicting, highWater = observedHighWater ?: 0L, resolution = receipt,
+        )
+        return SyncConflictDetail(
+            id = id, identity = identity, itemId = itemId, reason = reason, local = localItem,
+            remote = rejected, source = "push", serverConflictId = conflictId, pushConflict = conflict,
+        )
+    }
     val operation = runCatching { decodeSyncOperation(remotePayload) }.getOrNull() ?: return null
     val localItem = localPayload?.let { runCatching { decodeSyncItem(it) }.getOrNull() }
     return SyncConflictDetail(id, identity, sequence, itemId, reason, localItem, operation)
 }
+
+private fun encodePushCloudItem(cloud: PushCloudItem): String = when (cloud) {
+    is PushCloudItem.Present -> JsonObject(buildMap {
+        put("itemId", JsonPrimitive(cloud.item.id)); put("cardId", JsonPrimitive(cloud.item.cardId))
+        put("quantity", JsonPrimitive(cloud.item.quantity)); put("variant", JsonPrimitive(cloud.item.variant.name))
+        put("condition", JsonPrimitive(cloud.item.condition.name)); put("addedAt", JsonPrimitive(cloud.item.addedAt))
+        put("revision", JsonPrimitive(cloud.revision)); put("deleted", JsonPrimitive(false))
+        put("pricePaid", cloud.item.pricePaid?.let { JsonObject(mapOf("amount" to JsonPrimitive((it.amount * 100).toLong()), "currency" to JsonPrimitive(it.currency.name))) } ?: JsonNull)
+    }).toString()
+    is PushCloudItem.Deleted -> JsonObject(mapOf(
+        "itemId" to JsonPrimitive(cloud.itemId), "revision" to JsonPrimitive(cloud.revision), "deleted" to JsonPrimitive(true),
+    )).toString()
+    is PushCloudItem.Missing -> JsonObject(mapOf("itemId" to JsonPrimitive(cloud.itemId), "deleted" to JsonPrimitive(true), "revision" to JsonPrimitive(0))).toString()
+}
+
+private fun decodePushCloudItem(element: kotlinx.serialization.json.JsonElement?): PushCloudItem? {
+    if (element == null || element is JsonNull) return null
+    val row = element.jsonObject
+    val itemId = row.getValue("itemId").jsonPrimitive.content
+    val deleted = row.getValue("deleted").jsonPrimitive.content.toBooleanStrict()
+    val revision = row.getValue("revision").jsonPrimitive.longOrNull ?: error("Invalid cloud revision")
+    if (deleted) return if (revision == 0L) PushCloudItem.Missing(itemId) else PushCloudItem.Deleted(itemId, revision)
+    val price = row["pricePaid"]?.takeUnless { it is JsonNull }?.jsonObject
+    val item = SyncItem(
+        id = itemId,
+        cardId = row.getValue("cardId").jsonPrimitive.content,
+        quantity = row.getValue("quantity").jsonPrimitive.intOrNull ?: error("Invalid cloud quantity"),
+        variant = CardVariant.valueOf(row.getValue("variant").jsonPrimitive.content),
+        condition = Condition.valueOf(row.getValue("condition").jsonPrimitive.content),
+        pricePaid = price?.let { Money(it.getValue("amount").jsonPrimitive.longOrNull!!.toDouble() / 100.0, Currency.valueOf(it.getValue("currency").jsonPrimitive.content)) },
+        addedAt = row.getValue("addedAt").jsonPrimitive.longOrNull ?: error("Invalid cloud timestamp"),
+    )
+    return PushCloudItem.Present(item, revision)
+}
+
+private fun parsePushChoice(value: String): PushConflictChoice? = when (value) {
+    "keep-local" -> PushConflictChoice.KEEP_LOCAL
+    "keep-cloud" -> PushConflictChoice.KEEP_CLOUD
+    else -> null
+}
+
+private fun JsonObject.string(key: String): String? = this[key]?.takeUnless { it is JsonNull }?.jsonPrimitive?.contentOrNull
+
+private fun JsonObject.long(key: String): Long? = this[key]?.takeUnless { it is JsonNull }?.jsonPrimitive?.longOrNull
 
 private fun encodeSyncItem(item: SyncItem): String = JsonObject(buildMap {
     put("id", JsonPrimitive(item.id)); put("cardId", JsonPrimitive(item.cardId))
