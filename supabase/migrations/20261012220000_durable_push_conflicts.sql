@@ -547,7 +547,7 @@ begin
     select sc.id, sc.collection_id, sc.item_id, sc.payload, c.remote_sequence
       from public.sync_conflicts sc
       join public.collections c on c.id = sc.collection_id
-     where sc.owner = v_owner and sc.resolved_at is null
+     where sc.owner = v_owner and sc.resolved_at is null and sc.source = 'push'
      order by sc.created_at, sc.id
   loop
     v_state := public._tcg_conflict_cloud_state(r.collection_id, r.item_id, r.payload);
@@ -581,7 +581,7 @@ begin
   ) order by sc.created_at, sc.id), '[]'::jsonb)
   into v_result
   from public.sync_conflicts sc
-  where sc.owner = v_owner and sc.resolved_at is null;
+   where sc.owner = v_owner and sc.resolved_at is null and sc.source = 'push';
 
   return v_result;
 end;
@@ -779,6 +779,9 @@ begin
         'status', 'invalid-resolution',
         'conflictId', v_row.id,
         'reason', v_row.reason);
+    end if;
+    if v_row.payload ->> 'kind' <> 'delete' then
+      v_item := jsonb_set(v_item, '{id}', to_jsonb(v_apply_id), false);
     end if;
 
     if v_row.payload ->> 'kind' = 'delete' then

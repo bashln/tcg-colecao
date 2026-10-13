@@ -568,7 +568,7 @@ export async function applyPushConflictResolution(
         for (const id of itemIds) if (!present.some((state) => state.item.id === id)) transaction.objectStore('items').delete(id)
         for (const state of present) transaction.objectStore('items').put(toCollectionItem(state.item, state.revision))
         for (const card of cards.values()) transaction.objectStore('cards').put(card)
-        removeRejectedOperation(transaction, rejected?.opId)
+        removeQueuedOperations(transaction, identity, [...itemIds])
         conflicts.put({ ...conflictRow, resolutionReceipt: { resolutionId: receipt.resolutionId, choice: receipt.choice, result }, resolutionApplied: true })
         applied = true
       }

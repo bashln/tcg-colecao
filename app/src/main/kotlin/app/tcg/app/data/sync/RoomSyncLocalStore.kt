@@ -185,7 +185,7 @@ class RoomSyncLocalStore(private val db: TcgDatabase) : SyncLocalStore {
                 }
                 itemIds.filter { id -> present.none { it.item.id == id } }.forEach { dao.deleteById(it) }
                 present.forEach { dao.upsertRemoteItem(it.item.toRemoteEntity(it.revision)) }
-                rejected?.let { dao.acknowledgeOperation(it.opId, identity) }
+                itemIds.forEach { dao.removePendingForItem(identity, it) }
             }
             PushConflictChoice.KEEP_LOCAL -> {
                 if (rejected is SyncOperation.Delete) {
