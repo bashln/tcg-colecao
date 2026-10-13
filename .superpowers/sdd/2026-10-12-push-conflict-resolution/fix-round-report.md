@@ -57,6 +57,7 @@ Addressed review findings Critical #1 and Important #2/#3. Changes remain local 
 - `d368caf` — `fix(sync): reconcile push conflict state consistently`.
 - `f039d37` — `test(sync): type push conflict browser assertions` (test-only TypeScript cleanup after build verification).
 - `15069d5` — `docs(sync): record push conflict review fix round`.
+- `5cea7b8` — `docs(sync): record final test cleanup commit`.
 
 ## Concerns
 
