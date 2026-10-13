@@ -711,6 +711,30 @@
         "Return zero as fallback despite not reading the newly bound identity"
       ],
       "solucao": "Return pending=null on identity mismatch; unit RED verified false zero and GREEN verified unavailable count"
+    },
+    {
+      "erro": "Focused PostgreSQL test initially could not import embedded-postgres in clean worktree",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Running Node test before dependencies were installed"
+      ],
+      "solucao": "Ran npm ci in supabase/tests; install reported zero vulnerabilities, then focused and full harness passed."
+    },
+    {
+      "erro": "Initial Web e2e fixture draft rejected malformed ItemDraft before reaching behavior assertion",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Passing CollectionItem-shaped object into parseItemDraft"
+      ],
+      "solucao": "Corrected draft shape; observed behavioral RED, then replaced event-emitting fixture with IndexedDB seed to avoid background sync race and verify resolver transaction directly."
+    },
+    {
+      "erro": "Intermediate Web production build rejected unused harness and implicit-any callbacks in regression test",
+      "tentativas": 1,
+      "abordagens_falhas": [
+        "Relying on dynamic import return types in Playwright page.evaluate"
+      ],
+      "solucao": "Removed unused binding and annotated narrow callback data; npm run build passed."
     }
   ]
 }

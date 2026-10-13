@@ -1,7 +1,7 @@
 {
   "current_run": {
     "task": "Concluir pendências arquiteturais de sync de conta Android↔web conforme plano aprovado",
-    "status": "push_conflict_implementation_plan_awaiting_review",
+    "status": "push_conflict_review_fix_round_complete_local",
     "definition_of_done": [
       "Web unit/E2E/build, Android unit/core/build e PostgreSQL harness passam em execução recente",
       "Review independente não deixa achados críticos/importantes abertos",
@@ -64,11 +64,16 @@
       "Process records updated: plan checkboxes, todo Phase 8, verification guide, audit TSV, errors and SDD review ledger. Hosted round-trip remains externally blocked; no hosted DDL, ACL, release, deploy or merge.",
       "Final confirmation run after all TDD review fixes: Web unit 78/78, build pass, Chromium 37/37, PostgreSQL 39/39, Android app 298/core 65/assembleDebug with --rerun-tasks; output XML has zero failures/errors.",
       "Push-side conflict root cause traced: push RPC stores rejected operation but omits durable conflict ID and current cloud row; clients keep retrying outbox entry. Drafted architectural design with typed snapshots, durable local conflicts, owner-scoped idempotent resolution, and safe handling of duplicate/permanent errors.",
-      "User approved push-conflict design and asked implementation. Wrote five-task plan with SQL, transport, local persistence/replay, UI, and final review gates. Plan separates observed server high-water from pull cursor and includes Room migration coverage."
+      "User approved push-conflict design and asked implementation. Wrote five-task plan with SQL, transport, local persistence/replay, UI, and final review gates. Plan separates observed server high-water from pull cursor and includes Room migration coverage.",
+      "Review fix round: SQL adopted-ID regression observed RED on item-ID mismatch, then GREEN with pulled operation itemId equal item.id; raw DB payload is item JSON, so assertion follows repository storage shape.",
+      "Web push keep-cloud IndexedDB regression proved affected queued op survived RED; resolver now removes affected-ID operations atomically; Chromium sync-outbox suite 21/21.",
+      "Android Room push keep-cloud regression proved superseded-op survived RED; Room now removes all affected-ID pending ops atomically; app/core 307/65 and assembleDebug passed.",
+      "Push/legacy source-separation PostgreSQL regression observed legacy row in push list RED, then GREEN with source filter; full PostgreSQL harness 58/58.",
+      "Final Web checks: unit 84/84, production build pass, sync-outbox Chromium 21/21; git diff --check pass.",
+      "Regression tests committed first as c720a76; implementation commit pending finalization.",
+      "Implementation committed after tests as d368caf; test-first commit c720a76 precedes it. Full report written to .superpowers/sdd/2026-10-12-push-conflict-resolution/fix-round-report.md."
     ],
-    "pending_steps": [
-      "User review and approval of docs/superpowers/plans/2026-10-12-push-conflict-resolution.md. Then execute inline as announced, with TDD and independent whole-change review; do not push without explicit authorization."
-    ],
+    "pending_steps": [],
     "notes": [
       "Mudanças pré-existentes continuam não commitadas e devem ser preservadas",
       "Hosted two-account isolation e round-trip bidirecional permanecem não comprovados",
@@ -76,7 +81,8 @@
       "Review independente adicional: F4 queue confirmada; persistência de deviceId e retorno explícito do persistAndRefresh adicionados; M3/M4/L2/L3 e corrida unlink/persist ainda abertos",
       "Session transcript local permanece não rastreado e preservado; supabase/.temp/ agora ignorado, conteúdo intocado",
       "Nesta retomada, alteração remota ficou limitada ao histórico interno de migrations; nenhum schema, dado de coleção, ACL ou configuração Auth foi alterado",
-      "Usuário autorizou explicitamente commit e push; branch work/collection-foundation-2026-10-11 publicada sem PR/merge. Transcript codex-session local permanece fora do commit por proteção de dados de sessão; supabase/.temp e web/.env.local permanecem ignorados."
+      "Usuário autorizou explicitamente commit e push; branch work/collection-foundation-2026-10-11 publicada sem PR/merge. Transcript codex-session local permanece fora do commit por proteção de dados de sessão; supabase/.temp e web/.env.local permanecem ignorados.",
+      "Hosted validation intentionally not attempted; no remote changes, push, release, deploy, or personal-data access during review fix round."
     ]
   },
   "task": "Home e Perfil com camada de estatisticas e navegacao de 4 abas",
