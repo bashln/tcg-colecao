@@ -71,7 +71,8 @@
       "Push/legacy source-separation PostgreSQL regression observed legacy row in push list RED, then GREEN with source filter; full PostgreSQL harness 58/58.",
       "Final Web checks: unit 84/84, production build pass, sync-outbox Chromium 21/21; git diff --check pass.",
       "Regression tests committed first as c720a76; implementation commit pending finalization.",
-      "Implementation committed after tests as d368caf; test-first commit c720a76 precedes it. Full report written to .superpowers/sdd/2026-10-12-push-conflict-resolution/fix-round-report.md."
+      "Implementation committed after tests as d368caf; test-first commit c720a76 precedes it. Full report written to .superpowers/sdd/2026-10-12-push-conflict-resolution/fix-round-report.md.",
+      "Final Web test type cleanup committed as f039d37 after npm run build passed; report references all local commits."
     ],
     "pending_steps": [],
     "notes": [
