@@ -543,6 +543,28 @@ describe('durable push conflict resolution protocol', () => {
     await actor.end();
   });
 
+  test('duplicate-config keep-local logs payload under adopted cloud item id', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c013';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-adopt-cloud', cardId: 'card-adopt' }) })]);
+    const local = op({ item: item({ id: 'item-local-original', cardId: 'card-adopt', quantity: 7 }) });
+    const conflict = outcome((await push(actor, [local])).rows[0].result, local.opId);
+    const resolved = await resolvePushConflict(actor, conflict.conflictId, 'keep-local');
+    assert.equal(resolved.status, 'resolved');
+    assert.equal(resolved.result.itemId, 'item-adopt-cloud');
+    assert.equal(resolved.result.operation.item.id, 'item-adopt-cloud');
+    const logged = await cluster.admin.query(
+      `select item_id, payload->>'id' as payload_item_id
+       from public.collection_operations where op_id = $1::uuid`,
+      [resolved.result.operationId],
+    );
+    assert.deepEqual(logged.rows, [{ item_id: 'item-adopt-cloud', payload_item_id: 'item-adopt-cloud' }]);
+    const pulled = (await pull(actor, 1)).rows[0].result;
+    const operation = pulled.operations.find((row) => row.opId === resolved.result.operationId);
+    assert.equal(operation.itemId, operation.item.id);
+    await actor.end();
+  });
+
   test('push conflict resolution applies keep-local once and replays the same receipt', async () => {
     const owner = '00000000-0000-0000-0000-00000000c004';
     const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
@@ -1032,6 +1054,28 @@ describe('durable push conflict resolution protocol', () => {
 });
 
 describe('legacy conflict resolver fence', () => {
+  test('push and legacy conflict reads stay separated by source', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c014';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-source-push' }) })]);
+    const rejected = op({ kind: 'replace', item: item({ id: 'item-source-push', quantity: 2 }), baseRevision: 0 });
+    const conflictId = outcome((await push(actor, [rejected])).rows[0].result, rejected.opId).conflictId;
+    const collection = await actor.query('select id from public.collections limit 1');
+    const legacyId = randomUUID();
+    await cluster.admin.query(
+      `insert into public.sync_conflicts (id, collection_id, owner, item_id, reason, payload, source)
+       values ($1, $2, $3, 'item-source-legacy', 'stale', '{"local":{},"remote":{}}', 'legacy')`,
+      [legacyId, collection.rows[0].id, owner],
+    );
+    const legacy = await readLegacyConflicts(actor);
+    const pushed = await readPushConflicts(actor);
+    assert.ok(legacy.some((row) => row.id === legacyId));
+    assert.ok(!legacy.some((row) => row.id === conflictId));
+    assert.ok(pushed.some((row) => row.id === conflictId));
+    assert.ok(!pushed.some((row) => row.id === legacyId));
+    await actor.end();
+  });
+
   test('legacy conflict resolver cannot close an unacknowledged receipt or push conflict', async () => {
     const owner = '00000000-0000-0000-0000-00000000c00e';
     const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });

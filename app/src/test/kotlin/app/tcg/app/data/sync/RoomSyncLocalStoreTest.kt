@@ -250,6 +250,7 @@ class RoomSyncLocalStoreTest {
             pricePaidAmount = null, pricePaidCurrency = null, addedAt = localItem.addedAt, revision = 1,
         ))
         db.collectionDao().insertSyncOperation(outbox("rejected-op", "acct", "replace", localItem.id, baseRevision = 1))
+        db.collectionDao().insertSyncOperation(outbox("superseded-op", "acct", "replace", localItem.id, baseRevision = 1))
         db.collectionDao().insertSyncOperation(outbox("unrelated-op", "acct", "create", "other-item", cardId = "base1-5"))
         val rejected = SyncOperation.Replace("rejected-op", "device-0001", 1L, localItem)
         val conflict = PushConflict(
@@ -259,7 +260,7 @@ class RoomSyncLocalStoreTest {
         )
 
         assertTrue(store.savePushConflict("acct", conflict))
-        assertEquals(listOf("unrelated-op"), store.pending("acct").map { it.opId })
+        assertEquals(listOf("superseded-op", "unrelated-op"), store.pending("acct").map { it.opId })
         assertEquals(2, db.collectionDao().getById(localItem.id)?.quantity)
         assertEquals(0L, store.lastSequence("acct"))
 
@@ -268,6 +269,7 @@ class RoomSyncLocalStoreTest {
         assertTrue(store.applyPushConflictResolution("acct", conflict.id, receipt))
         assertNull(db.collectionDao().getById(localItem.id))
         assertEquals(listOf("unrelated-op"), store.pending("acct").map { it.opId })
+        assertEquals(listOf("unrelated-op"), db.collectionDao().listPendingOperations("acct").map { it.opId })
         assertEquals(0L, store.lastSequence("acct"))
         assertTrue(store.finishPushConflictResolution("acct", conflict.id, "receipt-1"))
         assertTrue(store.conflicts("acct").isEmpty())

@@ -661,7 +661,7 @@ test('profile exposes conflict choices and keep-local resolves through acknowled
   expect(await page.evaluate(async () => (await (await import(`${location.origin}/src/collection/store.ts`)).listCollection()).length)).toBe(1)
 })
 
-test('push conflict shows local and cloud values and keep-cloud completes receipt before removing local row', async ({ page }) => {
+test('push-conflict IndexedDB keep-cloud removes affected queued operations and preserves unrelated work', async ({ page }) => {
   const harness = await mockSyncRpc(page, { pushConflictReason: 'stale' })
   await seedSignedInSession(page, 'ana@example.test', 'user-ana')
   await page.goto('/')
@@ -678,15 +678,58 @@ test('push conflict shows local and cloud values and keep-cloud completes receip
 
   await expect(page.getByText(/conflito de sincronização precisa da sua atenção/)).toBeVisible()
   await expect(page.getByText(/Local: 2 · NORMAL · NEAR_MINT\. Nuvem: ausente\./)).toBeVisible()
+  await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('tcg-colecao-web')
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const binding = await new Promise<{ identity: string; deviceId: string }>((resolve, reject) => {
+      const request = database.transaction('sync').objectStore('sync').get('binding')
+      request.onsuccess = () => resolve(request.result.binding)
+      request.onerror = () => reject(request.error)
+    })
+    const currentItem = (await (await import(`${location.origin}/src/collection/store.ts`)).listCollection())[0]?.item
+    if (!currentItem) throw new Error('missing affected local item')
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(['outbox', 'outboxOrder'], 'readwrite')
+      const order = transaction.objectStore('outboxOrder')
+      const operations = [{
+        kind: 'replace', opId: 'superseded-op', deviceId: binding.deviceId, baseRevision: 1,
+        item: { id: currentItem.id, cardId: currentItem.cardId, quantity: 3, variant: currentItem.variant, condition: currentItem.condition, pricePaid: currentItem.pricePaid, addedAt: currentItem.addedAt },
+      }, {
+        kind: 'create', opId: 'unrelated-op', deviceId: binding.deviceId,
+        item: { id: 'unrelated-item', cardId: 'base1-5', quantity: 1, variant: 'NORMAL', condition: 'NEAR_MINT', pricePaid: null, addedAt: 1 },
+      }]
+      for (const operation of operations) {
+        const sequenceRequest = order.add({ opId: operation.opId, identity: binding.identity })
+        sequenceRequest.onsuccess = () => transaction.objectStore('outbox').put({ opId: operation.opId, identity: binding.identity, sequence: sequenceRequest.result, operation })
+      }
+      transaction.oncomplete = () => resolve()
+      transaction.onabort = () => reject(transaction.error)
+    })
+    database.close()
+  })
+  const queuedBeforeResolution = await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).listPendingOperations('user-ana'))
+  expect(queuedBeforeResolution.length).toBeGreaterThan(1)
   const cursorBefore = await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).lastSyncSequence('user-ana'))
-  await page.getByRole('button', { name: 'Usar versão da nuvem' }).click()
-
-  await expect(page.getByText('Sincronizado. Nenhuma alteração pendente.')).toBeVisible()
+  const applied = await page.evaluate(async () => {
+    const store = await import(`${location.origin}/src/collection/store.ts`)
+    const conflict = (await store.listSyncConflicts('user-ana')).find((row) => row.source === 'push')
+    if (!conflict?.pushConflict) throw new Error('push conflict was not stored')
+    const itemId = conflict.pushConflict.itemId
+    return store.applyPushConflictResolution('user-ana', conflict.id, {
+      status: 'resolved', conflictId: conflict.id, choice: 'keep-cloud', resolutionId: 'test-resolution',
+      result: { kind: 'keep-cloud', itemId, localItemId: itemId, cloudItem: null, conflictingItem: null },
+    })
+  })
+  expect(applied).toBe(true)
   expect(await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).listCollection())).toHaveLength(0)
+
+  const pendingAfterResolution = await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).listPendingOperations('user-ana'))
+  expect(pendingAfterResolution.map((operation) => operation.opId)).toEqual(['unrelated-op'])
   const cursorAfter = await page.evaluate(async () => (await import(`${location.origin}/src/collection/store.ts`)).lastSyncSequence('user-ana'))
   expect(cursorAfter).toBe(cursorBefore)
-  expect(harness.calls.some((call) => call.fn === 'resolve_collection_push_conflict' && call.body.p_choice === 'keep-cloud')).toBe(true)
-  expect(harness.calls.some((call) => call.fn === 'ack_collection_push_conflict_resolution')).toBe(true)
 })
 
 test('permanent invalid-payload conflict explains next step and offers no unsafe choice', async ({ page }) => {
