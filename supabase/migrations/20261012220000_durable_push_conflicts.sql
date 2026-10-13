@@ -1033,20 +1033,25 @@ begin
      where id = p_conflict_id and owner = v_owner and source = 'push'
   ) then
     -- Mirror the historical statuses without ever setting resolved_at: the push
-    -- protocol owns visibility and close for this row.
+    -- protocol owns visibility and close for this row. The write is fenced to open,
+    -- not-yet-marked rows, so acknowledged receipts are terminal (`already-resolved`)
+    -- and no legacy marker is ever written onto them.
     update public.sync_conflicts
        set resolution = p_resolution
      where id = p_conflict_id and owner = v_owner
-       and source = 'push' and resolution is null;
+       and source = 'push' and resolved_at is null and resolution is null;
     if found then
       return jsonb_build_object('status', 'resolved');
     end if;
     return jsonb_build_object('status', 'already-resolved');
   end if;
 
+  -- The close itself is fenced to `legacy` rows: if a concurrent push retry flips this
+  -- row's source between the check above and this statement, the predicate refuses the
+  -- write instead of closing a push-protocol row (TOCTOU).
   update public.sync_conflicts
   set resolved_at = now(), resolution = p_resolution
-  where id = p_conflict_id and owner = v_owner and resolved_at is null;
+  where id = p_conflict_id and owner = v_owner and resolved_at is null and source = 'legacy';
   if found then
     return jsonb_build_object('status', 'resolved');
   end if;

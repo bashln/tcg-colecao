@@ -1108,6 +1108,123 @@ describe('legacy conflict resolver fence', () => {
     );
     await actor.end();
   });
+
+  test('legacy conflict resolver reports already-resolved for an acknowledged push receipt', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c010';
+    const actor = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    await push(actor, [op({ item: item({ id: 'item-acked-fence-1' }) })]);
+    await push(actor, [
+      op({ kind: 'replace', item: item({ id: 'item-acked-fence-1', quantity: 3 }), baseRevision: 1 }),
+    ]);
+    const stale = op({
+      kind: 'replace',
+      item: item({ id: 'item-acked-fence-1', quantity: 9 }),
+      baseRevision: 1,
+    });
+    const pushed = (await push(actor, [stale])).rows[0].result;
+    const conflictId = outcome(pushed, stale.opId).conflictId;
+
+    const resolved = await resolvePushConflict(actor, conflictId, 'keep-cloud');
+    assert.equal(resolved.status, 'resolved');
+    const acked = await ackPushConflict(actor, conflictId, resolved.resolutionId);
+    assert.equal(acked.status, 'resolved');
+
+    const legacy = await resolveLegacyConflict(actor, conflictId, 'keep-remote');
+    assert.equal(
+      legacy.status,
+      'already-resolved',
+      'an acknowledged receipt is terminal for every resolver, not a fresh close',
+    );
+    const state = await conflictRowState(conflictId);
+    assert.ok(state.resolved_at, 'the acknowledgment stands');
+    assert.equal(state.resolution_id, resolved.resolutionId, 'the receipt survives the legacy attempt');
+    const legacyColumn = await cluster.admin.query(
+      'select resolution from public.sync_conflicts where id = $1::uuid',
+      [conflictId],
+    );
+    assert.equal(
+      legacyColumn.rows[0].resolution,
+      null,
+      'no legacy marker may be written on an acknowledged row',
+    );
+    await actor.end();
+  });
+
+  test('legacy conflict resolver predicates fence every close path by source', async () => {
+    const definition = await cluster.admin.query(
+      `select pg_get_functiondef('public.resolve_collection_conflict(uuid,text,text)'::regprocedure) as definition`,
+    );
+    const sql = definition.rows[0].definition;
+    assert.match(
+      sql,
+      /and source = 'push' and resolved_at is null and resolution is null/,
+      'the mirror path may only write open, unmarked push rows and never their state',
+    );
+    assert.match(
+      sql,
+      /set resolved_at = now\(\), resolution = p_resolution\s+where id = p_conflict_id and owner = v_owner and resolved_at is null and source = 'legacy'/,
+      'the fallback close must carry source = legacy so a racing source transition cannot close a push row',
+    );
+  });
+
+  test('legacy conflict resolver closes only legacy rows across a racing source transition', async () => {
+    const owner = '00000000-0000-0000-0000-00000000c011';
+    const closer = await cluster.connectActor({ role: 'authenticated', sub: owner });
+    const pusher = await cluster.connectActor({ role: 'authenticated', sub: owner });
+
+    // The item already exists, so retrying this create is guaranteed to record a conflict
+    // and upsert on the seeded legacy row's operation id — a legacy→push source transition.
+    await push(pusher, [op({ item: item({ id: 'item-race-legacy-01' }) })]);
+    const retry = op({ item: item({ id: 'item-race-legacy-01' }) });
+    const collection = await cluster.admin.query(
+      'select id from public.collections where owner = $1::uuid',
+      [owner],
+    );
+    const seededId = randomUUID();
+    await cluster.admin.query(
+      `insert into public.sync_conflicts
+         (id, collection_id, op_id, device_id, item_id, reason, payload, owner)
+       values ($1, $2, $3::uuid, $4, 'item-race-legacy-01', 'stale', $5, $6)`,
+      [seededId, collection.rows[0].id, retry.opId, DEVICE_A1, JSON.stringify(retry), owner],
+    );
+
+    const [legacyOutcome, pushed] = await Promise.all([
+      resolveLegacyConflict(closer, seededId, 'keep-remote'),
+      push(pusher, [retry]),
+    ]);
+    assert.ok(
+      ['resolved', 'already-resolved'].includes(legacyOutcome.status),
+      `legacy callers keep idempotent statuses under any interleaving, got ${legacyOutcome.status}`,
+    );
+    assert.equal(outcome(pushed.rows[0].result, retry.opId).status, 'conflict');
+
+    const rows = await cluster.admin.query(
+      `select id, source, resolved_at from public.sync_conflicts
+       where op_id = $1::uuid order by created_at, id`,
+      [retry.opId],
+    );
+    assert.ok(rows.rows.length >= 1, 'the conflict row survives either interleaving');
+    for (const row of rows.rows) {
+      if (row.resolved_at !== null) {
+        assert.equal(
+          row.source,
+          'legacy',
+          'only a legacy row may ever be closed by the legacy resolver',
+        );
+      }
+    }
+    assert.ok(
+      rows.rows.some((row) => row.source === 'push' && row.resolved_at === null),
+      'the operation always ends with an open push-protocol row',
+    );
+    const visible = await readPushConflicts(closer);
+    assert.ok(
+      visible.some((row) => row.opId === retry.opId),
+      'the protocol view still lists the surviving conflict',
+    );
+    await closer.end();
+    await pusher.end();
+  });
 });
 
 describe('duplicate open conflict migration safety', () => {
