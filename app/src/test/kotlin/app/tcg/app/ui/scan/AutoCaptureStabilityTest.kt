@@ -59,6 +59,25 @@ class AutoCaptureStabilityTest {
     }
 
     @Test
+    fun three_letter_name_survives_one_character_ocr_misread() {
+        val stability = AutoCaptureStability(stableForMillis = 2_000)
+
+        assertNull(stability.observe("Mew", 1_000))
+        assertNull(stability.observe("Mev", 2_000))
+        assertEquals("Mew", stability.observe("Mew", 3_000))
+    }
+
+    @Test
+    fun distinct_short_names_do_not_merge() {
+        val stability = AutoCaptureStability(stableForMillis = 2_000)
+
+        assertNull(stability.observe("Mew", 1_000))
+        assertNull(stability.observe("Muk", 2_500))
+        assertNull(stability.observe("Muk", 3_000))
+        assertEquals("Muk", stability.observe("Muk", 5_000))
+    }
+
+    @Test
     fun changed_or_missing_identity_restarts_stability_window() {
         val stability = AutoCaptureStability(stableForMillis = 2_000)
 

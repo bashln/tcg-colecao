@@ -38,7 +38,12 @@ internal class AutoCaptureStability(
         val left = first.filter(Char::isLetter).lowercase()
         val right = next.filter(Char::isLetter).lowercase()
         if (left == right) return true
-        if (minOf(left.length, right.length) < MIN_IDENTITY_LENGTH) return false
+        if (minOf(left.length, right.length) < MIN_IDENTITY_LENGTH) {
+            // Short names (Mew, Onix) carry little redundancy, so a single OCR slip must not
+            // restart the window; require at most one edit and a comparable length.
+            return maxOf(left.length, right.length) - minOf(left.length, right.length) <= 1 &&
+                isWithinOneEdit(left, right)
+        }
 
         var longest = 0
         var previous = IntArray(right.length + 1)
@@ -55,6 +60,21 @@ internal class AutoCaptureStability(
             previous = current
         }
         return longest >= MIN_IDENTITY_LENGTH && longest.toFloat() / minOf(left.length, right.length) >= MIN_SHARED_IDENTITY_RATIO
+    }
+
+    /** True when [first] and [second] differ by at most one insert, delete, or substitution. */
+    private fun isWithinOneEdit(first: String, second: String): Boolean {
+        if (first.length > second.length) return isWithinOneEdit(second, first)
+        if (second.length - first.length > 1) return false
+
+        var index = 0
+        while (index < first.length && first[index] == second[index]) index++
+        if (index == first.length) return true
+
+        if (first.length == second.length) {
+            return first.substring(index + 1) == second.substring(index + 1)
+        }
+        return first.substring(index) == second.substring(index + 1)
     }
 
     private companion object {
