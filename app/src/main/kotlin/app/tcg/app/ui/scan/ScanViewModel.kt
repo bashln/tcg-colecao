@@ -27,20 +27,29 @@ class ScanViewModel(
 
     private val _state = MutableStateFlow(ScanUiState())
     val state: StateFlow<ScanUiState> = _state.asStateFlow()
+    private var searchGeneration = 0L
 
     suspend fun onTextRecognized(lines: List<OcrLine>) {
         search(OcrParser.parse(lines))
     }
 
     suspend fun onManualSearch(name: String) {
+        _state.update { it.copy(candidates = emptyList()) }
         search(ParsedCardText(name = name, collectorNumber = null, promoCode = null, hp = null, rawText = name))
     }
 
+    fun prepareForCapture() {
+        searchGeneration++
+        _state.value = ScanUiState()
+    }
+
     fun onCaptureError(message: String) {
+        searchGeneration++
         _state.update { it.copy(loading = false, error = message, manualSearch = true) }
     }
 
     private suspend fun search(parsed: ParsedCardText) {
+        val requestGeneration = ++searchGeneration
         _state.update { it.copy(loading = true, error = null) }
         val collectorNumber = parsed.collectorNumber
         val name = parsed.name
@@ -51,6 +60,7 @@ class ScanViewModel(
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
+            if (requestGeneration != searchGeneration) return
             _state.update {
                 it.copy(
                     loading = false,
@@ -60,6 +70,7 @@ class ScanViewModel(
             }
             return
         }
+        if (requestGeneration != searchGeneration) return
         _state.update {
             it.copy(
                 candidates = ranked,

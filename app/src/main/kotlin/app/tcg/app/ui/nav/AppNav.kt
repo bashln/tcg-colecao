@@ -109,7 +109,7 @@ fun AppNav(
 
     Scaffold(
         bottomBar = {
-            if (topLevelRoute) {
+            if (topLevelRoute && currentRoute != Routes.SCAN) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 3.dp,
@@ -176,6 +176,7 @@ fun AppNav(
                 ScanScreen(
                     viewModel = viewModel,
                     onCardSelected = { card -> navController.navigate(Routes.cardDetail(card.id)) },
+                    onExit = { navController.navigateToTopLevel(Routes.HOME) },
                 )
             }
             composable(Routes.COLLECTION) {

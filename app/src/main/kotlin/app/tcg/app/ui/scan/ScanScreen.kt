@@ -1,6 +1,7 @@
 package app.tcg.app.ui.scan
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -8,12 +9,12 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,7 +37,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
@@ -46,9 +46,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,16 +57,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tcg.app.R
-import app.tcg.app.ui.components.EmptyState
 import app.tcg.app.ui.components.ErrorBanner
 import app.tcg.app.ui.components.SectionHeader
 import app.tcg.app.ui.components.formatMoney
@@ -86,6 +84,7 @@ fun ScanScreen(
     viewModel: ScanViewModel,
     modifier: Modifier = Modifier,
     onCardSelected: (Card) -> Unit = {},
+    onExit: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -93,44 +92,101 @@ fun ScanScreen(
     val recognizer = rememberTextRecognizer()
     var captureRequest by remember { mutableStateOf(0) }
     var manualQuery by remember { mutableStateOf("") }
+    var manualSearchRevealed by remember { mutableStateOf(false) }
+    var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var captureReserved by remember { mutableStateOf(false) }
+    var torchAvailable by remember { mutableStateOf(false) }
+    var torchEnabled by remember { mutableStateOf(false) }
+    var torchPreferenceInitialized by remember { mutableStateOf(false) }
+    var torchError by remember { mutableStateOf(false) }
 
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri: Uri? ->
         val bitmap = uri?.let { loadBitmap(context, it) }
         if (bitmap != null) {
+            viewModel.prepareForCapture()
+            val cardBitmap = bitmap.cropToCard()
+            if (cardBitmap !== bitmap) bitmap.recycle()
+            capturedBitmap = null
+            capturedBitmap = cardBitmap.previewCopy()
             recognizeText(
                 recognizer = recognizer,
-                bitmap = bitmap.cropToCard(),
+                bitmap = cardBitmap,
                 rotationDegrees = 0,
                 onTextRecognized = { lines -> scope.launch { viewModel.onTextRecognized(lines) } },
                 onError = viewModel::onCaptureError,
+                onComplete = { cardBitmap.recycle() },
             )
         }
     }
 
     ScanContent(
         state = state,
+        capturedBitmap = capturedBitmap,
         manualQuery = manualQuery,
         onManualQueryChange = { manualQuery = it },
+        manualSearchRevealed = manualSearchRevealed,
+        onManualSearchRevealedChange = { manualSearchRevealed = it },
         onManualSearch = {
             val query = manualQuery.trim()
-            if (query.isNotEmpty()) scope.launch { viewModel.onManualSearch(query) }
+            if (query.isNotEmpty()) {
+                capturedBitmap = null
+                scope.launch { viewModel.onManualSearch(query) }
+            }
         },
-        onCapture = { captureRequest++ },
+        onCapture = {
+            capturedBitmap = null
+            viewModel.prepareForCapture()
+            captureReserved = true
+            captureRequest++
+        },
         onGallery = {
             galleryLauncher.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
             )
         },
-        onCardSelected = onCardSelected,
+        onCardSelected = { card ->
+            capturedBitmap = null
+            onCardSelected(card)
+        },
+        onExit = onExit,
+        torchAvailable = torchAvailable,
+        torchEnabled = torchEnabled,
+        torchError = torchError,
+        onToggleTorch = { torchError = false; torchEnabled = !torchEnabled },
         modifier = modifier,
         cameraPreview = {
             CameraCapture(
                 captureRequest = captureRequest,
                 recognizer = recognizer,
                 onTextRecognized = { lines -> scope.launch { viewModel.onTextRecognized(lines) } },
-                onError = viewModel::onCaptureError,
+                onCapturedBitmap = {
+                    capturedBitmap = null
+                    capturedBitmap = it
+                    captureReserved = false
+                },
+                onAutoCapture = {
+                    viewModel.prepareForCapture()
+                    captureReserved = true
+                    captureRequest++
+                },
+                autoCaptureEnabled = !captureReserved && capturedBitmap == null &&
+                    !state.loading && state.error == null && !state.manualSearch &&
+                    !manualSearchRevealed && state.candidates.isEmpty(),
+                torchEnabled = torchEnabled,
+                onTorchAvailabilityChanged = { available ->
+                    torchAvailable = available
+                    if (available && !torchPreferenceInitialized) {
+                        torchEnabled = true
+                        torchPreferenceInitialized = true
+                    }
+                },
+                onTorchError = { torchError = true; torchEnabled = false },
+                onError = { message ->
+                    captureReserved = false
+                    viewModel.onCaptureError(message)
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         },
@@ -141,42 +197,55 @@ fun ScanScreen(
  * Stateless scan UI so the manual-search entry point and result states stay testable without a
  * camera. [ScanScreen] supplies the live [CameraCapture] preview through [cameraPreview].
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScanContent(
     state: ScanUiState,
+    capturedBitmap: Bitmap? = null,
     manualQuery: String,
     onManualQueryChange: (String) -> Unit,
+    manualSearchRevealed: Boolean = false,
+    onManualSearchRevealedChange: (Boolean) -> Unit = {},
     onManualSearch: () -> Unit,
     onCapture: () -> Unit,
     onGallery: () -> Unit,
     onCardSelected: (Card) -> Unit,
+    onExit: () -> Unit = {},
+    torchAvailable: Boolean = false,
+    torchEnabled: Boolean = false,
+    torchError: Boolean = false,
+    onToggleTorch: () -> Unit = {},
     modifier: Modifier = Modifier,
     cameraPreview: @Composable () -> Unit = {},
 ) {
-    var manualRevealed by remember { mutableStateOf(false) }
     // A failed scan must always surface the manual field; a manual reveal can be dismissed.
-    val showManual = manualRevealed || state.manualSearch
-    val dismiss: (() -> Unit)? = if (state.manualSearch) null else { { manualRevealed = false } }
+    val showManual = manualSearchRevealed || state.manualSearch
+    val dismiss: (() -> Unit)? = if (state.manualSearch) null else { { onManualSearchRevealedChange(false) } }
 
     // Once a search succeeds, collapse the panel so the candidates own the screen.
     LaunchedEffect(state.candidates.isNotEmpty()) {
-        if (state.candidates.isNotEmpty()) manualRevealed = false
+        if (state.candidates.isNotEmpty()) onManualSearchRevealedChange(false)
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(stringResource(R.string.scan_title)) },
-            windowInsets = WindowInsets(0, 0, 0, 0),
-            // The camera interop view draws above Compose siblings by default; lift the bar back.
-            modifier = Modifier.zIndex(1f),
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                titleContentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-        )
         Box(Modifier.fillMaxWidth().weight(1f)) {
             cameraPreview()
+            Surface(
+                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                color = Color.Black.copy(alpha = 0.55f),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(24.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onExit) {
+                        Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.scan_exit))
+                    }
+                    Text(
+                        text = stringResource(R.string.scan_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(end = 16.dp),
+                    )
+                }
+            }
             if (state.loading) {
                 Box(
                     modifier = Modifier
@@ -201,7 +270,11 @@ fun ScanContent(
         CaptureControls(
             onCapture = onCapture,
             onGallery = onGallery,
-            onManualSearch = { manualRevealed = true },
+            onManualSearch = { onManualSearchRevealedChange(true) },
+            torchAvailable = torchAvailable,
+            torchEnabled = torchEnabled,
+            torchError = torchError,
+            onToggleTorch = onToggleTorch,
         )
         if (state.loading) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -242,6 +315,11 @@ fun ScanContent(
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 ) {
+                    if (capturedBitmap != null) {
+                        item(key = "scan-comparison") {
+                            ScanComparison(capturedBitmap, state.candidates.first().value)
+                        }
+                    }
                     items(state.candidates, key = { it.value.id }) { scored ->
                         CandidateCard(card = scored.value, onClick = { onCardSelected(scored.value) })
                     }
@@ -255,23 +333,43 @@ fun ScanContent(
                 onDismiss = dismiss,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
-            else -> Box(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentAlignment = Alignment.Center,
-            ) {
-                EmptyState(
-                    icon = Icons.Outlined.Search,
-                    title = stringResource(R.string.scan_empty_title),
-                    body = stringResource(R.string.scan_candidates_empty),
-                    action = {
-                        TextButton(onClick = { manualRevealed = true }) {
-                            Icon(Icons.Outlined.Search, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.scan_manual_entry))
-                        }
-                    },
-                )
+            else -> Unit
+        }
+    }
+}
+
+@Composable
+private fun ScanComparison(capturedBitmap: Bitmap, matchedCard: Card) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(stringResource(R.string.scan_compare_title), style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(stringResource(R.string.scan_captured_label), style = MaterialTheme.typography.labelMedium)
+                    Image(
+                        bitmap = capturedBitmap.asImageBitmap(),
+                        contentDescription = stringResource(R.string.scan_captured_image_cd),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().height(160.dp),
+                    )
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(stringResource(R.string.scan_match_label), style = MaterialTheme.typography.labelMedium)
+                    AsyncImage(
+                        model = matchedCard.imageUrl,
+                        contentDescription = stringResource(R.string.scan_match_image_cd, matchedCard.name),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().height(160.dp),
+                    )
+                }
             }
+            Text(
+                text = joinNonBlank(matchedCard.name, matchedCard.setName, matchedCard.collectorNumber),
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
@@ -281,7 +379,14 @@ private fun CaptureControls(
     onCapture: () -> Unit,
     onGallery: () -> Unit,
     onManualSearch: () -> Unit,
+    torchAvailable: Boolean,
+    torchEnabled: Boolean,
+    torchError: Boolean,
+    onToggleTorch: () -> Unit,
 ) {
+    val torchDescription = stringResource(
+        if (torchEnabled) R.string.scan_flash_turn_off else R.string.scan_flash_turn_on,
+    )
     Surface(
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 3.dp,
@@ -292,34 +397,47 @@ private fun CaptureControls(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FilledTonalIconButton(
-                onClick = onGallery,
-                modifier = Modifier.size(56.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.PhotoLibrary,
-                    contentDescription = stringResource(R.string.cd_gallery_button),
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                FilledTonalIconButton(
+                    onClick = onToggleTorch,
+                    enabled = torchAvailable,
+                    modifier = Modifier.size(56.dp).semantics {
+                        contentDescription = torchDescription
+                    },
+                ) {
+                    Text("⚡", style = MaterialTheme.typography.titleLarge)
+                }
+                Text(
+                    text = when {
+                        torchError -> stringResource(R.string.scan_flash_error_short)
+                        !torchAvailable -> stringResource(R.string.scan_flash_unavailable)
+                        torchEnabled -> stringResource(R.string.scan_flash_on)
+                        else -> stringResource(R.string.scan_flash_off)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
                 )
             }
-            FilledIconButton(
-                onClick = onCapture,
-                shape = CircleShape,
-                modifier = Modifier.size(72.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.CameraAlt,
-                    contentDescription = stringResource(R.string.cd_capture_button),
-                    modifier = Modifier.size(30.dp),
-                )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                FilledTonalIconButton(onClick = onGallery, modifier = Modifier.size(56.dp)) {
+                    Icon(Icons.Outlined.PhotoLibrary, contentDescription = stringResource(R.string.cd_gallery_button))
+                }
+                Text(stringResource(R.string.scan_gallery), style = MaterialTheme.typography.labelSmall)
             }
-            FilledTonalIconButton(
-                onClick = onManualSearch,
-                modifier = Modifier.size(56.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Search,
-                    contentDescription = stringResource(R.string.scan_manual_entry),
-                )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                FilledIconButton(onClick = onCapture, shape = CircleShape, modifier = Modifier.size(72.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.CameraAlt,
+                        contentDescription = stringResource(R.string.cd_capture_button),
+                        modifier = Modifier.size(30.dp),
+                    )
+                }
+                Text(stringResource(R.string.scan_capture), style = MaterialTheme.typography.labelSmall)
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                FilledTonalIconButton(onClick = onManualSearch, modifier = Modifier.size(56.dp)) {
+                    Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.scan_manual_entry))
+                }
+                Text(stringResource(R.string.scan_manual_entry), style = MaterialTheme.typography.labelSmall)
             }
         }
     }

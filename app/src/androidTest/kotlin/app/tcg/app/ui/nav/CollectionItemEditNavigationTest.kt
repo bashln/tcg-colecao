@@ -1,5 +1,6 @@
 package app.tcg.app.ui.nav
 
+import androidx.room.Room
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
@@ -14,6 +15,25 @@ import androidx.activity.ComponentActivity
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.tcg.app.ui.theme.TcgTheme
 import app.tcg.app.ui.card.CollectionItemEditTags
+import app.tcg.app.auth.AuthController
+import app.tcg.app.auth.AuthRemote
+import app.tcg.app.auth.AuthSession
+import app.tcg.app.auth.RemoteAuth
+import app.tcg.app.auth.SessionStore
+import app.tcg.app.data.local.TcgDatabase
+import app.tcg.app.data.sync.LinkCommitResult
+import app.tcg.app.data.sync.LinkOutcome
+import app.tcg.app.data.sync.LinkPreview
+import app.tcg.app.data.sync.LinkPreviewSummary
+import app.tcg.app.data.sync.SyncLinkCoordinator
+import app.tcg.app.data.sync.SyncLinkRepository
+import app.tcg.app.data.sync.SyncLifecycle
+import app.tcg.app.data.sync.SyncResult
+import app.tcg.app.update.ApkDownload
+import app.tcg.app.update.InstalledAppInfo
+import app.tcg.app.update.ReleaseFetch
+import app.tcg.app.update.UpdateCoordinator
+import app.tcg.app.update.UpdateInstaller
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.data.repository.SetCatalogResult
@@ -28,8 +48,12 @@ import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Money
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,6 +62,12 @@ import org.junit.runner.RunWith
 class CollectionItemEditNavigationTest {
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
+    private var database: TcgDatabase? = null
+
+    @After
+    fun closeDatabase() {
+        database?.close()
+    }
 
     @Test
     fun owned_collection_item_opens_and_updates_that_exact_item_without_adding() {
@@ -51,6 +81,26 @@ class CollectionItemEditNavigationTest {
             addedAt = 123L,
         )
         val repository = RecordingCollectionRepository(entry(item))
+        database = Room.inMemoryDatabaseBuilder(rule.activity, TcgDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val auth = AuthController(
+            remote = object : AuthRemote {
+                override suspend fun signUp(email: String, password: String): RemoteAuth = error("unused")
+                override suspend fun signIn(email: String, password: String): AuthSession = error("unused")
+                override suspend fun refresh(refreshToken: String): AuthSession = error("unused")
+                override suspend fun signOut(accessToken: String) = Unit
+            },
+            store = object : SessionStore {
+                override suspend fun read(): AuthSession? = null
+                override suspend fun write(session: AuthSession) = Unit
+                override suspend fun clear() = Unit
+            },
+        )
+        val lifecycle = SyncLifecycle(
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+            syncAction = { SyncResult.Offline(0) },
+        )
         lateinit var navController: androidx.navigation.NavHostController
         rule.setContent {
             TcgTheme {
@@ -58,6 +108,29 @@ class CollectionItemEditNavigationTest {
                 AppNav(
                     cardRepository = FakeCardRepository(),
                     collectionRepository = repository,
+                    authController = auth,
+                    syncLinkRepository = SyncLinkRepository(requireNotNull(database).collectionDao(), "test-device"),
+                    syncLinkCoordinator = object : SyncLinkCoordinator {
+                        override suspend fun preparePreview(identity: String): LinkPreviewSummary = error("unused")
+                        override suspend fun confirm(
+                            identity: String,
+                            plan: LinkPreview,
+                            isIdentityCurrent: () -> Boolean,
+                        ): LinkOutcome = error("unused")
+                    },
+                    syncLifecycle = lifecycle,
+                    updateCoordinator = UpdateCoordinator(
+                        installedApp = InstalledAppInfo(rule.activity.packageName, 1, null),
+                        fetchRelease = { ReleaseFetch.Offline },
+                        downloadApk = { _, _ -> ApkDownload.Offline },
+                        readArchiveMetadata = { null },
+                    ),
+                    updateInstaller = UpdateInstaller(
+                        context = rule.activity,
+                        canRequestInstalls = { false },
+                        archivePackageName = { null },
+                        launch = {},
+                    ),
                     navController = navController,
                 )
             }

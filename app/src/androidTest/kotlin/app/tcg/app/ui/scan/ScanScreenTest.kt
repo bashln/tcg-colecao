@@ -1,5 +1,6 @@
 package app.tcg.app.ui.scan
 
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
@@ -32,10 +33,38 @@ class ScanScreenTest {
     @Test
     fun first_launch_shows_manual_search_entry_point() {
         val state = mutableStateOf(ScanUiState())
+        val manualSearchRevealed = mutableStateOf(false)
         rule.setContent {
             TcgTheme {
                 ScanContent(
                     state = state.value,
+                    manualQuery = "",
+                    onManualQueryChange = {},
+                    manualSearchRevealed = manualSearchRevealed.value,
+                    onManualSearchRevealedChange = { manualSearchRevealed.value = it },
+                    onManualSearch = {},
+                    onCapture = {},
+                    onGallery = {},
+                    onCardSelected = {},
+                )
+            }
+        }
+
+        rule.onNodeWithText("Buscar por nome").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Buscar por nome").assertExists()
+        rule.onNodeWithText("Capturar").assertIsDisplayed()
+        rule.onNodeWithText("Galeria").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Buscar por nome").performClick()
+        rule.onNodeWithText("Nome da carta").assertIsDisplayed()
+    }
+
+    @Test
+    fun captured_photo_is_compared_with_best_match_before_opening_details() {
+        rule.setContent {
+            TcgTheme {
+                ScanContent(
+                    state = ScanUiState(candidates = listOf(Scored(furret(), 100))),
+                    capturedBitmap = Bitmap.createBitmap(20, 28, Bitmap.Config.ARGB_8888),
                     manualQuery = "",
                     onManualQueryChange = {},
                     onManualSearch = {},
@@ -46,10 +75,35 @@ class ScanScreenTest {
             }
         }
 
-        rule.onNodeWithText("Nenhuma carta ainda").assertIsDisplayed()
-        // The copy and the control now agree: the empty state names and offers the entry point.
-        rule.onNodeWithText("Buscar por nome").assertIsDisplayed()
-        rule.onNodeWithContentDescription("Buscar por nome").assertExists()
+        rule.onNodeWithText("Sua captura").assertIsDisplayed()
+        rule.onNodeWithText("Melhor correspondência").assertIsDisplayed()
+        rule.onNodeWithText("Furret").assertIsDisplayed()
+    }
+
+    @Test
+    fun flash_toggle_announces_current_action_and_state() {
+        val torchEnabled = mutableStateOf(true)
+        rule.setContent {
+            TcgTheme {
+                ScanContent(
+                    state = ScanUiState(),
+                    manualQuery = "",
+                    onManualQueryChange = {},
+                    onManualSearch = {},
+                    onCapture = {},
+                    onGallery = {},
+                    onCardSelected = {},
+                    torchAvailable = true,
+                    torchEnabled = torchEnabled.value,
+                    onToggleTorch = { torchEnabled.value = !torchEnabled.value },
+                )
+            }
+        }
+
+        rule.onNodeWithText("Flash ligado").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Desligar flash contínuo").performClick()
+        rule.onNodeWithText("Flash desligado").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Ligar flash contínuo").assertExists()
     }
 
     @Test

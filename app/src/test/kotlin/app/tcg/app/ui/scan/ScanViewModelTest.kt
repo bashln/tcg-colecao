@@ -7,7 +7,10 @@ import app.tcg.core.domain.model.OcrLine
 import java.io.IOException
 import kotlin.test.assertFailsWith
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -16,6 +19,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScanViewModelTest {
+
+    @Test
+    fun preparing_new_capture_clears_previous_results_and_errors() {
+        val vm = ScanViewModel(FakeCardRepository(listOf(card("b", "Furret", "136", 110))))
+        vm.onCaptureError("Erro anterior")
+
+        vm.prepareForCapture()
+
+        assertTrue(vm.state.value.candidates.isEmpty())
+        assertNull(vm.state.value.error)
+        assertFalse(vm.state.value.loading)
+        assertFalse(vm.state.value.manualSearch)
+    }
 
     @Test
     fun recognized_text_produces_ranked_candidates() = runTest {
@@ -84,6 +100,37 @@ class ScanViewModelTest {
         vm.onManualSearch("Furret")
         assertEquals("b", vm.state.value.candidates.first().value.id)
         assertFalse(vm.state.value.manualSearch)
+    }
+
+    @Test
+    fun manual_search_replaces_previous_candidates() = runTest {
+        val repo = FakeCardRepository(listOf(card("b", "Furret", "136", 110)))
+        val vm = ScanViewModel(repo)
+        vm.onTextRecognized(listOf(OcrLine("Furret", 0f, 40f), OcrLine("136/189", 100f, 40f)))
+
+        vm.onManualSearch("Furret")
+
+        assertEquals(listOf("b"), vm.state.value.candidates.map { it.value.id })
+    }
+
+    @Test
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun late_search_result_cannot_replace_results_for_new_capture() = runTest {
+        val oldSearch = CompletableDeferred<List<Card>>()
+        val repo = DelayedCardRepository(oldSearch, listOf(card("new", "Meowth", "161", 40)))
+        val vm = ScanViewModel(repo)
+
+        val oldRequest = async {
+            vm.onTextRecognized(listOf(OcrLine("Furret", 0f, 40f)))
+        }
+        runCurrent()
+        vm.prepareForCapture()
+        vm.onTextRecognized(listOf(OcrLine("Meowth", 0f, 40f)))
+        oldSearch.complete(listOf(card("old", "Furret", "136", 110)))
+        oldRequest.await()
+
+        assertEquals(listOf("new"), vm.state.value.candidates.map { it.value.id })
+        assertFalse(vm.state.value.loading)
     }
 
     @Test
@@ -201,6 +248,22 @@ class ScanViewModelTest {
 
         override suspend fun getCard(id: String): Card? =
             (byName + byNumber).firstOrNull { it.id == id }
+
+        override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
+    }
+
+    private class DelayedCardRepository(
+        private val firstSearch: CompletableDeferred<List<Card>>,
+        private val nextSearch: List<Card>,
+    ) : CardRepository {
+        private var nameSearchCount = 0
+
+        override suspend fun searchByName(name: String): List<Card> =
+            if (nameSearchCount++ == 0) firstSearch.await() else nextSearch
+
+        override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> = emptyList()
+
+        override suspend fun getCard(id: String): Card? = null
 
         override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
     }

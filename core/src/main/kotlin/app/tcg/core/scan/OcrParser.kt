@@ -20,6 +20,7 @@ object OcrParser {
     )
     private val STAGE_PREFIX = Regex("""(?i)^([BEG80]?ASIC[OAD0-9]?|E?[5S]T[ÁA]GIO[L12DIO0-9]?|STAGE\s*[12]?)[):.\-_]?\s*""")
     private val REGULATION_MARK_PREFIX = Regex("""^[A-Z]\s+(?=[A-Za-z]{2})""")
+    private val MERGED_STAGE_LABEL = Regex("""(?i)^(?:CASS|GAS|ASS|AS|[BEG80]?ASIC[OAD0-9]?)(?:\s+|(?=[A-Z][a-z]))""")
     private val TRAILING_HP = Regex("""\s*\d{2,3}$""")
     private val SUFFIX_SPACE = Regex("""([a-z])(V|ex)\b""")
 
@@ -135,6 +136,7 @@ object OcrParser {
 
     private fun cleanNameCandidate(text: String): String {
         var s = STAGE_PREFIX.replace(text.trim(), "").trim()
+        s = MERGED_STAGE_LABEL.replace(s, "").trim()
         s = REGULATION_MARK_PREFIX.replace(s, "").trim()
         s = TRAILING_HP.replace(s, "").trim()
         return s
