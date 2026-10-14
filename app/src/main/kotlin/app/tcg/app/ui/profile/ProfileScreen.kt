@@ -12,11 +12,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +49,8 @@ fun ProfileScreen(
     viewModel: ProfileViewModel,
     modifier: Modifier = Modifier,
     onScanClick: () -> Unit = {},
+    onAccountClick: () -> Unit = {},
+    onUpdatesClick: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -55,6 +60,22 @@ fun ProfileScreen(
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         )
+        OutlinedButton(
+            onClick = onAccountClick,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        ) {
+            Icon(Icons.Outlined.Person, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.account_title))
+        }
+        OutlinedButton(
+            onClick = onUpdatesClick,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        ) {
+            Icon(Icons.Outlined.SystemUpdate, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.update_title))
+        }
         when {
             state.loading -> Box(
                 modifier = Modifier.fillMaxWidth().weight(1f),

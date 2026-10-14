@@ -26,7 +26,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -37,9 +39,18 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import app.tcg.app.BuildConfig
 import app.tcg.app.R
+import app.tcg.app.auth.AuthController
+import app.tcg.app.data.sync.SyncLinkCoordinator
+import app.tcg.app.data.sync.SyncLifecycle
+import app.tcg.app.data.sync.SyncLinkRepository
+import app.tcg.app.ui.account.AccountScreen
+import app.tcg.app.ui.account.AccountViewModel
 import app.tcg.app.ui.card.CardDetailScreen
 import app.tcg.app.ui.card.CardDetailViewModel
+import app.tcg.app.ui.card.CollectionItemEditScreen
+import app.tcg.app.ui.card.CollectionItemEditViewModel
 import app.tcg.app.ui.collection.CollectionScreen
 import app.tcg.app.ui.collection.CollectionViewModel
 import app.tcg.app.ui.components.EmptyState
@@ -50,29 +61,48 @@ import app.tcg.app.ui.profile.ProfileScreen
 import app.tcg.app.ui.profile.ProfileViewModel
 import app.tcg.app.ui.scan.ScanScreen
 import app.tcg.app.ui.scan.ScanViewModel
+import app.tcg.app.ui.update.UpdateScreen
+import app.tcg.app.ui.update.UpdateViewModel
+import app.tcg.app.update.UpdateCoordinator
+import app.tcg.app.update.UpdateInstaller
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.domain.model.Card
+import kotlinx.coroutines.launch
 
 private object Routes {
     const val HOME = "home"
     const val SCAN = "scan"
     const val COLLECTION = "collection"
     const val PROFILE = "profile"
+    const val ACCOUNT = "account"
+    const val UPDATE = "update"
     const val CARD_ID = "cardId"
     const val CARD_DETAIL = "card/{$CARD_ID}"
+    const val COLLECTION_ITEM_ID = "itemId"
+    const val COLLECTION_ITEM_EDIT = "collection-item/{$COLLECTION_ITEM_ID}"
 
     val topLevel = setOf(HOME, SCAN, COLLECTION, PROFILE)
 
     fun cardDetail(cardId: String) = "card/${Uri.encode(cardId)}"
+    fun collectionItemEdit(itemId: String) = "collection-item/${Uri.encode(itemId)}"
 }
 
 @Composable
 fun AppNav(
     cardRepository: CardRepository,
     collectionRepository: CollectionRepository,
+    authController: AuthController,
+    syncLinkRepository: SyncLinkRepository,
+    syncLinkCoordinator: SyncLinkCoordinator,
+    syncLifecycle: SyncLifecycle,
+    updateCoordinator: UpdateCoordinator,
+    updateInstaller: UpdateInstaller,
     navController: NavHostController = rememberNavController(),
 ) {
+    // Restore any persisted session once so a returning signed-in user sees their state.
+    LaunchedEffect(Unit) { authController.start() }
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val topLevelRoute = currentRoute in Routes.topLevel
@@ -136,7 +166,7 @@ fun AppNav(
                 HomeScreen(
                     viewModel = viewModel,
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
-                    onCardSelected = { cardId -> navController.navigate(Routes.cardDetail(cardId)) },
+                    onCollectionItemSelected = { itemId -> navController.navigate(Routes.collectionItemEdit(itemId)) },
                 )
             }
             composable(Routes.SCAN) {
@@ -150,11 +180,13 @@ fun AppNav(
             }
             composable(Routes.COLLECTION) {
                 val viewModel: CollectionViewModel = viewModel(
-                    factory = viewModelFactory { initializer { CollectionViewModel(collectionRepository) } },
+                    factory = viewModelFactory { initializer { CollectionViewModel(collectionRepository, cardRepository) } },
                 )
                 CollectionScreen(
                     viewModel = viewModel,
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
+                    onCardSelected = { cardId -> navController.navigate(Routes.cardDetail(cardId)) },
+                    onCollectionItemSelected = { itemId -> navController.navigate(Routes.collectionItemEdit(itemId)) },
                 )
             }
             composable(Routes.PROFILE) {
@@ -164,6 +196,69 @@ fun AppNav(
                 ProfileScreen(
                     viewModel = viewModel,
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
+                    onAccountClick = { navController.navigate(Routes.ACCOUNT) },
+                    onUpdatesClick = { navController.navigate(Routes.UPDATE) },
+                )
+            }
+            composable(Routes.ACCOUNT) {
+                val viewModel: AccountViewModel = viewModel(
+                    factory = viewModelFactory {
+                        initializer {
+                            AccountViewModel(
+                                auth = authController,
+                                link = syncLinkCoordinator,
+                                syncStatus = syncLifecycle.status,
+                                onSyncNow = { syncLifecycle.request() },
+                                onLinkConfirmed = { identity ->
+                                    syncLifecycle.persistAndRefreshBinding(
+                                        expectedIdentity = identity,
+                                        authState = { authController.state.value },
+                                        persistBinding = { syncLinkRepository.link(identity) },
+                                        readLinkedIdentity = syncLinkRepository::currentIdentity,
+                                        clearBinding = syncLinkRepository::unlink,
+                                    ).await()
+                                },
+                                onLinkUnlinked = { syncLifecycle.unlinkBinding(syncLinkRepository::unlink) },
+                                onResolveConflict = syncLifecycle::resolveConflict,
+                            )
+                        }
+                    },
+                )
+                AccountScreen(
+                    state = viewModel.state.collectAsStateWithLifecycle().value,
+                    onSignIn = viewModel::submitSignIn,
+                    onSignUp = viewModel::submitSignUp,
+                    onRequestLink = viewModel::requestLink,
+                    onConfirmLink = viewModel::confirmLink,
+                    onCancelLink = viewModel::cancelLink,
+                    onSyncNow = viewModel::syncNow,
+                    onResolveConflict = viewModel::resolveConflict,
+                    onSignOut = viewModel::signOut,
+                    onDismissError = viewModel::dismissError,
+                )
+            }
+            composable(Routes.UPDATE) {
+                val context = LocalContext.current
+                val viewModel: UpdateViewModel = viewModel(
+                    factory = viewModelFactory {
+                        initializer {
+                            UpdateViewModel(
+                                coordinator = updateCoordinator,
+                                installHandoff = { file -> updateInstaller.handoff(file) },
+                                openInstallSettings = { context.startActivity(updateInstaller.installSettingsIntent()) },
+                            )
+                        }
+                    },
+                )
+                UpdateScreen(
+                    state = viewModel.state.collectAsStateWithLifecycle().value,
+                    installBlocked = viewModel.installBlocked.collectAsStateWithLifecycle().value,
+                    currentVersionName = BuildConfig.VERSION_NAME,
+                    onCheck = viewModel::check,
+                    onAccept = viewModel::acceptAndDownload,
+                    onCancel = viewModel::cancelDownload,
+                    onInstall = viewModel::install,
+                    onDismissError = viewModel::dismissError,
                 )
             }
             composable(
@@ -174,6 +269,23 @@ fun AppNav(
                     cardId = entry.arguments?.getString(Routes.CARD_ID).orEmpty(),
                     cardRepository = cardRepository,
                     collectionRepository = collectionRepository,
+                    onSaved = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = Routes.COLLECTION_ITEM_EDIT,
+                arguments = listOf(navArgument(Routes.COLLECTION_ITEM_ID) { type = NavType.StringType }),
+            ) { entry ->
+                val itemId = entry.arguments?.getString(Routes.COLLECTION_ITEM_ID).orEmpty()
+                val viewModel: CollectionItemEditViewModel = viewModel(
+                    key = "collection-item-edit-$itemId",
+                    factory = viewModelFactory {
+                        initializer { CollectionItemEditViewModel(itemId, collectionRepository) }
+                    },
+                )
+                CollectionItemEditScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
                     onSaved = { navController.popBackStack() },
                 )
             }

@@ -6,20 +6,38 @@ import app.tcg.core.domain.model.CardPrice
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.CollectionEntry
 import app.tcg.core.domain.model.CollectionItem
+import app.tcg.core.domain.model.CollectionItemChanges
+import app.tcg.core.domain.model.CollectionItemDetails
+import app.tcg.core.domain.model.CollectionUpdate
 import app.tcg.core.domain.model.Condition
+import app.tcg.core.domain.model.CurrentHoldingsHistory
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
 import app.tcg.core.domain.model.PriceSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.emitAll
+import java.time.LocalDate
 
 /** In-memory [CollectionRepository] for ViewModel tests; emits whenever [entries] changes. */
 class FakeCollectionRepository(
     initial: List<CollectionEntry> = emptyList(),
 ) : CollectionRepository {
     val entries = MutableStateFlow(initial)
+    val histories = MutableStateFlow<Map<PriceSource, CurrentHoldingsHistory>>(emptyMap())
+    var failHistory = false
 
     override fun observe(): Flow<List<CollectionEntry>> = entries
+
+    override fun observeCurrentHoldingsHistory(
+        source: PriceSource,
+        asOfUtcDay: LocalDate,
+    ): Flow<CurrentHoldingsHistory> = flow {
+        if (failHistory) error("history unavailable")
+        emitAll(histories.map { it[source] ?: CurrentHoldingsHistory(source, asOfUtcDay, 0, emptyList(), null) })
+    }
 
     override suspend fun add(
         card: Card,
@@ -30,6 +48,13 @@ class FakeCollectionRepository(
     ): CollectionItem = error("not used")
 
     override suspend fun list(): List<CollectionEntry> = entries.value
+
+    override suspend fun getById(itemId: String): CollectionItemDetails? = entries.value
+        .firstOrNull { it.item.id == itemId }
+        ?.let { CollectionItemDetails(it.item, it.card) }
+
+    override suspend fun update(original: CollectionItem, changes: CollectionItemChanges): CollectionUpdate =
+        CollectionUpdate.NotFound
 
     override suspend fun remove(itemId: String) = Unit
 }

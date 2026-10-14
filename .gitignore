@@ -16,6 +16,16 @@ local.properties
 /core/build/
 .kotlin/
 
+## Dependencias de pacote nunca entram no repo.
+node_modules/
+
+## Supabase CLI: config local guarda settings/keys do projeto e nao vai para o commit.
+# O diretorio supabase/supabase/ e residuo de um `supabase init` rodado com cwd errado;
+# fica ignorado ate ser removido sem destrutivo.
+supabase/config.toml
+supabase/supabase/
+supabase/.temp/
+
 ## Nada de config de agente ou IA entra no repo.
 .opencode/
 .claude/
@@ -27,4 +37,3 @@ AGENTS.md
 CLAUDE.md
 GEMINI.md
 .aider*
-

@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.tcg.app.ui.theme.TcgTheme
 import app.tcg.core.data.repository.CollectionRepository
@@ -13,12 +14,16 @@ import app.tcg.core.domain.model.CardPrice
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.CollectionEntry
 import app.tcg.core.domain.model.CollectionItem
+import app.tcg.core.domain.model.CollectionItemChanges
+import app.tcg.core.domain.model.CollectionItemDetails
+import app.tcg.core.domain.model.CollectionUpdate
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
 import app.tcg.core.domain.model.PriceSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -52,6 +57,24 @@ class HomeScreenTest {
         rule.onNodeWithText("Furret").assertIsDisplayed()
     }
 
+    @Test
+    fun most_valuable_card_opens_the_exact_collection_item() {
+        val viewModel = HomeViewModel(FakeCollectionRepository(listOf(entry(furret()))))
+        val selectedItems = mutableListOf<String>()
+        rule.setContent {
+            TcgTheme {
+                HomeScreen(viewModel = viewModel, onCollectionItemSelected = selectedItems::add)
+            }
+        }
+
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodesWithText("Furret").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Furret").performClick()
+
+        rule.runOnIdle { assertEquals(listOf("item-swsh3-136"), selectedItems) }
+    }
+
     private class FakeCollectionRepository(
         initial: List<CollectionEntry> = emptyList(),
     ) : CollectionRepository {
@@ -68,6 +91,13 @@ class HomeScreenTest {
         ): CollectionItem = error("not used")
 
         override suspend fun list(): List<CollectionEntry> = entries.value
+
+        override suspend fun getById(itemId: String): CollectionItemDetails? = entries.value
+            .firstOrNull { it.item.id == itemId }
+            ?.let { CollectionItemDetails(it.item, it.card) }
+
+        override suspend fun update(original: CollectionItem, changes: CollectionItemChanges): CollectionUpdate =
+            CollectionUpdate.NotFound
 
         override suspend fun remove(itemId: String) = Unit
     }

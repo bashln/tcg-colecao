@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Raiz do FileProvider para o update in-app: apenas o cache privado do app, onde o APK
+     validado é gravado. O grant de leitura é por intent, apontando só para o arquivo específico. -->
+<paths>
+    <cache-path name="apk_updates" path="." />
+</paths>

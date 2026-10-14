@@ -8,6 +8,9 @@ import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.CollectionItem
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 // Control characters cannot appear in card text, so they are safe field separators.
 private const val FIELD = "\u001F"
@@ -15,6 +18,12 @@ private const val RECORD = "\u001E"
 private const val SUB = "\u001D"
 
 class Converters {
+    @TypeConverter
+    fun fromLocalDate(value: LocalDate): String = value.toString()
+
+    @TypeConverter
+    fun toLocalDate(value: String): LocalDate = LocalDate.parse(value)
+
     @TypeConverter
     fun fromStringList(value: List<String>): String = value.joinToString(FIELD)
 
@@ -99,6 +108,19 @@ fun CardPrice.toEntity(cardId: String) = CardPriceEntity(
     updatedAt = updatedAt,
 )
 
+fun CardPrice.toObservation(cardId: String, observedAt: Long): CardPriceObservationEntity? =
+    market?.let { amount ->
+        CardPriceObservationEntity(
+            cardId = cardId,
+            source = source,
+            variant = variant,
+            currency = currency,
+            amount = amount,
+            observedAt = observedAt,
+            utcDay = Instant.ofEpochMilli(observedAt).atZone(ZoneOffset.UTC).toLocalDate(),
+        )
+    }
+
 fun CardPriceEntity.toPrice() = CardPrice(
     source = source,
     variant = variant,
@@ -122,6 +144,7 @@ fun CollectionItemEntity.toItem() = CollectionItem(
     variant = variant,
     pricePaid = pricePaidAmount?.let { Money(it, pricePaidCurrency.toCurrency()) },
     addedAt = addedAt,
+    revision = revision,
 )
 
 private fun String?.toCurrency(): Currency = Currency.valueOf(this ?: Currency.USD.name)

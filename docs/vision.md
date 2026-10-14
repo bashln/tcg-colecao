@@ -88,6 +88,10 @@ Decisões ainda em aberto, a confirmar com o usuário.
   `:core` para KMP na fatia da web. Recomendação, manter a S1 focada no
   Android e só então extrair, porque o `:core` já nasce sem Android.
 
+Status local. O Supabase CLI está conectado nesta máquina. Isso não escolhe o
+projeto Supabase de destino nem autoriza mudanças de esquema. A fatia U1 não
+acessa Supabase e não sincroniza coleções.
+
 ### Backend e sincronização, proposta
 
 O usuário já tem uma conta Supabase, do site dele. Decisão sugerida, usar
@@ -183,7 +187,8 @@ Cada fatia tem spec, plano e termina num app que roda.
 | --- | --- | --- |
 | S1 | Loop essencial, scan, API, preço, salvar e listar | Implementado e revisado. Pendente verificação em aparelho |
 | S2 | Valoração multi-mercado, USD/EUR, câmbio, variante | Backlog |
-| S3 | Snapshots de preço, Home, gráfico, Most Valuable | Backlog |
+| S3 | Snapshots de preço, Home, gráfico, Most Valuable | Em andamento. O Room já persiste snapshots diários. A atualização dos preços da coleção e o gráfico seguem pendentes. |
+| U1 | Coleção por expansão, progresso e cartas faltantes | Implementado localmente. Testes instrumentados validam cartas possuídas e faltantes nas telas de coleção e expansão. O catálogo completo exige rede e só cobre expansões já iniciadas na coleção. E1 adiciona edição local de uma posse exata por `CollectionItem.id`, com recusa de colisão e snapshot obsoleto; revisão independente sem achados. |
 | S4 | Profile e stats, selados e graduadas | Backlog |
 | S5 | Bulk actions e export, backup | Backlog |
 | S6 | Market movers e trade analyzer | Backlog |

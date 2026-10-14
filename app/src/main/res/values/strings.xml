@@ -30,6 +30,26 @@
     <string name="detail_variant">Variante</string>
     <string name="detail_condition">Condição</string>
     <string name="detail_quantity">Quantidade</string>
+    <string name="collection_edit_title">Editar carta</string>
+    <string name="collection_edit_save">Salvar alterações</string>
+    <string name="collection_edit_saving">Salvando alterações…</string>
+    <string name="collection_edit_saved">Alterações salvas</string>
+    <string name="collection_edit_price_paid">Preço pago (opcional)</string>
+    <string name="collection_edit_price_hint">Ex.: 12,50</string>
+    <string name="collection_edit_price_help">Deixe em branco se não souber quanto pagou.</string>
+    <string name="collection_edit_clear_price">Limpar preço pago</string>
+    <string name="collection_edit_price_invalid">Informe um valor válido, igual ou maior que zero.</string>
+    <string name="collection_edit_missing">Esta carta não está mais na sua coleção.</string>
+    <string name="collection_edit_load_error">Não foi possível carregar esta carta. Tente novamente.</string>
+    <string name="collection_edit_card_unavailable">Os dados da carta não estão disponíveis agora. Você ainda pode editar os dados da sua coleção.</string>
+    <string name="collection_edit_duplicate">Você já tem esta carta com a mesma variante e condição. Escolha outra combinação.</string>
+    <string name="collection_edit_stale">Esta posse mudou enquanto você editava. Seus dados continuam aqui. Recarregue para ver a versão atual antes de salvar.</string>
+    <string name="collection_edit_save_error">Não foi possível salvar as alterações. Tente novamente.</string>
+    <string name="collection_edit_reload">Recarregar dados</string>
+    <string name="collection_edit_retry">Tentar novamente</string>
+    <string name="collection_edit_back">Voltar à coleção</string>
+    <string name="collection_edit_choose_copy">Escolha a cópia que deseja editar</string>
+    <string name="common_cancel">Cancelar</string>
     <string name="detail_hp">HP %1$d</string>
     <string name="detail_save">Salvar na coleção</string>
     <string name="detail_saving">Salvando…</string>
@@ -41,8 +61,33 @@
     <string name="detail_no_attacks">Esta carta não possui ataques.</string>
 
     <string name="collection_title">Coleção</string>
+    <string name="collection_cards">Cartas</string>
+    <string name="collection_sets">Expansões</string>
+    <string name="collection_lens_owned">Tenho</string>
+    <string name="collection_lens_missing">Faltam</string>
     <string name="collection_total">Valor total</string>
     <string name="collection_search_label">Buscar na coleção</string>
+    <string name="collection_missing_search">Buscar carta ou expansão</string>
+    <string name="collection_sets_search">Buscar expansões</string>
+    <string name="collection_sets_empty_title">Nenhuma expansão ainda</string>
+    <string name="collection_sets_empty_body">Adicione cartas para ver o progresso das suas expansões.</string>
+    <plurals name="collection_set_owned_count">
+        <item quantity="one">%d carta distinta na coleção</item>
+        <item quantity="other">%d cartas distintas na coleção</item>
+    </plurals>
+    <string name="collection_set_loading">Carregando catálogo da expansão…</string>
+    <string name="collection_set_unavailable_title">Não foi possível carregar o catálogo</string>
+    <string name="collection_set_unavailable_body">Confira sua conexão e tente novamente. Suas cartas salvas continuam disponíveis abaixo.</string>
+    <string name="collection_set_retry">Tentar novamente</string>
+    <string name="collection_set_progress">%1$d de %2$d cartas desta expansão</string>
+    <string name="collection_set_filter_all">Todas</string>
+    <string name="collection_set_filter_owned">Tenho</string>
+    <string name="collection_set_filter_missing">Faltam</string>
+    <string name="collection_set_complete_title">Expansão completa</string>
+    <string name="collection_set_complete_body">Você já tem todas as cartas deste catálogo.</string>
+    <string name="collection_set_owned">Na coleção · x%1$d</string>
+    <string name="collection_set_missing">Toque para ver e adicionar</string>
+    <string name="collection_set_card_action">Ver detalhes de %1$s</string>
     <string name="collection_count">%1$d carta(s)</string>
     <string name="collection_loading">Carregando sua coleção…</string>
     <string name="collection_empty_title">Sua coleção está vazia</string>
@@ -51,6 +96,32 @@
     <string name="collection_no_results_title">Nenhuma carta encontrada</string>
     <string name="collection_no_results">Nenhuma carta corresponde a “%1$s”.</string>
     <string name="collection_clear_search">Limpar busca</string>
+    <string name="collection_missing_no_sets_title">Nenhuma expansão iniciada</string>
+    <string name="collection_missing_no_sets_body">Adicione uma carta à coleção para descobrir o que falta na expansão.</string>
+    <string name="collection_missing_checking">Consultando as expansões da sua coleção…</string>
+    <string name="collection_missing_waiting">Identificando cartas faltantes…</string>
+    <string name="collection_missing_scope">Somente expansões com cartas salvas na coleção entram nesta busca.</string>
+    <string name="collection_missing_pending">Consultando %1$d expansões…</string>
+    <string name="collection_missing_pending_set">Aguardando catálogo: %1$s</string>
+    <string name="collection_missing_owned_summary">Você tem %1$d cartas diferentes em %2$d cópias salvas.</string>
+    <string name="collection_missing_failed_title">Não foi possível consultar</string>
+    <string name="collection_missing_retry_all">Tentar novamente nas expansões indisponíveis</string>
+    <string name="collection_missing_unavailable_title">Não foi possível identificar faltantes</string>
+    <string name="collection_missing_unavailable_body">Cartas diferentes: %1$d · Cópias salvas: %2$d. Confira sua conexão e tente novamente. Suas cartas continuam disponíveis em Tenho.</string>
+    <string name="collection_missing_no_results_title">Nenhuma carta encontrada</string>
+    <string name="collection_missing_none_body">Você não tem cartas faltantes nos catálogos verificados.</string>
+    <string name="collection_missing_no_results">Nenhuma carta faltante corresponde a “%1$s” nas expansões verificadas.</string>
+    <string name="collection_missing_catalog_mismatch">Algumas cartas salvas não aparecem neste catálogo. Elas continuam na coleção e não contam como faltantes.</string>
+    <string name="collection_missing_card_subtitle">Nº %1$s · %2$s · toque para ver e adicionar</string>
+    <string name="collection_missing_all_complete">Nenhuma carta faltando nos catálogos verificados.</string>
+    <plurals name="collection_missing_confirmed_partial">
+        <item quantity="one">%1$d carta faltante confirmada · %2$d de %3$d expansões verificadas</item>
+        <item quantity="other">%1$d cartas faltantes confirmadas · %2$d de %3$d expansões verificadas</item>
+    </plurals>
+    <plurals name="collection_missing_confirmed_complete">
+        <item quantity="one">%1$d carta faltante nas expansões verificadas</item>
+        <item quantity="other">%1$d cartas faltantes nas expansões verificadas</item>
+    </plurals>
 
     <string name="common_no_price">Sem preço</string>
     <string name="common_price_tcgplayer">TCGplayer</string>
@@ -75,6 +146,7 @@
     <string name="cd_gallery_button">Escolher da galeria</string>
     <string name="cd_close_search">Fechar busca por nome</string>
     <string name="cd_clear_search">Limpar busca</string>
+    <string name="cd_close_set">Voltar para expansões</string>
     <string name="cd_open_card">Ver detalhes da carta</string>
     <string name="cd_back">Voltar</string>
 
@@ -85,8 +157,13 @@
     <string name="home_stat_sets">Sets</string>
     <string name="home_most_valuable">Mais valiosas</string>
     <string name="home_chart_title">Histórico de preços</string>
-    <string name="home_chart_soon">Em breve</string>
-    <string name="home_chart_placeholder">O gráfico aparece quando o app guardar o primeiro histórico de preços.</string>
+    <string name="home_chart_disclosure">Estimativa das cartas e quantidades que você tem hoje, usando as cotações que este app salvou em cada data. Não é o valor histórico da sua coleção nem a data de atualização do mercado.</string>
+    <string name="home_chart_loading">Carregando cotações salvas…</string>
+    <string name="home_chart_error">Não foi possível abrir o histórico de preços.</string>
+    <string name="home_chart_empty">Ainda não há cotações salvas para esta fonte e estas variantes.</string>
+    <string name="home_chart_coverage">%1$d de %2$d unidades com cotação</string>
+    <string name="home_chart_old_capture">%1$d unidades usam uma cotação salva há mais de 7 dias.</string>
+    <string name="home_chart_one_day">Primeiro registro em %1$s. A tendência aparece após outro dia de captura.</string>
     <string name="home_loading">Carregando seu resumo…</string>
     <string name="home_empty_title">Sua coleção está vazia</string>
     <string name="home_empty_body">Escaneie sua primeira carta para ver o valor e os destaques aqui.</string>
@@ -106,4 +183,101 @@
     <string name="profile_empty_title">Ainda não há estatísticas</string>
     <string name="profile_empty_body">Escaneie uma carta para acompanhar valor, quantidade e detalhes da sua coleção.</string>
     <string name="profile_empty_action">Escanear uma carta</string>
+
+    <string name="account_title">Sua conta</string>
+    <string name="account_intro">A conta é opcional. Sua coleção fica salva neste aparelho e funciona offline. Entre ou crie uma conta para poder sincronizar depois.</string>
+    <string name="account_email">E-mail</string>
+    <string name="account_password">Senha</string>
+    <string name="account_sign_in">Entrar</string>
+    <string name="account_sign_up">Criar conta</string>
+    <string name="account_switch_to_sign_up">Novo por aqui? Criar conta</string>
+    <string name="account_switch_to_sign_in">Já tenho conta. Entrar</string>
+    <string name="account_verification_sent">Enviamos um e-mail de confirmação para %1$s. Confirme para ativar a conta.</string>
+    <string name="account_local_only">Sua coleção está apenas neste aparelho. Ative a sincronização para guardar uma cópia na sua conta.</string>
+    <string name="account_activate_sync">Ativar sincronização</string>
+    <string name="account_linked">Sincronização ativada. Sua coleção é salva na conta e neste aparelho.</string>
+    <string name="account_sign_out">Sair da conta</string>
+    <string name="account_link_preview_title">Sincronizar com sua conta?</string>
+    <string name="account_link_preview_intro">Nada foi enviado até agora. Confira o que acontece ao confirmar:</string>
+    <string name="account_link_blocked_body">Resolva as linhas acima antes de vincular. Nada foi enviado e sua coleção local não mudou.</string>
+    <string name="account_link_footer">Ao confirmar, a coleção local passa a ser sincronizada com esta conta. Você pode sair da conta depois sem apagar as cartas deste aparelho.</string>
+    <string name="account_link_confirm">Confirmar e sincronizar</string>
+    <string name="account_link_cancel">Cancelar</string>
+    <string name="account_dismiss_error">Fechar</string>
+    <string name="account_error_invalid_credentials">E-mail ou senha incorretos.</string>
+    <string name="account_error_email_registered">Já existe uma conta com este e-mail.</string>
+    <string name="account_error_email_not_confirmed">Confirme o e-mail antes de entrar.</string>
+    <string name="account_error_network">Sem conexão. Tente de novo.</string>
+    <string name="account_error_unknown">Não foi possível continuar. Tente de novo.</string>
+    <string name="account_error_link_blocked">A prévia encontrou linhas que precisam da sua atenção. Revise e tente de novo.</string>
+    <string name="account_sync_idle">Verificando sincronização…</string>
+    <string name="account_sync_running">Sincronizando com a conta…</string>
+    <string name="account_sync_running_button">Sincronizando…</string>
+    <string name="account_sync_synced">Sincronizado. Nenhuma alteração pendente.</string>
+    <string name="account_sync_now">Sincronizar agora</string>
+    <string name="account_sync_offline">Sem conexão agora. %1$d alterações ficam pendentes e serão enviadas quando a conexão voltar. Nada foi perdido.</string>
+    <string name="account_sync_error">Não foi possível sincronizar agora. %1$d alterações continuam pendentes e nada foi perdido.</string>
+    <string name="account_sync_count_unavailable">Não foi possível verificar quantas alterações aguardam envio. Sua coleção local permanece segura; tente sincronizar novamente.</string>
+    <string name="account_sync_conflict_row">• %1$s: %2$s</string>
+    <string name="account_sync_conflict_values">Local: %1$s. Nuvem: %2$s.</string>
+    <string name="account_sync_value_absent">sem posse</string>
+    <string name="account_sync_keep_local">Manter minha coleção</string>
+    <string name="account_sync_keep_cloud">Usar versão da nuvem</string>
+    <plurals name="account_sync_pending">
+        <item quantity="one">%1$d alteração aguardando envio</item>
+        <item quantity="other">%1$d alterações aguardando envio</item>
+    </plurals>
+    <plurals name="account_sync_conflicts">
+        <item quantity="one">%1$d conflito de sincronização precisa da sua atenção. A posse continuou local e pendente.</item>
+        <item quantity="other">%1$d conflitos de sincronização precisam da sua atenção. As posses continuaram locais e pendentes.</item>
+    </plurals>
+    <string name="account_error_link_stale">A prévia ficou desatualizada. Gere uma nova prévia para continuar.</string>
+    <string name="account_error_link_partial">A nuvem pode já ter recebido itens da prévia, mas este aparelho não concluiu o vínculo. Gere uma nova prévia e confira conflitos antes de confirmar novamente.</string>
+
+    <plurals name="account_link_local_only">
+        <item quantity="one">%1$d posse só neste aparelho será enviada para a conta</item>
+        <item quantity="other">%1$d posses só neste aparelho serão enviadas para a conta</item>
+    </plurals>
+    <plurals name="account_link_cloud_only">
+        <item quantity="one">%1$d posse só na nuvem será adicionada aqui</item>
+        <item quantity="other">%1$d posses só na nuvem serão adicionadas aqui</item>
+    </plurals>
+    <plurals name="account_link_identical">
+        <item quantity="one">%1$d posse já existe idêntica nas duas pontas</item>
+        <item quantity="other">%1$d posses já existem idênticas nas duas pontas</item>
+    </plurals>
+    <plurals name="account_link_conflicting">
+        <item quantity="one">%1$d posse tem uma versão diferente na nuvem</item>
+        <item quantity="other">%1$d posses têm versões diferentes na nuvem</item>
+    </plurals>
+    <plurals name="account_link_duplicates">
+        <item quantity="one">%1$d posse repetiria uma configuração que já existe na nuvem</item>
+        <item quantity="other">%1$d posses repetiriam configurações que já existem na nuvem</item>
+    </plurals>
+
+    <string name="update_title">Atualizações</string>
+    <string name="update_intro">Veja se há uma versão nova do app. As atualizações vêm do repositório público no GitHub.</string>
+    <string name="update_check">Procurar atualização</string>
+    <string name="update_checking">Procurando atualização…</string>
+    <string name="update_no_update">Você já está na versão mais recente (%1$s).</string>
+    <string name="update_available_title">Versão nova disponível: %1$s</string>
+    <string name="update_release_notes">Notas desta versão</string>
+    <string name="update_download">Baixar atualização</string>
+    <string name="update_downloading">Baixando atualização…</string>
+    <string name="update_progress">Baixado: %1$s de %2$s</string>
+    <string name="update_cancel">Cancelar</string>
+    <string name="update_install_ready">Download concluído. Toque para instalar a versão %1$s.</string>
+    <string name="update_install">Instalar</string>
+    <string name="update_install_blocked">Não foi possível preparar a instalação deste pacote. Tente baixar de novo.</string>
+    <string name="update_needs_permission">Para instalar, permita que este app instale apps. Isso é usado só para atualizar. Depois de permitir, volte e toque em Instalar.</string>
+    <string name="update_open_settings">Abrir ajustes</string>
+    <string name="update_error_offline">Sem conexão. Verifique a internet e tente de novo.</string>
+    <string name="update_error_rate_limited">Muitas consultas agora. Tente de novo em instantes.</string>
+    <string name="update_error_download">Não foi possível baixar. Tente de novo.</string>
+    <string name="update_error_metadata">Não foi possível verificar a atualização. Tente de novo.</string>
+    <string name="update_incompatible">Este pacote não pode ser instalado sobre a versão atual.</string>
+    <string name="update_retry">Tentar de novo</string>
+    <string name="update_dismiss">Fechar</string>
+    <string name="update_source_note">O Android pode mostrar um aviso de segurança para apps fora da Play Store. Confirme que o pacote vem do repositório público do projeto antes de instalar. Esse aviso é do sistema e não é removido por este app.</string>
+    <string name="update_progress_label">Progresso do download</string>
 </resources>

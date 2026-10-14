@@ -14,6 +14,15 @@ data class Attack(val name: String, val cost: List<String>, val damage: String?,
 
 data class SetInfo(val id: String, val name: String, val series: String?, val releaseDate: String?)
 
+data class SetCatalog(val setId: String, val cards: List<Card>) {
+    init {
+        require(setId.isNotBlank())
+        require(cards.isNotEmpty())
+        require(cards.all { it.setId == setId })
+        require(cards.map { it.id }.distinct().size == cards.size)
+    }
+}
+
 data class CardPrice(
     val source: PriceSource, val variant: CardVariant, val currency: Currency,
     val market: Double?, val low: Double?, val mid: Double?, val high: Double?,
