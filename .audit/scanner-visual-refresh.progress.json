@@ -1,0 +1,24 @@
+{
+  "task": "Finish Android scanner visual refresh, stable automatic capture, and continuous flash for dark-room card reading",
+  "status": "complete_device_verified",
+  "completed_steps": [
+    "Reproduced unstable OCR identities on the SM-A325M; ML Kit merged BASIC label noise into Meowth name and parsed a false collector number",
+    "Added OCR regression test; observed RED before parser fix and GREEN after stripping merged uppercase stage labels",
+    "Changed auto-capture identity to the recognized card name and fuzzy frame-to-frame stability; added tests for OCR noise, unrelated cards, resets, and one-shot emission",
+    "Captured real Meowth from live camera automatically after stable OCR; comparison showed correct catalog match and collector number 161 with 10 alternatives",
+    "Flash defaults on when camera reports a flash unit; accessible toggle can switch off/on; device screenshot confirmed light level changes and labels update",
+    "Room migration 7-to-8 preserves rows and original device database remains at schema 8 after in-place installs",
+    "core:test, app:testDebugUnitTest, app:assembleDebug passed; XML reports 381 tests, zero failures/errors; git diff --check passed",
+    "Resolved all three Important review findings: true LCS tolerance for short-name OCR errors, stage-label prefix constrained to OCR label variants, manual-search reveal now suspends auto-capture",
+    "Cleared stale CollectionItemEditNavigationTest fixture setup; compileDebugAndroidTestKotlin now succeeds without installing/running instrumentation",
+    "Committed scanner work, opened PR #2, and fixed the short-name OCR pendency (single edit tolerated for names under the LCS threshold) with RED->GREEN tests"
+  ],
+  "pending_steps": [
+    "None required; remaining review items are optional (dedicated analyzer recognizer, migration 7->8 against a populated v7 DB)."
+  ],
+  "notes": [
+    "Captured UI evidence: /tmp/opencode/scanner-visual-refresh/scanner-auto-capture-confirm.png; flash off: /tmp/opencode/scanner-visual-refresh/scanner-flash-off-final.png; flash restored: /tmp/opencode/scanner-visual-refresh/scanner-flash-restored.png",
+    "CompileDebugAndroidTestKotlin succeeds, but connected instrumentation runner intentionally remains unused because it uninstalls app; device tests were manual",
+    "No connected instrumentation runner, data wipe, uninstall, commit, push, deploy, or release performed"
+  ]
+}

@@ -8,7 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class, SyncConflictEntity::class],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -122,6 +122,54 @@ abstract class TcgDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `resolutionChoice` TEXT")
                 db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `resolutionResult` TEXT")
                 db.execSQL("ALTER TABLE `sync_conflict_records` ADD COLUMN `resolutionApplied` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE `sync_conflict_records_new` (
+                        `id` TEXT NOT NULL,
+                        `identity` TEXT NOT NULL,
+                        `sequence` INTEGER NOT NULL,
+                        `itemId` TEXT NOT NULL,
+                        `reason` TEXT NOT NULL,
+                        `localPayload` TEXT,
+                        `remotePayload` TEXT NOT NULL,
+                        `resolution` TEXT,
+                        `resolutionOperationId` TEXT,
+                        `resolutionOperation` TEXT,
+                        `resolvedAt` INTEGER,
+                        `source` TEXT NOT NULL DEFAULT 'pull',
+                        `serverConflictId` TEXT,
+                        `opId` TEXT,
+                        `rejectedOperation` TEXT,
+                        `cloudItem` TEXT,
+                        `conflictingItem` TEXT,
+                        `observedHighWater` INTEGER,
+                        `resolutionId` TEXT,
+                        `resolutionChoice` TEXT,
+                        `resolutionResult` TEXT,
+                        `resolutionApplied` INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(`id`)
+                    )""".trimIndent(),
+                )
+                db.execSQL(
+                    """INSERT INTO `sync_conflict_records_new` (
+                        `id`, `identity`, `sequence`, `itemId`, `reason`, `localPayload`, `remotePayload`,
+                        `resolution`, `resolutionOperationId`, `resolutionOperation`, `resolvedAt`, `source`,
+                        `serverConflictId`, `opId`, `rejectedOperation`, `cloudItem`, `conflictingItem`,
+                        `observedHighWater`, `resolutionId`, `resolutionChoice`, `resolutionResult`, `resolutionApplied`
+                    ) SELECT
+                        `id`, `identity`, `sequence`, `itemId`, `reason`, `localPayload`, `remotePayload`,
+                        `resolution`, `resolutionOperationId`, `resolutionOperation`, `resolvedAt`, `source`,
+                        `serverConflictId`, `opId`, `rejectedOperation`, `cloudItem`, `conflictingItem`,
+                        `observedHighWater`, `resolutionId`, `resolutionChoice`, `resolutionResult`, `resolutionApplied`
+                    FROM `sync_conflict_records`""".trimIndent(),
+                )
+                db.execSQL("DROP TABLE `sync_conflict_records`")
+                db.execSQL("ALTER TABLE `sync_conflict_records_new` RENAME TO `sync_conflict_records`")
+                db.execSQL("CREATE INDEX `index_sync_conflict_records_identity` ON `sync_conflict_records` (`identity`)")
             }
         }
     }

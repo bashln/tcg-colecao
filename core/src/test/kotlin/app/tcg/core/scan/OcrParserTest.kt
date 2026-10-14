@@ -74,6 +74,25 @@ class OcrParserTest {
         assertEquals("Furret", r.name)
     }
 
+    @Test fun removes_merged_stage_label_from_card_name_line() {
+        assertEquals(
+            "Meowth da Equipe Rocket",
+            OcrParser.parse(lines("CASS Meowth da Equipe Rocket")).name,
+        )
+        assertEquals(
+            "Meowth da Equipe Rocket",
+            OcrParser.parse(lines("GASMeowth da Equipe Rocket")).name,
+        )
+        assertEquals(
+            "MEOWTH da Equipe Rocket",
+            OcrParser.parse(lines("MEOWTH da Equipe Rocket")).name,
+        )
+        assertEquals(
+            "Meowth da Equipe Rocket",
+            OcrParser.parse(lines("gasMeowth da Equipe Rocket")).name,
+        )
+    }
+
     @Test fun extracts_hp() {
         assertEquals(110, OcrParser.parse(lines("Furret", "HP 110")).hp)
     }
@@ -276,4 +295,3 @@ class OcrParserTest {
         assertNull(OcrParser.parse(lines).collectorNumber)
     }
 }
-

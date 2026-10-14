@@ -60,7 +60,7 @@ data class SyncCursorEntity(
     val lastSequence: Long,
 )
 
-@Entity(tableName = "sync_conflict_records")
+@Entity(tableName = "sync_conflict_records", indices = [Index(value = ["identity"])])
 data class SyncConflictEntity(
     @PrimaryKey val id: String,
     val identity: String,
@@ -73,7 +73,7 @@ data class SyncConflictEntity(
     val resolutionOperationId: String? = null,
     val resolutionOperation: String? = null,
     val resolvedAt: Long? = null,
-    val source: String = "pull",
+    @ColumnInfo(defaultValue = "'pull'") val source: String = "pull",
     val serverConflictId: String? = null,
     val opId: String? = null,
     val rejectedOperation: String? = null,
@@ -83,7 +83,7 @@ data class SyncConflictEntity(
     val resolutionId: String? = null,
     val resolutionChoice: String? = null,
     val resolutionResult: String? = null,
-    val resolutionApplied: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val resolutionApplied: Boolean = false,
 )
 
 @Entity(

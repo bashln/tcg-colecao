@@ -1,0 +1,21 @@
+{
+  "errors": [
+    {
+      "error": "Automatic capture did not fire with exact parsed name+collector identity because preview OCR varied title prefixes and misread collector number as 3",
+      "attempts": 2,
+      "failed_approaches": [
+        "Require exact parser name and collector number for live preview stability",
+        "Filter OCR lines to estimated guide bounds; physical preview still included merged label/title and footer OCR remained unreliable"
+      ],
+      "solution": "Strip merged uppercase stage-label prefixes in OcrParser and stabilize on the card-name string with bounded common-substring similarity; captured full-resolution image then returned correct 161 match for human confirmation"
+    },
+    {
+      "error": "Torch toggle immediately returned to on after user selected off",
+      "attempts": 1,
+      "failed_approaches": [
+        "Report torch availability inside effect keyed by torchEnabled, which re-applied the default on-state after every toggle"
+      ],
+      "solution": "Separate one-time capability detection keyed by boundCamera from torch application keyed by boundCamera+torchEnabled; physical device confirms off and on transitions"
+    }
+  ]
+}
