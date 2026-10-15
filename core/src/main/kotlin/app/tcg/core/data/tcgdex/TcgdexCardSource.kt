@@ -15,6 +15,8 @@ import kotlinx.serialization.json.JsonObject
 interface TcgdexCardSource {
     suspend fun searchByName(name: String, language: String = "pt"): List<Card>
     suspend fun searchByNumber(setId: String?, collectorNumber: String, language: String = "pt"): List<Card>
+    suspend fun searchByNumbers(collectorNumbers: Set<String>, language: String = "pt"): List<Card> =
+        collectorNumbers.flatMap { searchByNumber(null, it, language) }.distinctBy(Card::id)
     suspend fun getCard(id: String, language: String = "pt"): Card?
     suspend fun getSetCatalog(setId: String, language: String = "pt"): SetCatalog
 }
@@ -37,6 +39,21 @@ class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSourc
             if (cards.isNotEmpty()) return cards
         }
         return emptyList()
+    }
+
+    override suspend fun searchByNumbers(collectorNumbers: Set<String>, language: String): List<Card> {
+        val localIds = collectorNumbers.flatMap { number ->
+            val stripped = number.trimStart('0').ifEmpty { "0" }
+            listOf(number, stripped) + if (number.startsWith('0')) {
+                emptyList()
+            } else {
+                listOf(number.padStart(3, '0'))
+            }
+        }.distinct()
+        if (localIds.isEmpty()) return emptyList()
+        return search(language, "cards") {
+            parameter("localId", localIds.joinToString(","))
+        }
     }
 
     private fun localIdCandidates(collectorNumber: String): List<String> {

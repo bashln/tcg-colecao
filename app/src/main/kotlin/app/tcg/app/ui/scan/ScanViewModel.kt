@@ -8,6 +8,8 @@ import app.tcg.core.domain.model.ParsedCardText
 import app.tcg.core.domain.model.Scored
 import app.tcg.core.scan.CandidateRanker
 import app.tcg.core.scan.OcrParser
+import app.tcg.core.scan.matchPrintedCardNumbers
+import app.tcg.core.scan.parsePrintedCardNumbers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +21,8 @@ data class ScanUiState(
     val loading: Boolean = false,
     val error: String? = null,
     val manualSearch: Boolean = false,
+    val batchSearchCount: Int? = null,
+    val unmatchedPrintedIds: List<String> = emptyList(),
 )
 
 class ScanViewModel(
@@ -34,8 +38,43 @@ class ScanViewModel(
     }
 
     suspend fun onManualSearch(name: String) {
-        _state.update { it.copy(candidates = emptyList()) }
-        search(ParsedCardText(name = name, collectorNumber = null, promoCode = null, hp = null, rawText = name))
+        _state.update { it.copy(candidates = emptyList(), batchSearchCount = null, unmatchedPrintedIds = emptyList()) }
+        val references = parsePrintedCardNumbers(name)
+        if (references == null) {
+            search(ParsedCardText(name = name, collectorNumber = null, promoCode = null, hp = null, rawText = name))
+            return
+        }
+
+        val requestGeneration = ++searchGeneration
+        _state.update { it.copy(loading = true, error = null, batchSearchCount = references.size) }
+        val result = try {
+            val cards = repository.searchByNumbers(references.map { it.localId }.toSet())
+            matchPrintedCardNumbers(references, cards)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            if (requestGeneration != searchGeneration) return
+            _state.update {
+                it.copy(
+                    loading = false,
+                    error = "Não foi possível buscar agora. Verifique sua conexão e tente de novo.",
+                    manualSearch = true,
+                    batchSearchCount = references.size,
+                )
+            }
+            return
+        }
+        if (requestGeneration != searchGeneration) return
+        _state.update {
+            it.copy(
+                candidates = result.cards.map { Scored(it, 0) },
+                loading = false,
+                error = null,
+                manualSearch = result.cards.isEmpty(),
+                batchSearchCount = references.size,
+                unmatchedPrintedIds = result.unmatchedReferences,
+            )
+        }
     }
 
     fun prepareForCapture() {
@@ -50,7 +89,7 @@ class ScanViewModel(
 
     private suspend fun search(parsed: ParsedCardText) {
         val requestGeneration = ++searchGeneration
-        _state.update { it.copy(loading = true, error = null) }
+        _state.update { it.copy(loading = true, error = null, batchSearchCount = null, unmatchedPrintedIds = emptyList()) }
         val collectorNumber = parsed.collectorNumber
         val name = parsed.name
         val ranked = try {

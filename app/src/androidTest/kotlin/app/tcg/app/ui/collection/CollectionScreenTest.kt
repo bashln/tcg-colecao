@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.tcg.app.ui.theme.TcgTheme
+import app.tcg.app.testutil.FakeCardListRepository
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.data.repository.SetCatalogResult
@@ -42,7 +43,7 @@ class CollectionScreenTest {
         val viewModel = CollectionViewModel(FakeCollectionRepository(listOf(entry(furret()))), FakeCardRepository())
         rule.setContent {
             TcgTheme {
-                CollectionScreen(viewModel = viewModel)
+                CollectionScreen(viewModel = viewModel, cardListRepository = FakeCardListRepository)
             }
         }
 
@@ -59,7 +60,7 @@ class CollectionScreenTest {
         val viewModel = CollectionViewModel(repository, FakeCardRepository())
         rule.setContent {
             TcgTheme {
-                CollectionScreen(viewModel = viewModel)
+                CollectionScreen(viewModel = viewModel, cardListRepository = FakeCardListRepository)
             }
         }
 
@@ -80,7 +81,7 @@ class CollectionScreenTest {
         val viewModel = CollectionViewModel(repository, FakeCardRepository())
         rule.setContent {
             TcgTheme {
-                CollectionScreen(viewModel = viewModel)
+                CollectionScreen(viewModel = viewModel, cardListRepository = FakeCardListRepository)
             }
         }
 
@@ -97,7 +98,7 @@ class CollectionScreenTest {
         val viewModel = CollectionViewModel(repository, FakeCardRepository())
         rule.setContent {
             TcgTheme {
-                CollectionScreen(viewModel = viewModel)
+                CollectionScreen(viewModel = viewModel, cardListRepository = FakeCardListRepository)
             }
         }
 
@@ -117,7 +118,7 @@ class CollectionScreenTest {
         val viewModel = CollectionViewModel(repository, cardRepository)
         rule.setContent {
             TcgTheme {
-                CollectionScreen(viewModel = viewModel)
+                CollectionScreen(viewModel = viewModel, cardListRepository = FakeCardListRepository)
             }
         }
 
@@ -144,7 +145,7 @@ class CollectionScreenTest {
         val selectedCardIds = mutableListOf<String>()
         rule.setContent {
             TcgTheme {
-                CollectionScreen(viewModel = viewModel, onCardSelected = selectedCardIds::add)
+                CollectionScreen(viewModel = viewModel, cardListRepository = FakeCardListRepository, onCardSelected = selectedCardIds::add)
             }
         }
 
@@ -165,7 +166,7 @@ class CollectionScreenTest {
             FakeCollectionRepository(listOf(entry(furret()), entry(secondSetCard))),
             FakeCardRepository(catalogResult = SetCatalogResult.Unavailable, pendingCatalog = pending),
         )
-        rule.setContent { TcgTheme { CollectionScreen(viewModel = viewModel) } }
+        rule.setContent { TcgTheme { CollectionScreen(viewModel = viewModel, cardListRepository = FakeCardListRepository) } }
 
         rule.onNodeWithText("Faltam").performClick()
         rule.waitUntil(timeoutMillis = 5_000) {
@@ -182,7 +183,7 @@ class CollectionScreenTest {
         val viewModel = CollectionViewModel(FakeCollectionRepository(), FakeCardRepository())
         rule.setContent {
             TcgTheme {
-                CollectionScreen(viewModel = viewModel, onScanClick = { scanClicks++ })
+                CollectionScreen(viewModel = viewModel, cardListRepository = FakeCardListRepository, onScanClick = { scanClicks++ })
             }
         }
 
@@ -197,7 +198,7 @@ class CollectionScreenTest {
             FakeCollectionRepository(listOf(entry(furret(), quantity = 3))),
             FakeCardRepository(),
         )
-        rule.setContent { TcgTheme { CollectionScreen(viewModel = viewModel) } }
+        rule.setContent { TcgTheme { CollectionScreen(viewModel = viewModel, cardListRepository = FakeCardListRepository) } }
 
         rule.onNodeWithText("Faltam").performClick()
         rule.waitUntil(timeoutMillis = 5_000) {
@@ -221,6 +222,7 @@ class CollectionScreenTest {
             TcgTheme {
                 CollectionScreen(
                     viewModel = viewModel,
+                    cardListRepository = FakeCardListRepository,
                     onCardSelected = { selectedCardIds.add(it) },
                     onCollectionItemSelected = { selectedItemIds.add(it) },
                 )
@@ -254,6 +256,7 @@ class CollectionScreenTest {
             TcgTheme {
                 CollectionScreen(
                     viewModel = viewModel,
+                    cardListRepository = FakeCardListRepository,
                     onCollectionItemSelected = { selectedItemIds.add(it) },
                 )
             }
@@ -275,6 +278,7 @@ class CollectionScreenTest {
             TcgTheme {
                 CollectionScreen(
                     viewModel = viewModel,
+                    cardListRepository = FakeCardListRepository,
                     onCollectionItemSelected = { selectedItemIds.add(it) },
                 )
             }
@@ -303,7 +307,7 @@ class CollectionScreenTest {
         val selectedItemIds = mutableListOf<String>()
         rule.setContent {
             TcgTheme {
-                CollectionScreen(viewModel = viewModel, onCollectionItemSelected = selectedItemIds::add)
+                CollectionScreen(viewModel = viewModel, cardListRepository = FakeCardListRepository, onCollectionItemSelected = selectedItemIds::add)
             }
         }
 

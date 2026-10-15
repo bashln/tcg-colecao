@@ -103,6 +103,22 @@ class ScanViewModelTest {
     }
 
     @Test
+    fun manual_batch_search_keeps_ambiguous_matches_and_reports_unmatched_ids() = runTest {
+        val firstSet = card("set-a-21", "Pikachu A", "021", null).copy(setTotal = 84)
+        val secondSet = card("set-b-21", "Pikachu B", "21", null).copy(setTotal = 84)
+        val wrongSetSize = card("set-c-21", "Pikachu C", "21", null).copy(setTotal = 85)
+        val repo = BatchCardRepository(listOf(firstSet, secondSet, wrongSetSize))
+        val vm = ScanViewModel(repo)
+
+        vm.onManualSearch("021/084, 022/084")
+
+        assertEquals(setOf("021", "022"), repo.requestedNumbers)
+        assertEquals(listOf(firstSet.id, secondSet.id), vm.state.value.candidates.map { it.value.id })
+        assertEquals(listOf("022/084"), vm.state.value.unmatchedPrintedIds)
+        assertEquals(2, vm.state.value.batchSearchCount)
+    }
+
+    @Test
     fun manual_search_replaces_previous_candidates() = runTest {
         val repo = FakeCardRepository(listOf(card("b", "Furret", "136", 110)))
         val vm = ScanViewModel(repo)
@@ -230,6 +246,23 @@ class ScanViewModelTest {
 
         override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> {
             calls += "number"
+            return result
+        }
+
+        override suspend fun getCard(id: String): Card? = result.firstOrNull { it.id == id }
+
+        override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
+    }
+
+    private class BatchCardRepository(private val result: List<Card>) : CardRepository {
+        var requestedNumbers: Set<String> = emptySet()
+
+        override suspend fun searchByName(name: String): List<Card> = emptyList()
+
+        override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> = emptyList()
+
+        override suspend fun searchByNumbers(collectorNumbers: Set<String>): List<Card> {
+            requestedNumbers = collectorNumbers
             return result
         }
 

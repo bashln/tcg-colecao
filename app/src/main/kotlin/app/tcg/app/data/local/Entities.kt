@@ -1,6 +1,7 @@
 package app.tcg.app.data.local
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.ColumnInfo
@@ -8,6 +9,7 @@ import androidx.room.Embedded
 import androidx.room.Relation
 import app.tcg.core.domain.model.Attack
 import app.tcg.core.domain.model.CardVariant
+import app.tcg.core.domain.model.CardListKind
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.PriceSource
@@ -137,6 +139,35 @@ data class CardPriceObservationEntity(
     val amount: Double,
     val observedAt: Long,
     val utcDay: LocalDate,
+)
+
+@Entity(tableName = "card_lists")
+data class CardListEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val kind: CardListKind,
+    val createdAt: Long,
+)
+
+@Entity(
+    tableName = "card_list_members",
+    primaryKeys = ["listId", "cardId"],
+    foreignKeys = [ForeignKey(
+        entity = CardListEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["listId"],
+        onDelete = ForeignKey.CASCADE,
+    )],
+    indices = [Index("cardId")],
+)
+data class CardListMemberEntity(val listId: String, val cardId: String, val addedAt: Long)
+
+data class CardListSummaryRow(
+    val id: String,
+    val name: String,
+    val kind: CardListKind,
+    val createdAt: Long,
+    val cardCount: Int,
 )
 
 /** Reactive row: a collection item joined to its mirrored card. */

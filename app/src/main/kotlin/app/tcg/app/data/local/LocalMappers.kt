@@ -3,6 +3,8 @@ package app.tcg.app.data.local
 import androidx.room.TypeConverter
 import app.tcg.core.domain.model.Attack
 import app.tcg.core.domain.model.Card
+import app.tcg.core.domain.model.CardList
+import app.tcg.core.domain.model.CardListSummary
 import app.tcg.core.domain.model.CardPrice
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.CollectionItem
@@ -90,6 +92,13 @@ fun CardEntity.toCard(prices: List<CardPriceEntity>): Card = Card(
     variants = variants,
     prices = prices.map(CardPriceEntity::toPrice),
     setTotal = setTotal,
+)
+
+fun CardListEntity.toList() = CardList(id, name, kind, createdAt)
+
+fun CardListSummaryRow.toSummary() = CardListSummary(
+    CardList(id, name, kind, createdAt),
+    cardCount,
 )
 
 fun CardPrice.toEntity(cardId: String) = CardPriceEntity(

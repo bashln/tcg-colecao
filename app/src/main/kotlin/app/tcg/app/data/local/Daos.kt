@@ -30,6 +30,9 @@ abstract class CardDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun upsert(card: CardEntity)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract suspend fun insertIfAbsent(card: CardEntity): Long
+
     @Query("SELECT * FROM card_prices WHERE cardId = :cardId")
     abstract suspend fun pricesFor(cardId: String): List<CardPriceEntity>
 
@@ -50,9 +53,8 @@ abstract class CardDao {
         currency: Currency,
     ): List<CardPriceObservationEntity>
 
-    @Transaction
     open suspend fun cacheCard(card: Card) {
-        persistCard(card, emptyList())
+        upsert(card.toEntity())
     }
 
     @Transaction
@@ -68,6 +70,36 @@ abstract class CardDao {
         if (prices.isNotEmpty()) upsertPrices(prices)
         if (observations.isNotEmpty()) upsertPriceObservations(observations)
     }
+}
+
+@Dao
+interface CardListDao {
+    @Query("SELECT l.id, l.name, l.kind, l.createdAt, COUNT(m.cardId) AS cardCount FROM card_lists l LEFT JOIN card_list_members m ON l.id = m.listId GROUP BY l.id ORDER BY l.createdAt DESC, l.id")
+    fun observeLists(): Flow<List<CardListSummaryRow>>
+
+    @Query("SELECT * FROM card_lists WHERE id = :id")
+    fun observeList(id: String): Flow<CardListEntity?>
+
+    @Query("SELECT c.* FROM cards c INNER JOIN card_list_members m ON c.id = m.cardId WHERE m.listId = :id ORDER BY m.addedAt DESC, m.cardId")
+    fun observeCards(id: String): Flow<List<CardEntity>>
+
+    @Query("SELECT id FROM card_lists WHERE id IN (:ids)")
+    suspend fun existingIds(ids: Set<String>): List<String>
+
+    @Insert
+    suspend fun insertList(list: CardListEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMember(member: CardListMemberEntity): Long
+
+    @Query("UPDATE card_lists SET name = :name WHERE id = :id")
+    suspend fun rename(id: String, name: String): Int
+
+    @Query("DELETE FROM card_lists WHERE id = :id")
+    suspend fun delete(id: String): Int
+
+    @Query("DELETE FROM card_list_members WHERE listId = :listId AND cardId = :cardId")
+    suspend fun removeCard(listId: String, cardId: String)
 }
 
 @Dao

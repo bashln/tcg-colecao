@@ -33,6 +33,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -61,6 +62,8 @@ import app.tcg.app.ui.components.SectionHeader
 import app.tcg.app.ui.components.conditionLabel
 import app.tcg.app.ui.components.joinNonBlank
 import app.tcg.app.ui.components.variantLabel
+import app.tcg.app.ui.lists.CardListPicker
+import app.tcg.core.data.repository.CardListRepository
 import app.tcg.core.domain.model.Attack
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.CardVariant
@@ -74,6 +77,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun CardDetailScreen(
     viewModel: CardDetailViewModel,
+    cardListRepository: CardListRepository,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
     onSaved: () -> Unit = {},
@@ -82,6 +86,7 @@ fun CardDetailScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var saving by remember { mutableStateOf(false) }
+    var showListPicker by remember { mutableStateOf(false) }
     val savedMessage = stringResource(R.string.detail_saved)
     val saveErrorMessage = stringResource(R.string.detail_save_error)
     val card = state.card
@@ -171,12 +176,29 @@ fun CardDetailScreen(
                         }
                     }
                 }
+                item {
+                    OutlinedButton(
+                        onClick = { showListPicker = true },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) {
+                        Icon(Icons.Outlined.BookmarkAdd, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.detail_add_to_lists))
+                    }
+                }
             }
             SnackbarHost(
                 hostState = snackbarHostState,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
             )
         }
+    }
+    if (showListPicker) {
+        CardListPicker(
+            cards = listOf(card),
+            repository = cardListRepository,
+            onDismiss = { showListPicker = false },
+        )
     }
 }
 

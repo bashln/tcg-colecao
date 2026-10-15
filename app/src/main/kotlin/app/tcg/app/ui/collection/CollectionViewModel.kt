@@ -26,7 +26,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
-enum class CollectionSection { CARDS, SETS }
+enum class CollectionSection { CARDS, SETS, LISTS }
 
 enum class OwnershipFilter { ALL, OWNED, MISSING }
 

@@ -66,6 +66,7 @@ import app.tcg.app.ui.update.UpdateViewModel
 import app.tcg.app.update.UpdateCoordinator
 import app.tcg.app.update.UpdateInstaller
 import app.tcg.core.data.repository.CardRepository
+import app.tcg.core.data.repository.CardListRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.domain.model.Card
 import kotlinx.coroutines.launch
@@ -92,6 +93,7 @@ private object Routes {
 fun AppNav(
     cardRepository: CardRepository,
     collectionRepository: CollectionRepository,
+    cardListRepository: CardListRepository,
     authController: AuthController,
     syncLinkRepository: SyncLinkRepository,
     syncLinkCoordinator: SyncLinkCoordinator,
@@ -175,6 +177,7 @@ fun AppNav(
                 )
                 ScanScreen(
                     viewModel = viewModel,
+                    cardListRepository = cardListRepository,
                     onCardSelected = { card -> navController.navigate(Routes.cardDetail(card.id)) },
                     onExit = { navController.navigateToTopLevel(Routes.HOME) },
                 )
@@ -185,6 +188,7 @@ fun AppNav(
                 )
                 CollectionScreen(
                     viewModel = viewModel,
+                    cardListRepository = cardListRepository,
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
                     onCardSelected = { cardId -> navController.navigate(Routes.cardDetail(cardId)) },
                     onCollectionItemSelected = { itemId -> navController.navigate(Routes.collectionItemEdit(itemId)) },
@@ -270,6 +274,7 @@ fun AppNav(
                     cardId = entry.arguments?.getString(Routes.CARD_ID).orEmpty(),
                     cardRepository = cardRepository,
                     collectionRepository = collectionRepository,
+                    cardListRepository = cardListRepository,
                     onSaved = { navController.popBackStack() },
                 )
             }
@@ -299,6 +304,7 @@ private fun CardDetailRoute(
     cardId: String,
     cardRepository: CardRepository,
     collectionRepository: CollectionRepository,
+    cardListRepository: CardListRepository,
     onSaved: () -> Unit,
 ) {
     var card by remember(cardId) { mutableStateOf<Card?>(null) }
@@ -322,7 +328,12 @@ private fun CardDetailRoute(
                     initializer { CardDetailViewModel(resolved, collectionRepository) }
                 },
             )
-            CardDetailScreen(viewModel = viewModel, onBack = onSaved, onSaved = onSaved)
+            CardDetailScreen(
+                viewModel = viewModel,
+                cardListRepository = cardListRepository,
+                onBack = onSaved,
+                onSaved = onSaved,
+            )
         }
         else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             EmptyState(

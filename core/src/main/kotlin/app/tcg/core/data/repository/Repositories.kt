@@ -19,6 +19,8 @@ import java.time.LocalDate
 interface CardRepository {
     suspend fun searchByName(name: String): List<Card>
     suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card>
+    suspend fun searchByNumbers(collectorNumbers: Set<String>): List<Card> =
+        collectorNumbers.flatMap { searchByNumber(null, it) }.distinctBy(Card::id)
     suspend fun getCard(id: String): Card?
     suspend fun getSetCatalog(setId: String): SetCatalogResult
 }
