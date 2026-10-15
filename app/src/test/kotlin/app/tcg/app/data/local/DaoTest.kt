@@ -102,6 +102,17 @@ class DaoTest {
     }
 
     @Test
+    fun caching_search_result_preserves_existing_prices() = runTest {
+        val dao = db.cardDao()
+        val pricedCard = testCard("swsh3-136", prices = listOf(testPrice(0.27)))
+
+        dao.captureCardPrices(pricedCard, Instant.parse("2026-10-09T23:59:00Z").toEpochMilli())
+        dao.cacheCard(pricedCard.copy(prices = emptyList()))
+
+        assertEquals(listOf(testPrice(0.27)), dao.pricesFor(pricedCard.id).map { it.toPrice() })
+    }
+
+    @Test
     fun migration_2_3_creates_daily_observation_table() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val helper = FrameworkSQLiteOpenHelperFactory().create(
@@ -141,6 +152,56 @@ class DaoTest {
                     primaryKeyColumns,
                 )
             }
+        } finally {
+            helper.close()
+        }
+    }
+
+    @Test
+    fun migration_8_9_creates_normalized_lists_without_card_foreign_key() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(null)
+                .callback(
+                    object : SupportSQLiteOpenHelper.Callback(8) {
+                        override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) = Unit
+
+                        override fun onUpgrade(
+                            db: androidx.sqlite.db.SupportSQLiteDatabase,
+                            oldVersion: Int,
+                            newVersion: Int,
+                        ) = Unit
+                    },
+                )
+                .build(),
+        )
+
+        try {
+            val database = helper.writableDatabase
+            TcgDatabase.MIGRATION_8_9.migrate(database)
+
+            val foreignKeys = buildList {
+                database.query("PRAGMA foreign_key_list(`card_list_members`)").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        add(cursor.getString(cursor.getColumnIndexOrThrow("table")))
+                    }
+                }
+            }
+            val indices = buildList {
+                database.query("PRAGMA index_list(`card_list_members`)").use { cursor ->
+                    while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name")))
+                }
+            }
+
+            assertEquals(listOf("card_lists"), foreignKeys)
+            assertTrue(indices.contains("index_card_list_members_cardId"))
+            database.execSQL("INSERT INTO card_lists (id, name, kind, createdAt) VALUES ('wanted', 'Quero', 'WANTED', 1)")
+            database.execSQL("INSERT INTO card_list_members (listId, cardId, addedAt) VALUES ('wanted', 'un-cached-card', 1)")
+            assertEquals(1, database.query("SELECT COUNT(*) FROM card_list_members").use { cursor ->
+                cursor.moveToFirst()
+                cursor.getInt(0)
+            })
         } finally {
             helper.close()
         }

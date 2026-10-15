@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -46,6 +47,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -72,6 +74,8 @@ import app.tcg.app.ui.components.ErrorBanner
 import app.tcg.app.ui.components.SectionHeader
 import app.tcg.app.ui.components.formatMoney
 import app.tcg.app.ui.components.joinNonBlank
+import app.tcg.app.ui.lists.CardListPicker
+import app.tcg.core.data.repository.CardListRepository
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.PriceSource
 import app.tcg.core.domain.valuation.Valuation
@@ -82,6 +86,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ScanScreen(
     viewModel: ScanViewModel,
+    cardListRepository: CardListRepository,
     modifier: Modifier = Modifier,
     onCardSelected: (Card) -> Unit = {},
     onExit: () -> Unit = {},
@@ -98,6 +103,15 @@ fun ScanScreen(
     var torchAvailable by remember { mutableStateOf(false) }
     var torchEnabled by remember { mutableStateOf(false) }
     var torchError by remember { mutableStateOf(false) }
+    var selectingCards by remember { mutableStateOf(false) }
+    var selectedCardIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showListPicker by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.candidates.map { it.value.id }) {
+        val candidateIds = state.candidates.mapTo(mutableSetOf()) { it.value.id }
+        selectedCardIds = selectedCardIds.intersect(candidateIds)
+        if (candidateIds.isEmpty()) selectingCards = false
+    }
 
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
@@ -147,8 +161,24 @@ fun ScanScreen(
         },
         onCardSelected = { card ->
             capturedBitmap = null
-            onCardSelected(card)
+            if (selectingCards) {
+                selectedCardIds = if (card.id in selectedCardIds) selectedCardIds - card.id else selectedCardIds + card.id
+            } else {
+                onCardSelected(card)
+            }
         },
+        selectingCards = selectingCards,
+        selectedCardIds = selectedCardIds,
+        onSelectionModeChange = {
+            selectingCards = it
+            selectedCardIds = emptySet()
+        },
+        onToggleSelected = { id -> selectedCardIds = if (id in selectedCardIds) selectedCardIds - id else selectedCardIds + id },
+        onSelectAll = {
+            val allIds = state.candidates.mapTo(mutableSetOf()) { it.value.id }
+            selectedCardIds = if (selectedCardIds.containsAll(allIds)) emptySet() else allIds
+        },
+        onAssignSelected = { showListPicker = true },
         onExit = onExit,
         torchAvailable = torchAvailable,
         torchEnabled = torchEnabled,
@@ -184,6 +214,18 @@ fun ScanScreen(
             )
         },
     )
+    if (showListPicker) {
+        val selected = state.candidates.map { it.value }.filter { it.id in selectedCardIds }
+        if (selected.isNotEmpty()) CardListPicker(
+            cards = selected,
+            repository = cardListRepository,
+            onDismiss = {
+                showListPicker = false
+                selectingCards = false
+                selectedCardIds = emptySet()
+            },
+        )
+    }
 }
 
 /**
@@ -209,6 +251,12 @@ fun ScanContent(
     onToggleTorch: () -> Unit = {},
     modifier: Modifier = Modifier,
     cameraPreview: @Composable () -> Unit = {},
+    selectingCards: Boolean = false,
+    selectedCardIds: Set<String> = emptySet(),
+    onSelectionModeChange: (Boolean) -> Unit = {},
+    onToggleSelected: (String) -> Unit = {},
+    onSelectAll: () -> Unit = {},
+    onAssignSelected: () -> Unit = {},
 ) {
     // A failed scan must always surface the manual field; a manual reveal can be dismissed.
     val showManual = manualSearchRevealed || state.manualSearch
@@ -299,6 +347,9 @@ fun ScanContent(
                         title = stringResource(R.string.scan_candidates_title),
                         modifier = Modifier.weight(1f),
                     )
+                    TextButton(onClick = { onSelectionModeChange(!selectingCards) }) {
+                        Text(stringResource(if (selectingCards) R.string.collection_selection_cancel else R.string.scan_select_cards))
+                    }
                     Text(
                         text = stringResource(R.string.scan_candidates, state.candidates.size),
                         style = MaterialTheme.typography.labelMedium,
@@ -308,25 +359,85 @@ fun ScanContent(
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 ) {
+                    if (state.batchSearchCount != null) {
+                        item(key = "scan-batch-summary") { BatchSearchSummary(state) }
+                    }
+                    if (selectingCards) {
+                        item(key = "scan-selection-actions") {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(stringResource(R.string.scan_selection_count, selectedCardIds.size))
+                                TextButton(onClick = onSelectAll) {
+                                    Text(
+                                        stringResource(
+                                            if (state.candidates.all { it.value.id in selectedCardIds }) {
+                                                R.string.scan_deselect_all_results
+                                            } else {
+                                                R.string.scan_select_all_results
+                                            },
+                                        ),
+                                    )
+                                }
+                                Button(onClick = onAssignSelected, enabled = selectedCardIds.isNotEmpty()) {
+                                    Text(stringResource(R.string.scan_add_to_lists))
+                                }
+                            }
+                        }
+                    }
                     if (capturedBitmap != null) {
                         item(key = "scan-comparison") {
                             ScanComparison(capturedBitmap, state.candidates.first().value)
                         }
                     }
                     items(state.candidates, key = { it.value.id }) { scored ->
-                        CandidateCard(card = scored.value, onClick = { onCardSelected(scored.value) })
+                        CandidateCard(
+                            card = scored.value,
+                            onClick = { onCardSelected(scored.value) },
+                            selecting = selectingCards,
+                            selected = scored.value.id in selectedCardIds,
+                            onToggleSelected = { onToggleSelected(scored.value.id) },
+                        )
                     }
                 }
             }
-            showManual -> ManualSearchPanel(
-                query = manualQuery,
-                onQueryChange = onManualQueryChange,
-                onSearch = onManualSearch,
-                notFound = state.manualSearch,
-                onDismiss = dismiss,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+            showManual -> {
+                Column(Modifier.fillMaxWidth().weight(1f)) {
+                    if (state.batchSearchCount != null) BatchSearchSummary(state)
+                    ManualSearchPanel(
+                        query = manualQuery,
+                        onQueryChange = onManualQueryChange,
+                        onSearch = onManualSearch,
+                        notFound = state.manualSearch,
+                        onDismiss = dismiss,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+            }
             else -> Unit
+        }
+    }
+}
+
+@Composable
+private fun BatchSearchSummary(state: ScanUiState) {
+    val requested = state.batchSearchCount ?: return
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            stringResource(R.string.scan_batch_found, state.candidates.size, requested),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (state.unmatchedPrintedIds.isNotEmpty()) {
+            Text(
+                stringResource(R.string.scan_batch_unmatched, state.unmatchedPrintedIds.joinToString()),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -507,7 +618,8 @@ private fun ManualSearchPanel(
                             }
                         }
                     },
-                    singleLine = true,
+                    singleLine = false,
+                    maxLines = 3,
                     shape = MaterialTheme.shapes.medium,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { onSearch() }),
@@ -522,7 +634,13 @@ private fun ManualSearchPanel(
 }
 
 @Composable
-private fun CandidateCard(card: Card, onClick: () -> Unit) {
+private fun CandidateCard(
+    card: Card,
+    onClick: () -> Unit,
+    selecting: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelected: () -> Unit = {},
+) {
     val price = card.variants.firstOrNull()?.let {
         Valuation.itemValue(card, it, PriceSource.TCGPLAYER)
     }
@@ -530,7 +648,13 @@ private fun CandidateCard(card: Card, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 5.dp)
-            .clickable(onClickLabel = stringResource(R.string.cd_open_card), onClick = onClick),
+            .clickable(
+                onClickLabel = stringResource(
+                    if (selecting) R.string.scan_select_card_action else R.string.cd_open_card,
+                    card.name,
+                ),
+                onClick = if (selecting) onToggleSelected else onClick,
+            ),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
@@ -575,6 +699,9 @@ private fun CandidateCard(card: Card, onClick: () -> Unit) {
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
+            }
+            if (selecting) {
+                Checkbox(checked = selected, onCheckedChange = { onToggleSelected() })
             }
             Icon(
                 imageVector = Icons.Outlined.ChevronRight,

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.tcg.app.ui.theme.TcgTheme
+import app.tcg.app.testutil.FakeCardListRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.CardPrice
@@ -40,7 +41,7 @@ class CardDetailScreenTest {
         val viewModel = CardDetailViewModel(card(), FakeCollectionRepository())
         rule.setContent {
             TcgTheme {
-                CardDetailScreen(viewModel = viewModel)
+                CardDetailScreen(viewModel = viewModel, cardListRepository = FakeCardListRepository)
             }
         }
     }

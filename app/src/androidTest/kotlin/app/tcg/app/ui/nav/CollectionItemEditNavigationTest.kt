@@ -21,6 +21,7 @@ import app.tcg.app.auth.AuthSession
 import app.tcg.app.auth.RemoteAuth
 import app.tcg.app.auth.SessionStore
 import app.tcg.app.data.local.TcgDatabase
+import app.tcg.app.data.repository.RoomCardListRepository
 import app.tcg.app.data.sync.LinkCommitResult
 import app.tcg.app.data.sync.LinkOutcome
 import app.tcg.app.data.sync.LinkPreview
@@ -108,6 +109,11 @@ class CollectionItemEditNavigationTest {
                 AppNav(
                     cardRepository = FakeCardRepository(),
                     collectionRepository = repository,
+                    cardListRepository = RoomCardListRepository(
+                        requireNotNull(database),
+                        requireNotNull(database).cardListDao(),
+                        requireNotNull(database).cardDao(),
+                    ),
                     authController = auth,
                     syncLinkRepository = SyncLinkRepository(requireNotNull(database).collectionDao(), "test-device"),
                     syncLinkCoordinator = object : SyncLinkCoordinator {

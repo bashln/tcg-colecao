@@ -7,14 +7,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class, SyncConflictEntity::class],
-    version = 8,
+    entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class, SyncConflictEntity::class, CardListEntity::class, CardListMemberEntity::class],
+    version = 9,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
 abstract class TcgDatabase : RoomDatabase() {
     abstract fun cardDao(): CardDao
     abstract fun collectionDao(): CollectionDao
+    abstract fun cardListDao(): CardListDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -170,6 +171,14 @@ abstract class TcgDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE `sync_conflict_records`")
                 db.execSQL("ALTER TABLE `sync_conflict_records_new` RENAME TO `sync_conflict_records`")
                 db.execSQL("CREATE INDEX `index_sync_conflict_records_identity` ON `sync_conflict_records` (`identity`)")
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `card_lists` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `kind` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `card_list_members` (`listId` TEXT NOT NULL, `cardId` TEXT NOT NULL, `addedAt` INTEGER NOT NULL, PRIMARY KEY(`listId`, `cardId`), FOREIGN KEY(`listId`) REFERENCES `card_lists`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_card_list_members_cardId` ON `card_list_members` (`cardId`)")
             }
         }
     }

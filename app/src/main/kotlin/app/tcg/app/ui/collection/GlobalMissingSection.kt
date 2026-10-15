@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,6 +37,9 @@ fun ColumnScope.GlobalMissingSection(
     onRetry: (String?) -> Unit,
     onClearSearch: () -> Unit,
     onCardSelected: (String) -> Unit,
+    selectingCards: Boolean = false,
+    selectedCardIds: Set<String> = emptySet(),
+    onToggleCard: (String) -> Unit = {},
 ) {
     when (val overview = state.globalMissing) {
         GlobalMissingState.NoStartedSets -> EmptyState(
@@ -64,6 +68,9 @@ fun ColumnScope.GlobalMissingSection(
             onRetry = onRetry,
             onClearSearch = onClearSearch,
             onCardSelected = onCardSelected,
+            selectingCards = selectingCards,
+            selectedCardIds = selectedCardIds,
+            onToggleCard = onToggleCard,
         )
         is GlobalMissingState.Unavailable -> EmptyState(
             icon = Icons.Outlined.SearchOff,
@@ -90,6 +97,9 @@ fun ColumnScope.GlobalMissingSection(
             onRetry = onRetry,
             onClearSearch = onClearSearch,
             onCardSelected = onCardSelected,
+            selectingCards = selectingCards,
+            selectedCardIds = selectedCardIds,
+            onToggleCard = onToggleCard,
         )
         is GlobalMissingState.Complete -> MissingResults(
             verified = overview.verified,
@@ -101,6 +111,9 @@ fun ColumnScope.GlobalMissingSection(
             onRetry = onRetry,
             onClearSearch = onClearSearch,
             onCardSelected = onCardSelected,
+            selectingCards = selectingCards,
+            selectedCardIds = selectedCardIds,
+            onToggleCard = onToggleCard,
         )
     }
 }
@@ -116,6 +129,9 @@ private fun ColumnScope.MissingResults(
     onRetry: (String?) -> Unit,
     onClearSearch: () -> Unit,
     onCardSelected: (String) -> Unit,
+    selectingCards: Boolean,
+    selectedCardIds: Set<String>,
+    onToggleCard: (String) -> Unit,
 ) {
     val visibleGroups = verified.mapNotNull { group ->
         val matchesSet = group.set.name.contains(query, ignoreCase = true)
@@ -256,16 +272,22 @@ private fun ColumnScope.MissingResults(
                 }
                 items(group.cards, key = { "${group.set.id}-${it.id}" }) { card ->
                     Card(
-                        onClick = { onCardSelected(card.id) },
+                        onClick = { if (selectingCards) onToggleCard(card.id) else onCardSelected(card.id) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     ) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(card.name, style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                stringResource(R.string.collection_missing_card_subtitle, card.collectorNumber, group.set.name),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Row(Modifier.padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(card.name, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    stringResource(R.string.collection_missing_card_subtitle, card.collectorNumber, group.set.name),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (selectingCards) Checkbox(
+                                checked = card.id in selectedCardIds,
+                                onCheckedChange = { onToggleCard(card.id) },
                             )
                         }
                     }

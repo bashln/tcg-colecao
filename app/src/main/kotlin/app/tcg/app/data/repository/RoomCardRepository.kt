@@ -31,6 +31,20 @@ class RoomCardRepository(
         return cardDao.searchByNumber(collectorNumber, setId).map { it.toCard(cardDao.pricesFor(it.id)) }
     }
 
+    override suspend fun searchByNumbers(collectorNumbers: Set<String>): List<Card> {
+        val remote = fetchOrNull { source.searchByNumbers(collectorNumbers) }
+        if (remote != null) {
+            remote.forEach { cardDao.cacheCard(it) }
+            return remote
+        }
+        return collectorNumbers.flatMap { number ->
+            val stripped = number.trimStart('0').ifEmpty { "0" }
+            (listOf(number, stripped) + if (number.startsWith('0')) emptyList() else listOf(number.padStart(3, '0')))
+                .distinct()
+                .flatMap { cardDao.searchByNumber(it, null) }
+        }.distinctBy { it.id }.map { it.toCard(cardDao.pricesFor(it.id)) }
+    }
+
     override suspend fun getCard(id: String): Card? {
         val cached = cardDao.getById(id)?.toCard(cardDao.pricesFor(id))
         // Search results cache a brief (no attacks, no prices), so always refresh from the full
