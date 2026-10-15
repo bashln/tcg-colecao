@@ -124,6 +124,7 @@ fun CameraCapture(
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var boundCamera by remember { mutableStateOf<Camera?>(null) }
     var resumeGeneration by remember { mutableStateOf(0) }
+    val torchAppliedOn = remember { AtomicBoolean(false) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -214,22 +215,25 @@ fun CameraCapture(
 
     LaunchedEffect(boundCamera, torchEnabled, resumeGeneration) {
         val camera = boundCamera ?: return@LaunchedEffect
-        if (camera.cameraInfo.hasFlashUnit()) {
-            try {
-                val torchRequest = camera.cameraControl.enableTorch(torchEnabled)
-                torchRequest.addListener(
-                    {
-                        try {
-                            torchRequest.get()
-                        } catch (_: Exception) {
-                            if (currentTorchEnabled == torchEnabled) onTorchError()
-                        }
-                    },
-                    executor,
-                )
-            } catch (_: Exception) {
-                onTorchError()
-            }
+        if (!camera.cameraInfo.hasFlashUnit()) return@LaunchedEffect
+        // Some HALs fail a disable when the torch is already off, so only issue a command
+        // when the requested state actually differs from what we applied.
+        if (!torchEnabled && !torchAppliedOn.get()) return@LaunchedEffect
+        try {
+            val torchRequest = camera.cameraControl.enableTorch(torchEnabled)
+            torchRequest.addListener(
+                {
+                    try {
+                        torchRequest.get()
+                        torchAppliedOn.set(torchEnabled)
+                    } catch (_: Exception) {
+                        if (torchEnabled && currentTorchEnabled == torchEnabled) onTorchError()
+                    }
+                },
+                executor,
+            )
+        } catch (_: Exception) {
+            if (torchEnabled) onTorchError()
         }
     }
 

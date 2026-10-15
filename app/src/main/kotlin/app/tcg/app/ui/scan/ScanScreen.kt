@@ -97,7 +97,6 @@ fun ScanScreen(
     var captureReserved by remember { mutableStateOf(false) }
     var torchAvailable by remember { mutableStateOf(false) }
     var torchEnabled by remember { mutableStateOf(false) }
-    var torchPreferenceInitialized by remember { mutableStateOf(false) }
     var torchError by remember { mutableStateOf(false) }
 
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -175,13 +174,7 @@ fun ScanScreen(
                     !state.loading && state.error == null && !state.manualSearch &&
                     !manualSearchRevealed && state.candidates.isEmpty(),
                 torchEnabled = torchEnabled,
-                onTorchAvailabilityChanged = { available ->
-                    torchAvailable = available
-                    if (available && !torchPreferenceInitialized) {
-                        torchEnabled = true
-                        torchPreferenceInitialized = true
-                    }
-                },
+                onTorchAvailabilityChanged = { available -> torchAvailable = available },
                 onTorchError = { torchError = true; torchEnabled = false },
                 onError = { message ->
                     captureReserved = false
