@@ -4,11 +4,12 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
+import androidx.room.RoomDatabase.Callback
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class, SyncConflictEntity::class],
-    version = 8,
+    entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class, SyncConflictEntity::class, BackupStateEntity::class, BackupGenerationEntity::class, BackupImportMarkerEntity::class],
+    version = 9,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -17,6 +18,45 @@ abstract class TcgDatabase : RoomDatabase() {
     abstract fun collectionDao(): CollectionDao
 
     companion object {
+        val BACKUP_TRIGGERS = object : Callback() {
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                db.execSQL("INSERT INTO backup_state (slot, treeUri, pendingRevision, savedRevision, failure, retentionWarning) VALUES (0, NULL, 0, -1, NULL, NULL)")
+                installBackupTriggers(db)
+            }
+
+            override fun onOpen(db: SupportSQLiteDatabase) {
+                installBackupTriggers(db)
+            }
+        }
+
+        private fun installBackupTriggers(db: SupportSQLiteDatabase) {
+            for (operation in listOf("INSERT", "UPDATE", "DELETE")) {
+                db.execSQL("""CREATE TRIGGER IF NOT EXISTS backup_collection_${operation.lowercase()}
+                    AFTER $operation ON collection_items BEGIN
+                    UPDATE backup_state SET pendingRevision = pendingRevision + 1 WHERE slot = 0;
+                    END""".trimIndent())
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `backup_state` (
+                    `slot` INTEGER NOT NULL, `treeUri` TEXT, `pendingRevision` INTEGER NOT NULL,
+                    `savedRevision` INTEGER NOT NULL, `failure` TEXT, `retentionWarning` TEXT,
+                    PRIMARY KEY(`slot`))""".trimIndent())
+                db.execSQL("""INSERT INTO `backup_state` (`slot`, `treeUri`, `pendingRevision`, `savedRevision`, `failure`, `retentionWarning`)
+                    VALUES (0, NULL, CASE WHEN EXISTS(SELECT 1 FROM collection_items) THEN 1 ELSE 0 END, -1, NULL, NULL)""".trimIndent())
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `backup_generations` (
+                    `documentUri` TEXT NOT NULL, `treeUri` TEXT NOT NULL,
+                    `sha256` TEXT NOT NULL, `createdAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`documentUri`))""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_backup_generations_treeUri_createdAt` ON `backup_generations` (`treeUri`, `createdAt`)")
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `backup_import_markers` (
+                    `itemId` TEXT NOT NULL, `signature` TEXT NOT NULL, PRIMARY KEY(`itemId`))""".trimIndent())
+                installBackupTriggers(db)
+            }
+        }
+
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE cards ADD COLUMN setTotal INTEGER")

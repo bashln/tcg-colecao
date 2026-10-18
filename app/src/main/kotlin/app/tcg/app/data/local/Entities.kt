@@ -46,6 +46,30 @@ data class CollectionItemEntity(
     @ColumnInfo(defaultValue = "1") val revision: Long = 1,
 )
 
+@Entity(tableName = "backup_state")
+data class BackupStateEntity(
+    @PrimaryKey val slot: Int = 0,
+    val treeUri: String? = null,
+    val pendingRevision: Long = 0,
+    val savedRevision: Long = -1,
+    val failure: String? = null,
+    val retentionWarning: String? = null,
+)
+
+@Entity(tableName = "backup_generations", indices = [Index(value = ["treeUri", "createdAt"])])
+data class BackupGenerationEntity(
+    @PrimaryKey val documentUri: String,
+    val treeUri: String,
+    val sha256: String,
+    val createdAt: Long,
+)
+
+@Entity(tableName = "backup_import_markers")
+data class BackupImportMarkerEntity(
+    @PrimaryKey val itemId: String,
+    val signature: String,
+)
+
 @Entity(tableName = "sync_binding")
 data class SyncBindingEntity(
     @PrimaryKey val slot: Int = 0,

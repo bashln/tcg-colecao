@@ -11,6 +11,13 @@ import app.tcg.app.auth.EncryptedSessionStore
 import app.tcg.app.auth.SessionCipher
 import app.tcg.app.auth.SessionStore
 import app.tcg.app.auth.SupabaseAuthClient
+import app.tcg.app.data.backup.BackupDocumentStore
+import app.tcg.app.data.backup.CollectionBackup
+import app.tcg.app.data.backup.FileRecoveryStore
+import app.tcg.app.data.backup.LocalBackupManager
+import app.tcg.app.data.backup.RecoveryStore
+import app.tcg.app.data.backup.RoomCollectionBackup
+import app.tcg.app.data.backup.SafBackupDocumentStore
 import app.tcg.app.data.local.CardDao
 import app.tcg.app.data.local.CollectionDao
 import app.tcg.app.data.local.TcgDatabase
@@ -74,7 +81,8 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TcgDatabase =
         Room.databaseBuilder(context, TcgDatabase::class.java, "tcg.db")
-            .addMigrations(TcgDatabase.MIGRATION_1_2, TcgDatabase.MIGRATION_2_3, TcgDatabase.MIGRATION_3_4, TcgDatabase.MIGRATION_4_5, TcgDatabase.MIGRATION_5_6, TcgDatabase.MIGRATION_6_7, TcgDatabase.MIGRATION_7_8)
+            .addMigrations(TcgDatabase.MIGRATION_1_2, TcgDatabase.MIGRATION_2_3, TcgDatabase.MIGRATION_3_4, TcgDatabase.MIGRATION_4_5, TcgDatabase.MIGRATION_5_6, TcgDatabase.MIGRATION_6_7, TcgDatabase.MIGRATION_7_8, TcgDatabase.MIGRATION_8_9)
+            .addCallback(TcgDatabase.BACKUP_TRIGGERS)
             .build()
 
     @Provides
@@ -292,4 +300,28 @@ object AppModule {
         archivePackageName = { file -> OtaPlatform.archiveMetadata(context, file)?.applicationId },
         launch = { intent -> context.startActivity(intent) },
     )
+    @Provides
+    @Singleton
+    fun provideBackupDocumentStore(@ApplicationContext context: Context): BackupDocumentStore =
+        SafBackupDocumentStore(context)
+
+    @Provides
+    @Singleton
+    fun provideRecoveryStore(@ApplicationContext context: Context): RecoveryStore =
+        FileRecoveryStore(context.filesDir.resolve("backup_recovery"))
+
+    @Provides
+    @Singleton
+    fun provideLocalBackupManager(
+        dao: CollectionDao,
+        store: BackupDocumentStore,
+    ): LocalBackupManager = LocalBackupManager(dao, store)
+
+    @Provides
+    @Singleton
+    fun provideCollectionBackup(
+        dao: CollectionDao,
+        recoveryStore: RecoveryStore,
+        backupManager: LocalBackupManager,
+    ): CollectionBackup = RoomCollectionBackup(dao, recoveryStore, backupManager)
 }

@@ -1,5 +1,7 @@
 package app.tcg.app.ui.profile
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,29 +10,39 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tcg.app.R
+import app.tcg.app.data.backup.BackupStatus
 import app.tcg.app.ui.components.BreakdownRow
 import app.tcg.app.ui.components.CollectionKeyNumbers
 import app.tcg.app.ui.components.EmptyState
@@ -53,6 +65,51 @@ fun ProfileScreen(
     onUpdatesClick: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    val folderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            viewModel.chooseBackupFolder(uri)
+        }
+    }
+
+    val fileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            if (bytes != null) {
+                viewModel.previewImport(bytes)
+            }
+        }
+    }
+
+    if (state.activePreview != null) {
+        val summary = state.activePreview!!.summary
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelPreview() },
+            title = { Text(stringResource(R.string.profile_import_preview_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.profile_import_preview_added, summary.added))
+                    Text(stringResource(R.string.profile_import_preview_merged, summary.merged))
+                    Text(stringResource(R.string.profile_import_preview_unchanged, summary.unchanged))
+                }
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.confirmImport() }) {
+                    Text(stringResource(R.string.profile_import_confirm))
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { viewModel.cancelPreview() }) {
+                    Text(stringResource(R.string.profile_import_cancel))
+                }
+            },
+        )
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         Text(
@@ -60,22 +117,42 @@ fun ProfileScreen(
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         )
-        OutlinedButton(
-            onClick = onAccountClick,
+        Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(Icons.Outlined.Person, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.account_title))
+            OutlinedButton(
+                onClick = onAccountClick,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(Icons.Outlined.Person, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.account_title))
+            }
+            OutlinedButton(
+                onClick = onUpdatesClick,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(Icons.Outlined.SystemUpdate, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.update_title))
+            }
         }
-        OutlinedButton(
-            onClick = onUpdatesClick,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        ) {
-            Icon(Icons.Outlined.SystemUpdate, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.update_title))
-        }
+
+        Spacer(Modifier.height(12.dp))
+
+        BackupCard(
+            status = state.backupStatus,
+            importMessage = state.importMessage,
+            previewError = state.previewError,
+            onChooseFolder = { folderLauncher.launch(null) },
+            onImportClick = { fileLauncher.launch(arrayOf("application/json", "*/*")) },
+            onDismissMessages = { viewModel.dismissMessages() },
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+
+        Spacer(Modifier.height(8.dp))
+
         when {
             state.loading -> Box(
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -100,7 +177,147 @@ fun ProfileScreen(
                     },
                 )
             }
-            else -> ProfileContent(state.stats)
+            else -> Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                ProfileContent(state.stats)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackupCard(
+    status: BackupStatus,
+    importMessage: String?,
+    previewError: String?,
+    onChooseFolder: () -> Unit,
+    onImportClick: () -> Unit,
+    onDismissMessages: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Outlined.Folder,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.profile_backup_section_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+
+            val statusText = when (status) {
+                is BackupStatus.Unset -> stringResource(R.string.profile_backup_status_unset)
+                is BackupStatus.Pending -> stringResource(R.string.profile_backup_status_pending)
+                is BackupStatus.Current -> stringResource(R.string.profile_backup_status_current) + (status.warning?.let { " ($it)" } ?: "")
+                is BackupStatus.Failed -> stringResource(R.string.profile_backup_status_failed, status.reason)
+            }
+
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (status is BackupStatus.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Button(
+                    onClick = onChooseFolder,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Outlined.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        stringResource(
+                            if (status is BackupStatus.Unset) R.string.profile_backup_folder_choose else R.string.profile_backup_folder_change
+                        ),
+                    )
+                }
+                OutlinedButton(
+                    onClick = onImportClick,
+                    shape = MaterialTheme.shapes.small,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.profile_import_button))
+                }
+            }
+
+            if (importMessage != null) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = importMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = onDismissMessages) {
+                            Text("OK")
+                        }
+                    }
+                }
+            }
+
+            if (previewError != null) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.profile_import_error, previewError),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = onDismissMessages) {
+                            Text("OK")
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -153,11 +370,15 @@ private fun ProfileContent(stats: CollectionStats) {
 private fun InvestmentCard(invested: Money, profit: Money?) {
     val isProfit = (profit?.amount ?: 0.0) >= 0.0
     Card(
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             MoneyRow(
                 label = stringResource(R.string.profile_invested),
                 value = invested,
@@ -202,9 +423,13 @@ private fun <K> BreakdownSection(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionHeader(title)
         Card(
-            shape = MaterialTheme.shapes.medium,
+            shape = MaterialTheme.shapes.large,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+            border = androidx.compose.foundation.BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 buckets.forEach { bucket ->
