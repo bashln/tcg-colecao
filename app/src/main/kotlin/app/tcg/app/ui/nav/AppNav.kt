@@ -59,6 +59,7 @@ import app.tcg.app.ui.home.HomeScreen
 import app.tcg.app.ui.home.HomeViewModel
 import app.tcg.app.ui.profile.ProfileScreen
 import app.tcg.app.ui.profile.ProfileViewModel
+import app.tcg.app.data.backup.CollectionBackup
 import app.tcg.app.ui.scan.ScanScreen
 import app.tcg.app.ui.scan.ScanViewModel
 import app.tcg.app.ui.update.UpdateScreen
@@ -92,6 +93,7 @@ private object Routes {
 fun AppNav(
     cardRepository: CardRepository,
     collectionRepository: CollectionRepository,
+    collectionBackup: CollectionBackup? = null,
     authController: AuthController,
     syncLinkRepository: SyncLinkRepository,
     syncLinkCoordinator: SyncLinkCoordinator,
@@ -192,7 +194,7 @@ fun AppNav(
             }
             composable(Routes.PROFILE) {
                 val viewModel: ProfileViewModel = viewModel(
-                    factory = viewModelFactory { initializer { ProfileViewModel(collectionRepository) } },
+                    factory = viewModelFactory { initializer { ProfileViewModel(collectionRepository, collectionBackup) } },
                 )
                 ProfileScreen(
                     viewModel = viewModel,

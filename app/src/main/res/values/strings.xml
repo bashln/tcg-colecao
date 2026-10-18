@@ -290,4 +290,21 @@
     <string name="update_dismiss">Fechar</string>
     <string name="update_source_note">O Android pode mostrar um aviso de segurança para apps fora da Play Store. Confirme que o pacote vem do repositório público do projeto antes de instalar. Esse aviso é do sistema e não é removido por este app.</string>
     <string name="update_progress_label">Progresso do download</string>
+
+    <string name="profile_backup_section_title">Cópia local e backup</string>
+    <string name="profile_backup_folder_choose">Escolher pasta de backup</string>
+    <string name="profile_backup_folder_change">Alterar pasta</string>
+    <string name="profile_backup_status_unset">Nenhuma pasta selecionada para backup automático.</string>
+    <string name="profile_backup_status_pending">Cópia pendente…</string>
+    <string name="profile_backup_status_current">Cópia atualizada neste aparelho.</string>
+    <string name="profile_backup_status_failed">Falha ao gravar cópia: %1$s</string>
+    <string name="profile_import_button">Importar cópia</string>
+    <string name="profile_import_preview_title">Confirmar importação da cópia</string>
+    <string name="profile_import_preview_added">Novas cartas a adicionar: %1$d</string>
+    <string name="profile_import_preview_merged">Cartas existentes a combinar: %1$d</string>
+    <string name="profile_import_preview_unchanged">Cartas idênticas (sem alteração): %1$d</string>
+    <string name="profile_import_confirm">Confirmar importação</string>
+    <string name="profile_import_cancel">Cancelar</string>
+    <string name="profile_import_success">Cópia aplicada: %1$d adicionadas, %2$d combinadas.</string>
+    <string name="profile_import_error">Falha na importação: %1$s</string>
 </resources>

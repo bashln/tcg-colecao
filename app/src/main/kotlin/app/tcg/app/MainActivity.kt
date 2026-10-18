@@ -16,6 +16,7 @@ import app.tcg.app.update.UpdateCoordinator
 import app.tcg.app.update.UpdateInstaller
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
+import app.tcg.app.data.backup.CollectionBackup
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.launch
@@ -28,6 +29,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var collectionRepository: CollectionRepository
+
+    @Inject
+    lateinit var collectionBackup: CollectionBackup
 
     @Inject
     lateinit var authController: AuthController
@@ -61,6 +65,7 @@ class MainActivity : ComponentActivity() {
                 AppNav(
                     cardRepository = cardRepository,
                     collectionRepository = collectionRepository,
+                    collectionBackup = collectionBackup,
                     authController = authController,
                     syncLinkRepository = syncLinkRepository,
                     syncLinkCoordinator = syncLinkCoordinator,
