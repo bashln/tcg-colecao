@@ -114,7 +114,7 @@ fun AppNav(
             if (topLevelRoute && currentRoute != Routes.SCAN) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 3.dp,
+                    tonalElevation = 2.dp,
                 ) {
                     NavigationBarItem(
                         selected = currentRoute == Routes.HOME,
@@ -122,7 +122,11 @@ fun AppNav(
                         icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
                         label = { Text(stringResource(R.string.nav_home)) },
                         colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                         ),
                     )
                     NavigationBarItem(
@@ -131,7 +135,11 @@ fun AppNav(
                         icon = { Icon(Icons.Outlined.CollectionsBookmark, contentDescription = null) },
                         label = { Text(stringResource(R.string.nav_collection)) },
                         colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                         ),
                     )
                     NavigationBarItem(
@@ -140,7 +148,11 @@ fun AppNav(
                         icon = { Icon(Icons.Outlined.QrCodeScanner, contentDescription = null) },
                         label = { Text(stringResource(R.string.nav_scan)) },
                         colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                         ),
                     )
                     NavigationBarItem(
@@ -149,7 +161,11 @@ fun AppNav(
                         icon = { Icon(Icons.Outlined.Person, contentDescription = null) },
                         label = { Text(stringResource(R.string.nav_profile)) },
                         colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                         ),
                     )
                 }
