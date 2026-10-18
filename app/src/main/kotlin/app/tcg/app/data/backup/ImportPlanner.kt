@@ -5,6 +5,12 @@ import app.tcg.app.data.local.SyncBindingEntity
 
 data class ImportSummary(val added: Int, val merged: Int, val unchanged: Int)
 
+sealed interface ImportResult {
+    data class Success(val summary: ImportSummary) : ImportResult
+    data object ChangedSincePreview : ImportResult
+    data class StorageError(val message: String) : ImportResult
+}
+
 sealed interface ImportAction {
     data class Insert(val entry: WebEntry) : ImportAction
     data class Merge(val localItemId: String, val entry: WebEntry) : ImportAction

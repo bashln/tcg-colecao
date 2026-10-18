@@ -5,6 +5,10 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import app.tcg.app.data.backup.ImportAction
+import app.tcg.app.data.backup.ImportResult
+import app.tcg.app.data.backup.ImportTicket
+import app.tcg.app.data.backup.WebBackupAdapter
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.CollectionItem
@@ -255,6 +259,147 @@ abstract class CollectionDao {
         insertSyncOperation(item.toSyncOperation(binding, "replace", baseRevision))
     }
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun upsertCard(card: CardEntity)
+
+    @Query("SELECT * FROM backup_state WHERE slot = 0")
+    abstract fun observeBackupState(): Flow<BackupStateEntity?>
+
+    @Query("SELECT * FROM backup_state WHERE slot = 0")
+    abstract suspend fun getBackupState(): BackupStateEntity?
+
+    @Query("UPDATE backup_state SET treeUri = :treeUri, failure = NULL, retentionWarning = NULL WHERE slot = 0")
+    abstract suspend fun setBackupFolder(treeUri: String)
+
+    @Query("UPDATE backup_state SET treeUri = NULL, failure = NULL, retentionWarning = NULL WHERE slot = 0")
+    abstract suspend fun clearBackupFolder()
+
+    @Query("UPDATE backup_state SET savedRevision = :savedRevision, failure = NULL, retentionWarning = :retentionWarning WHERE slot = 0 AND pendingRevision = :savedRevision")
+    abstract suspend fun markBackupSaved(savedRevision: Long, retentionWarning: String?): Int
+
+    @Query("UPDATE backup_state SET failure = :failure WHERE slot = 0")
+    abstract suspend fun setBackupFailure(failure: String)
+
+    @Query("SELECT * FROM backup_generations WHERE treeUri = :treeUri ORDER BY createdAt DESC")
+    abstract suspend fun listGenerations(treeUri: String): List<BackupGenerationEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun insertGeneration(generation: BackupGenerationEntity)
+
+    @Query("DELETE FROM backup_generations WHERE documentUri = :documentUri")
+    abstract suspend fun deleteGeneration(documentUri: String)
+
+    @Query("SELECT * FROM backup_import_markers")
+    abstract suspend fun listImportMarkers(): List<BackupImportMarkerEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun insertImportMarker(marker: BackupImportMarkerEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun insertImportMarkers(markers: List<BackupImportMarkerEntity>)
+
+    @Query("SELECT * FROM cards")
+    abstract suspend fun listAllCards(): List<CardEntity>
+
+    @Query("SELECT * FROM card_prices")
+    abstract suspend fun listAllPrices(): List<CardPriceEntity>
+
+    @Transaction
+    open suspend fun applyImport(ticket: ImportTicket): ImportResult {
+        val currentItems = listItems()
+        val currentMarkers = listImportMarkers().associate { it.itemId to it.signature }
+        val currentBinding = getSyncBinding()
+        val currentCardIds = listAllCards().map { it.id }.toSet()
+
+        if (currentItems != ticket.expectedLocalState.items ||
+            currentMarkers != ticket.expectedLocalState.markers ||
+            currentBinding != ticket.expectedLocalState.binding
+        ) {
+            return ImportResult.ChangedSincePreview
+        }
+
+        val missingCards = ticket.backup.entries.map { it.card }
+            .distinctBy { it.id }
+            .filter { it.id !in currentCardIds }
+
+        for (webCard in missingCards) {
+            val cardEntity = CardEntity(
+                id = webCard.id,
+                name = webCard.name,
+                setId = webCard.setId,
+                setName = webCard.setName,
+                collectorNumber = webCard.collectorNumber,
+                rarity = null,
+                hp = null,
+                imageUrl = webCard.imageUrl,
+                types = emptyList(),
+                attacks = emptyList(),
+                variants = webCard.variants.toSet(),
+                setTotal = webCard.setTotal,
+            )
+            upsertCard(cardEntity)
+        }
+
+        for (action in ticket.actions) {
+            when (action) {
+                is ImportAction.Insert -> {
+                    val item = CollectionItemEntity(
+                        id = action.entry.item.id,
+                        cardId = action.entry.item.cardId,
+                        quantity = action.entry.item.quantity,
+                        condition = action.entry.item.condition,
+                        variant = action.entry.item.variant,
+                        pricePaidAmount = action.entry.item.pricePaid?.amount,
+                        pricePaidCurrency = action.entry.item.pricePaid?.currency?.name,
+                        addedAt = action.entry.item.addedAt,
+                        revision = action.entry.item.revision,
+                    )
+                    insertIfAbsent(item)
+                    insertImportMarker(
+                        BackupImportMarkerEntity(
+                            itemId = item.id,
+                            signature = WebBackupAdapter.itemSignature(action.entry.item),
+                        )
+                    )
+                    if (currentBinding != null) {
+                        insertSyncOperation(item.toSyncOperation(currentBinding, "create", null))
+                    }
+                }
+                is ImportAction.Merge -> {
+                    val local = checkNotNull(getById(action.localItemId))
+                    val newQuantity = local.quantity + action.entry.item.quantity
+                    updateEditableFields(
+                        itemId = local.id,
+                        quantity = newQuantity,
+                        variant = local.variant,
+                        condition = local.condition,
+                        pricePaidAmount = local.pricePaidAmount,
+                        pricePaidCurrency = local.pricePaidCurrency,
+                    )
+                    val updated = checkNotNull(getById(local.id))
+                    insertImportMarker(
+                        BackupImportMarkerEntity(
+                            itemId = action.entry.item.id,
+                            signature = WebBackupAdapter.itemSignature(action.entry.item),
+                        )
+                    )
+                    if (currentBinding != null) {
+                        insertSyncOperation(updated.toSyncOperation(currentBinding, "replace", local.revision))
+                    }
+                }
+                is ImportAction.Unchanged -> {
+                    val entry = ticket.backup.entries.first { it.item.id == action.sourceItemId }
+                    insertImportMarker(
+                        BackupImportMarkerEntity(
+                            itemId = action.sourceItemId,
+                            signature = WebBackupAdapter.itemSignature(entry.item),
+                        )
+                    )
+                }
+            }
+        }
+        return ImportResult.Success(ticket.summary)
+    }
     @Transaction
     open suspend fun upsertNew(cardId: String, variant: CardVariant, condition: Condition, quantity: Int) {
         upsertSumming(newItem(cardId, variant, condition, quantity))
