@@ -24,7 +24,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 private const val FORMAT = "tcg-colecao-web-1"
-private const val MAX_BYTES = 50 * 1024 * 1024
+private const val MAX_BACKUP_BYTES = 50 * 1024 * 1024
 private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
 private val CARD_ID = Regex("[a-zA-Z0-9][a-zA-Z0-9_-]{1,80}")
 private val ITEM_ID = Regex("[a-zA-Z0-9-]{8,80}")
@@ -71,8 +71,9 @@ class ValidatedWebBackup internal constructor(
 class InvalidBackupException(message: String) : IllegalArgumentException(message)
 
 object WebBackupAdapter {
+    const val MAX_BYTES = MAX_BACKUP_BYTES
     fun parse(bytes: ByteArray): ValidatedWebBackup {
-        invalid(bytes.size <= MAX_BYTES, "O arquivo excede 50 MiB")
+        invalid(bytes.size <= MAX_BACKUP_BYTES, "O arquivo excede 50 MiB")
         val text = try {
             Charsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)

@@ -60,25 +60,25 @@ object ImportPlanner {
 
         return backup.entries.map { entry ->
             val sourceItem = entry.item
+            val localWithSameId = itemsById[sourceItem.id]
+            val matchesLocal = localWithSameId != null &&
+                localWithSameId.cardId == sourceItem.cardId &&
+                localWithSameId.quantity == sourceItem.quantity &&
+                localWithSameId.variant == sourceItem.variant &&
+                localWithSameId.condition == sourceItem.condition &&
+                localWithSameId.pricePaidAmount == sourceItem.pricePaid?.amount &&
+                localWithSameId.pricePaidCurrency == sourceItem.pricePaid?.currency?.name &&
+                localWithSameId.addedAt == sourceItem.addedAt
             val existingMarkerSig = localState.markers[sourceItem.id]
             if (existingMarkerSig != null) {
                 val currentSig = WebBackupAdapter.itemSignature(sourceItem)
-                if (existingMarkerSig != currentSig) {
+                if (existingMarkerSig != currentSig && !matchesLocal) {
                     throw InvalidBackupException("Conflito no item importado ${sourceItem.id}")
                 }
                 return@map ImportAction.Unchanged(sourceItem.id)
             }
 
-            val localWithSameId = itemsById[sourceItem.id]
             if (localWithSameId != null) {
-                val matchesLocal = localWithSameId.cardId == sourceItem.cardId &&
-                    localWithSameId.quantity == sourceItem.quantity &&
-                    localWithSameId.variant == sourceItem.variant &&
-                    localWithSameId.condition == sourceItem.condition &&
-                    localWithSameId.pricePaidAmount == sourceItem.pricePaid?.amount &&
-                    localWithSameId.pricePaidCurrency == sourceItem.pricePaid?.currency?.name &&
-                    localWithSameId.addedAt == sourceItem.addedAt
-
                 if (!matchesLocal) {
                     throw InvalidBackupException("Conflito de ID de item ${sourceItem.id}")
                 }

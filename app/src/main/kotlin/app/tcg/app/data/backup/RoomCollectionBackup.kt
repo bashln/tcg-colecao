@@ -3,6 +3,8 @@ package app.tcg.app.data.backup
 import app.tcg.app.data.local.CollectionDao
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 sealed interface BackupStatus {
     data object Unset : BackupStatus
@@ -14,12 +16,16 @@ sealed interface BackupStatus {
 sealed interface ImportPreview {
     data class Ready(val ticket: ImportTicket) : ImportPreview
     data class Invalid(val reason: String) : ImportPreview
+    data object PasswordRequired : ImportPreview
 }
 
 interface CollectionBackup {
     val status: Flow<BackupStatus>
+    val encryptionEnabled: Flow<Boolean> get() = kotlinx.coroutines.flow.flowOf(false)
     suspend fun chooseBackupFolder(treeUri: String)
     suspend fun previewImport(bytes: ByteArray): ImportPreview
+    suspend fun previewImport(bytes: ByteArray, passphrase: CharArray?): ImportPreview = previewImport(bytes)
+    suspend fun setEncryptionPassphrase(passphrase: CharArray?): Boolean = passphrase == null
     suspend fun confirmImport(ticket: ImportTicket): ImportResult
 }
 
@@ -27,7 +33,10 @@ class RoomCollectionBackup(
     private val dao: CollectionDao,
     private val recoveryStore: RecoveryStore,
     private val backupManager: LocalBackupManager,
+    private val passphrases: BackupPassphraseStore = NoBackupPassphraseStore,
 ) : CollectionBackup {
+
+    override val encryptionEnabled: Flow<Boolean> = passphrases.enabled
 
     override val status: Flow<BackupStatus> = dao.observeBackupState().map { state ->
         if (state == null || state.treeUri == null) {
@@ -49,8 +58,25 @@ class RoomCollectionBackup(
     }
 
     override suspend fun previewImport(bytes: ByteArray): ImportPreview {
+        return previewImport(bytes, null)
+    }
+
+    override suspend fun previewImport(bytes: ByteArray, passphrase: CharArray?): ImportPreview {
+        val payload = if (BackupEncryption.isEncrypted(bytes)) {
+            val enteredByUser = passphrase != null
+            val selected = passphrase ?: when (val saved = passphrases.read()) {
+                is StoredBackupPassphrase.Available -> saved.value
+                StoredBackupPassphrase.Disabled, StoredBackupPassphrase.Unavailable -> return ImportPreview.PasswordRequired
+            }
+            try {
+                withContext(Dispatchers.Default) { BackupEncryption.decrypt(bytes, selected) }
+            } catch (ex: Exception) {
+                if (!enteredByUser) return ImportPreview.PasswordRequired
+                return ImportPreview.Invalid(ex.message ?: "Senha incorreta ou arquivo criptografado inválido")
+            }
+        } else bytes
         val backup = try {
-            WebBackupAdapter.parse(bytes)
+            WebBackupAdapter.parse(payload)
         } catch (ex: Exception) {
             return ImportPreview.Invalid(ex.message ?: "Arquivo inválido")
         }
@@ -73,6 +99,23 @@ class RoomCollectionBackup(
         } catch (ex: Exception) {
             ImportPreview.Invalid(ex.message ?: "Conflito na importação")
         }
+    }
+
+    override suspend fun setEncryptionPassphrase(passphrase: CharArray?): Boolean {
+        if (passphrase != null) {
+            try {
+                BackupEncryption.validatePassphrase(passphrase)
+            } catch (_: IllegalArgumentException) {
+                passphrase.fill('\u0000')
+                return false
+            }
+        }
+        val saved = try { passphrases.write(passphrase) } catch (_: Exception) { false } finally { passphrase?.fill('\u0000') }
+        if (saved) {
+            dao.requestBackupRewrite()
+            backupManager.runBackup()
+        }
+        return saved
     }
 
     override suspend fun confirmImport(ticket: ImportTicket): ImportResult {

@@ -1,5 +1,6 @@
 package app.tcg.app.ui.profile
 
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -30,19 +31,25 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tcg.app.R
 import app.tcg.app.data.backup.BackupStatus
+import app.tcg.app.data.backup.BackupEncryption
 import app.tcg.app.ui.components.BreakdownRow
 import app.tcg.app.ui.components.CollectionKeyNumbers
 import app.tcg.app.ui.components.EmptyState
@@ -66,12 +73,26 @@ fun ProfileScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var showEncryptionDialog by remember { mutableStateOf(false) }
+    var showDisableEncryptionDialog by remember { mutableStateOf(false) }
+    var newPassphrase by remember { mutableStateOf("") }
+    var confirmPassphrase by remember { mutableStateOf("") }
+    var importPassphrase by remember { mutableStateOf("") }
 
     val folderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
         if (uri != null) {
-            viewModel.chooseBackupFolder(uri)
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }.onSuccess {
+                viewModel.chooseBackupFolder(uri)
+            }.onFailure {
+                viewModel.reportBackupError("Não foi possível manter acesso à pasta escolhida. Selecione outra pasta.")
+            }
         }
     }
 
@@ -79,9 +100,11 @@ fun ProfileScreen(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
-            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            if (bytes != null) {
-                viewModel.previewImport(bytes)
+            try {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { BackupEncryption.readBounded(it) }
+                if (bytes != null) viewModel.previewImport(bytes)
+            } catch (error: Exception) {
+                viewModel.reportBackupError(error.message ?: "Não foi possível ler este arquivo.")
             }
         }
     }
@@ -106,6 +129,102 @@ fun ProfileScreen(
             dismissButton = {
                 OutlinedButton(onClick = { viewModel.cancelPreview() }) {
                     Text(stringResource(R.string.profile_import_cancel))
+                }
+            },
+        )
+    }
+
+    if (state.importPasswordRequired) {
+        AlertDialog(
+            onDismissRequest = { importPassphrase = ""; viewModel.cancelEncryptedImport() },
+            title = { Text(stringResource(R.string.profile_import_password_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.profile_import_password_help))
+                    OutlinedTextField(
+                        value = importPassphrase,
+                        onValueChange = { importPassphrase = it },
+                        label = { Text(stringResource(R.string.profile_backup_password)) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                    )
+                    state.previewError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.previewEncryptedImport(importPassphrase)
+                    importPassphrase = ""
+                }) { Text(stringResource(R.string.profile_import_password_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { importPassphrase = ""; viewModel.cancelEncryptedImport() }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
+
+    if (showEncryptionDialog) {
+        AlertDialog(
+            onDismissRequest = { showEncryptionDialog = false; newPassphrase = ""; confirmPassphrase = "" },
+            title = { Text(stringResource(R.string.profile_backup_password_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.profile_backup_password_help))
+                    OutlinedTextField(
+                        value = newPassphrase,
+                        onValueChange = { newPassphrase = it },
+                        label = { Text(stringResource(R.string.profile_backup_password)) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = confirmPassphrase,
+                        onValueChange = { confirmPassphrase = it },
+                        label = { Text(stringResource(R.string.profile_backup_password_confirm)) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                    )
+                    if (confirmPassphrase.isNotEmpty() && newPassphrase != confirmPassphrase) {
+                        Text(stringResource(R.string.profile_backup_password_mismatch), color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (newPassphrase.length >= 12 && newPassphrase == confirmPassphrase) {
+                        viewModel.setBackupEncryptionPassphrase(newPassphrase)
+                        newPassphrase = ""
+                        confirmPassphrase = ""
+                        showEncryptionDialog = false
+                    }
+                }, enabled = newPassphrase.length >= 12 && newPassphrase == confirmPassphrase) {
+                    Text(stringResource(R.string.profile_backup_password_enable))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEncryptionDialog = false; newPassphrase = ""; confirmPassphrase = "" }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
+
+    if (showDisableEncryptionDialog) {
+        AlertDialog(
+            onDismissRequest = { showDisableEncryptionDialog = false },
+            title = { Text(stringResource(R.string.profile_backup_disable_title)) },
+            text = { Text(stringResource(R.string.profile_backup_disable_help)) },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.setBackupEncryptionPassphrase(null)
+                    showDisableEncryptionDialog = false
+                }) { Text(stringResource(R.string.profile_backup_encryption_disable)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDisableEncryptionDialog = false }) {
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         )
@@ -143,10 +262,13 @@ fun ProfileScreen(
 
         BackupCard(
             status = state.backupStatus,
+            encryptionEnabled = state.encryptionEnabled,
             importMessage = state.importMessage,
             previewError = state.previewError,
             onChooseFolder = { folderLauncher.launch(null) },
             onImportClick = { fileLauncher.launch(arrayOf("application/json", "*/*")) },
+            onSetEncryption = { showEncryptionDialog = true },
+            onDisableEncryption = { showDisableEncryptionDialog = true },
             onDismissMessages = { viewModel.dismissMessages() },
             modifier = Modifier.padding(horizontal = 16.dp),
         )
@@ -187,10 +309,13 @@ fun ProfileScreen(
 @Composable
 private fun BackupCard(
     status: BackupStatus,
+    encryptionEnabled: Boolean,
     importMessage: String?,
     previewError: String?,
     onChooseFolder: () -> Unit,
     onImportClick: () -> Unit,
+    onSetEncryption: () -> Unit,
+    onDisableEncryption: () -> Unit,
     onDismissMessages: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -227,6 +352,22 @@ private fun BackupCard(
                     text = stringResource(R.string.profile_backup_section_title),
                     style = MaterialTheme.typography.titleMedium,
                 )
+            }
+
+            Text(
+                text = stringResource(if (encryptionEnabled) R.string.profile_backup_encryption_on else R.string.profile_backup_encryption_off),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onSetEncryption, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(if (encryptionEnabled) R.string.profile_backup_password_change else R.string.profile_backup_password_enable))
+                }
+                if (encryptionEnabled) {
+                    TextButton(onClick = onDisableEncryption, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.profile_backup_encryption_disable))
+                    }
+                }
             }
 
             val statusText = when (status) {
