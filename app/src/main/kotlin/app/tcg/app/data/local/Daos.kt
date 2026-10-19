@@ -271,6 +271,9 @@ abstract class CollectionDao {
     @Query("UPDATE backup_state SET treeUri = :treeUri, failure = NULL, retentionWarning = NULL WHERE slot = 0")
     abstract suspend fun setBackupFolder(treeUri: String)
 
+    @Query("UPDATE backup_state SET pendingRevision = CASE WHEN pendingRevision <= savedRevision THEN savedRevision + 1 ELSE pendingRevision END, failure = NULL WHERE slot = 0")
+    abstract suspend fun requestBackupRewrite()
+
     @Query("UPDATE backup_state SET treeUri = NULL, failure = NULL, retentionWarning = NULL WHERE slot = 0")
     abstract suspend fun clearBackupFolder()
 

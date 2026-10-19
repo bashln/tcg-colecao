@@ -2,6 +2,10 @@ package app.tcg.app.data.backup
 
 import app.tcg.app.data.local.BackupGenerationEntity
 import app.tcg.app.data.local.CollectionDao
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 sealed interface BackupExecutionResult {
     data class Success(val savedRevision: Long, val totalGenerations: Int) : BackupExecutionResult
@@ -12,8 +16,13 @@ sealed interface BackupExecutionResult {
 class LocalBackupManager(
     private val dao: CollectionDao,
     private val store: BackupDocumentStore,
+    private val passphrases: BackupPassphraseStore = NoBackupPassphraseStore,
 ) {
-    suspend fun runBackup(): BackupExecutionResult {
+    private val backupMutex = Mutex()
+
+    suspend fun runBackup(): BackupExecutionResult = backupMutex.withLock { runBackupLocked() }
+
+    private suspend fun runBackupLocked(): BackupExecutionResult {
         val state = dao.getBackupState() ?: return BackupExecutionResult.NoOp
         val treeUri = state.treeUri ?: return BackupExecutionResult.NoOp
 
@@ -32,17 +41,32 @@ class LocalBackupManager(
             WebBackupAdapter.fromRoom(item, card, cardPrices)
         }
 
-        val bytes = try {
+        val plaintext = try {
             WebBackupAdapter.encode(entries)
         } catch (ex: Exception) {
             return fail("Falha ao codificar backup: ${ex.message}")
         }
+        val passphraseSetting = passphrases.read()
+        val encryptedBackup = passphraseSetting is StoredBackupPassphrase.Available
+        val bytes = when (passphraseSetting) {
+            StoredBackupPassphrase.Disabled -> plaintext
+            StoredBackupPassphrase.Unavailable -> return fail("A chave local do backup não está disponível. Reconfigure a senha antes de gravar.")
+            is StoredBackupPassphrase.Available -> try {
+                withContext(Dispatchers.Default) { BackupEncryption.encrypt(plaintext, passphraseSetting.value) }
+            } catch (ex: Exception) {
+                passphraseSetting.value.fill('\u0000')
+                return fail("Falha ao criptografar o backup: ${ex.message}")
+            }
+        }
         val expectedSha = WebBackupAdapter.digest(bytes)
 
         val existing = dao.listGenerations(treeUri)
-        val copiesToCreate = if (existing.isEmpty()) 3 else 1
+        val latestFormat = existing.firstOrNull()?.let { generation ->
+            store.readDocument(generation.documentUri)?.let(BackupEncryption::isEncrypted)
+        }
+        val copiesToCreate = if (existing.isEmpty() || latestFormat != encryptedBackup) 3 else 1
 
-        val timestamp = System.currentTimeMillis()
+        val timestamp = maxOf(System.currentTimeMillis(), (existing.maxOfOrNull { it.createdAt } ?: 0L) + 1)
         for (i in 1..copiesToCreate) {
             val name = "tcg-colecao-$timestamp-$i.json"
             val docUri = store.writeDocument(treeUri, name, bytes)
@@ -57,7 +81,14 @@ class LocalBackupManager(
             }
 
             try {
-                WebBackupAdapter.parse(readBack)
+                val payload = if (BackupEncryption.isEncrypted(readBack)) {
+                    when (val setting = passphrases.read()) {
+                        is StoredBackupPassphrase.Available -> withContext(Dispatchers.Default) { BackupEncryption.decrypt(readBack, setting.value) }
+                        StoredBackupPassphrase.Disabled -> throw InvalidBackupException("Senha do backup indisponível")
+                        StoredBackupPassphrase.Unavailable -> throw InvalidBackupException("Chave local do backup indisponível")
+                    }
+                } else readBack
+                WebBackupAdapter.parse(payload)
             } catch (ex: Exception) {
                 return fail("Arquivo gravado inválido: ${ex.message}")
             }

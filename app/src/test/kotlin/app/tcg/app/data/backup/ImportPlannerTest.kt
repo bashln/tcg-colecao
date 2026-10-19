@@ -103,6 +103,37 @@ class ImportPlannerTest {
     }
 
     @Test
+    fun plans_unchanged_when_updated_local_item_matches_backup_despite_stale_marker() {
+        val priorEntry = createEntry("item-1", "card-1", 2)
+        val updatedEntry = createEntry("item-1", "card-1", 4)
+        val backup = ValidatedWebBackup(
+            exportedAt = "2026-10-18T10:00:00Z",
+            entries = listOf(updatedEntry),
+        )
+        val localItem = CollectionItemEntity(
+            id = "item-1",
+            cardId = "card-1",
+            quantity = 4,
+            condition = Condition.NEAR_MINT,
+            variant = CardVariant.NORMAL,
+            pricePaidAmount = null,
+            pricePaidCurrency = null,
+            addedAt = 1000L,
+            revision = 2L,
+        )
+        val localState = ImportLocalState(
+            items = listOf(localItem),
+            markers = mapOf("item-1" to WebBackupAdapter.itemSignature(priorEntry.item)),
+            binding = null,
+            cardIds = setOf("card-1"),
+        )
+
+        val ticket = ImportPlanner.createTicket(backup, localState)
+        assertEquals(ImportSummary(added = 0, merged = 0, unchanged = 1), ticket.summary)
+        assertEquals(ImportAction.Unchanged("item-1"), ticket.actions.single())
+    }
+
+    @Test
     fun plans_merge_when_configuration_matches_local_item_with_different_id() {
         val entry = createEntry("item-source-2", "card-1", 3)
         val backup = ValidatedWebBackup(

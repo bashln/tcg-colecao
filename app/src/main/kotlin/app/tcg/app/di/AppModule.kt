@@ -12,7 +12,10 @@ import app.tcg.app.auth.SessionCipher
 import app.tcg.app.auth.SessionStore
 import app.tcg.app.auth.SupabaseAuthClient
 import app.tcg.app.data.backup.BackupDocumentStore
+import app.tcg.app.data.backup.BackupPassphraseStore
+import app.tcg.app.data.backup.AndroidBackupPassphraseStore
 import app.tcg.app.data.backup.CollectionBackup
+import app.tcg.app.data.backup.CollectionBackupWorker
 import app.tcg.app.data.backup.FileRecoveryStore
 import app.tcg.app.data.backup.LocalBackupManager
 import app.tcg.app.data.backup.RecoveryStore
@@ -101,9 +104,12 @@ object AppModule {
     @Provides
     @Singleton
     fun provideCollectionRepository(
+        @ApplicationContext context: Context,
         collectionDao: CollectionDao,
         cardDao: CardDao,
-    ): CollectionRepository = RoomCollectionRepository(collectionDao, cardDao)
+    ): CollectionRepository = RoomCollectionRepository(collectionDao, cardDao) {
+        CollectionBackupWorker.enqueue(context)
+    }
 
     @Provides
     @Singleton
@@ -307,6 +313,14 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideBackupPassphraseStore(@ApplicationContext context: Context): BackupPassphraseStore =
+        AndroidBackupPassphraseStore(
+            preferences = context.getSharedPreferences("tcg_local_backup", Context.MODE_PRIVATE),
+            localCipher = AndroidKeystoreSessionCipher(keyAlias = "tcg_local_backup_key"),
+        )
+
+    @Provides
+    @Singleton
     fun provideRecoveryStore(@ApplicationContext context: Context): RecoveryStore =
         FileRecoveryStore(context.filesDir.resolve("backup_recovery"))
 
@@ -315,7 +329,8 @@ object AppModule {
     fun provideLocalBackupManager(
         dao: CollectionDao,
         store: BackupDocumentStore,
-    ): LocalBackupManager = LocalBackupManager(dao, store)
+        passphrases: BackupPassphraseStore,
+    ): LocalBackupManager = LocalBackupManager(dao, store, passphrases)
 
     @Provides
     @Singleton
@@ -323,5 +338,6 @@ object AppModule {
         dao: CollectionDao,
         recoveryStore: RecoveryStore,
         backupManager: LocalBackupManager,
-    ): CollectionBackup = RoomCollectionBackup(dao, recoveryStore, backupManager)
+        passphrases: BackupPassphraseStore,
+    ): CollectionBackup = RoomCollectionBackup(dao, recoveryStore, backupManager, passphrases)
 }

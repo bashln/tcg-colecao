@@ -31,6 +31,7 @@ import java.time.temporal.ChronoUnit
 class RoomCollectionRepository(
     private val collectionDao: CollectionDao,
     private val cardDao: CardDao,
+    private val onCollectionChanged: () -> Unit = {},
 ) : CollectionRepository {
 
     override suspend fun add(
@@ -48,6 +49,7 @@ class RoomCollectionRepository(
                 pricePaidCurrency = pricePaid?.currency?.name,
             ),
         )
+        onCollectionChanged()
         return item.toItem()
     }
 
@@ -67,7 +69,10 @@ class RoomCollectionRepository(
 
     override suspend fun update(original: CollectionItem, changes: CollectionItemChanges): CollectionUpdate =
         when (val result = collectionDao.updateExact(original, changes)) {
-            is app.tcg.app.data.local.CollectionWriteResult.Updated -> CollectionUpdate.Updated(result.item)
+            is app.tcg.app.data.local.CollectionWriteResult.Updated -> {
+                onCollectionChanged()
+                CollectionUpdate.Updated(result.item)
+            }
             app.tcg.app.data.local.CollectionWriteResult.NotFound -> CollectionUpdate.NotFound
             app.tcg.app.data.local.CollectionWriteResult.ChangedSinceLoaded -> CollectionUpdate.ChangedSinceLoaded
             app.tcg.app.data.local.CollectionWriteResult.DuplicateConfiguration -> CollectionUpdate.DuplicateConfiguration
@@ -92,6 +97,7 @@ class RoomCollectionRepository(
 
     override suspend fun remove(itemId: String) {
         collectionDao.removeAndQueue(itemId)
+        onCollectionChanged()
     }
 }
 
