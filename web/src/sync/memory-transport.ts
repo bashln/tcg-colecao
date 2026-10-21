@@ -9,6 +9,7 @@ export interface PushOutcome {
   kind: 'applied' | 'already-applied' | 'conflict'
   reason?: Extract<ReturnType<typeof applyOperation>, { kind: 'conflict' }>['reason']
   sequence?: number
+  opId?: string
 }
 
 export interface MemoryTransportOptions {
@@ -34,17 +35,17 @@ export function createMemoryTransport(options: MemoryTransportOptions = {}): Mem
 
       return operations.map((operation): PushOutcome => {
         const result = applyOperation(account.state, operation)
-        if (result.kind === 'conflict') return { kind: 'conflict', reason: result.reason }
+        if (result.kind === 'conflict') return { kind: 'conflict', reason: result.reason, opId: operation.opId }
         if (result.kind === 'already-applied') {
           const priorSequence = account.operationSequence.get(operation.opId)
-          return { kind: 'already-applied', ...(priorSequence === undefined ? {} : { sequence: priorSequence }) }
+          return { kind: 'already-applied', opId: operation.opId, ...(priorSequence === undefined ? {} : { sequence: priorSequence }) }
         }
 
         account.state = result
         account.sequence += 1
         account.operationSequence.set(operation.opId, account.sequence)
         account.log.push({ sequence: account.sequence, operation: cloneOperation(operation) })
-        return { kind: 'applied', sequence: account.sequence }
+        return { kind: 'applied', opId: operation.opId, sequence: account.sequence }
       })
     },
     async pull(identity, afterSequence) {

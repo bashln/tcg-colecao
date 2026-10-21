@@ -306,6 +306,7 @@ fun AppNav(
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() },
                     onSaved = { navController.popBackStack() },
+                    onRemoved = { navController.popBackStack() },
                 )
             }
         }

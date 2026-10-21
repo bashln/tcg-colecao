@@ -109,5 +109,11 @@
       { "amount": 12.345, "reason": "more than two decimals" },
       { "amount": -1, "reason": "negative" }
     ]
-  }
+  },
+  "roundingCases": [
+    { "name": "nineteen ninety nine", "major": 19.99, "minor": 1999 },
+    { "name": "twenty nine cents", "major": 0.29, "minor": 29 },
+    { "name": "one fifteen", "major": 1.15, "minor": 115 },
+    { "name": "two hundred and five", "major": 205, "minor": 20500 }
+  ]
 }

@@ -73,12 +73,25 @@ O goal persistente desta execução está ativo no Codex. Atualize este arquivo,
 - [x] Implementar a interface responsiva e corrigir sobreposição dos botões vazios e do resumo em 390 px após inspeção visual.
 - [ ] Verificar o endpoint TCGdex real, câmera, OCR e permissões em iPhone e desktop. A automação atual intercepta o catálogo e não exercita a câmera.
 - [ ] Verificar teclado, leitores de tela, orientação, falha de rede e Safari em aparelho real.
-- [ ] Definir e verificar importação de backup antes de tornar a web pública.
+- [x] Definir e verificar importação de backup antes de tornar a web pública.
+  - A importação validada existe na web, com schema versionado, limite de 50 MB,
+    mesclagem atômica e recusa de conflito. `web/tests/backup-import.spec.ts`
+    cobre importação, replay idempotente, mesclagem por quantidade, recusa de
+    inconsistência, recusa de overflow de revisão e migração do banco v1.
 
 ### 6. Preparar distribuição
 
-- [ ] Automatizar testes e APK assinado por CI sem vazar secrets.
-- [x] Criar workflow web no GitHub Actions para testar e produzir artefato estático baixável; execução remota ainda não observada.
+- [x] Automatizar testes e APK assinado por CI sem vazar secrets.
+  - O workflow `release` compila, assina, confere o certificado fixado e publica. Os
+    guards de release têm script de teste próprio. Desde 2026-10-20 o mesmo
+    workflow roda os testes de domínio e de unidade antes de compilar o APK, e
+    uma suíte vermelha impede a publicação.
+- [x] Criar workflow web no GitHub Actions para testar e produzir artefato estático baixável.
+  - O workflow web roda a cada push e PR, e já executou com sucesso em `main`, em
+    PRs e nas tags `v0.4.0` e `v0.4.1`.
+- [x] Rodar o harness de PostgreSQL no CI.
+  - Job novo `supabase`, que aplica as migrações verbatim e exercita RLS e RPC.
+    Roda local com 58 asserções verdes.
 - [ ] Validar instalação e atualização de release em aparelho limpo e com dados existentes.
 - [ ] Conferir documentação de versão, backup, privacidade e recuperação.
 - [ ] Parar antes de publicar. Pedir confirmação explícita para release ou deploy público.
@@ -89,7 +102,13 @@ O goal persistente desta execução está ativo no Codex. Atualize este arquivo,
 - S3 persiste snapshots diários no Room. A Home agora projeta as posses atuais sobre os snapshots, separa TCGplayer/USD de Cardmarket/EUR e mostra cobertura, cotações antigas e datas de captura. Atualização periódica das cotações continua pendente.
 - U1 implementa progresso de expansão e faltantes localmente. Sete testes instrumentados passaram no Galaxy A32. A grade principal, cartas salvas no fallback offline e o checklist abrem a carta correspondente. A revisão independente da última mudança segue pendente.
 - E1 adiciona uma rota de edição separada do fluxo de adição. O editor atualiza a posse por `CollectionItem.id`, mantém ID/data e recusa colisão e snapshot obsoleto.
-- O Supabase CLI está conectado nesta máquina. Projeto, Auth, RLS e sincronização ainda não foram alterados ou aprovados.
+- O projeto Supabase isolado `fwzzwqakrvogafqiatgo` existe, com Auth, RLS e as oito
+  migrações de sync aplicadas. As quatro migrações mais recentes, que trazem os
+  RPCs de push conflict, entaram no remoto em 2026-10-20 e foram conferidas por
+  SQL: 8 migrações aplicadas, 8 RPCs presentes, todas SECURITY DEFINER, com
+  `authenticated` autorizado e `anon` sem EXECUTE, e as quatro tabelas vazias.
+  O round-trip hospedado entre duas contas continua sem verificação, porque não
+  há SMTP nem domínio de callback configurados.
 - A primeira fatia web está implementada localmente em `web/`, com coleção IndexedDB e busca manual pelo TCGdex. Build, 2 arquivos unitários e 2 fluxos Playwright Chromium passaram. Os detalhes estão em `web/docs/verification-2026-10-10.md`. A API real, câmera, OCR, Safari/iPhone, sincronização e recuperação por importação ainda precisam de validação.
 - Nesta sessão, o ADB não encontrou aparelhos (`no devices/emulators found`). O APK Android e os testes Compose compilaram, mas não foram instalados nem executados no Galaxy A32. Testes instrumentados podem desinstalar o app e apagar dados locais; não rode no aparelho pessoal sem proteger os dados ou usar um dispositivo isolado.
 - `docs/design/android/visual-language.md` registra os tokens e a intenção visual Android. O tema e ícone foram atualizados, e dois testes automatizados de contraste passaram; a avaliação de espaçamento e hierarquia com arte real ainda depende de inspeção em aparelho.

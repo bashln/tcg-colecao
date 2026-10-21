@@ -42,6 +42,20 @@ jobs:
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
 
+      - name: Instalar plataforma e build-tools do Android
+        run: |
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -n1)"
+          if [ -z "$sdkmanager" ]; then
+            echo "::error::sdkmanager nao encontrado no Android SDK."
+            exit 1
+          fi
+          yes | "$sdkmanager" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+
+      # Um release so publica depois dos testes de unidade passarem. O APK assinado
+      # nunca vira release com a suite vermelha.
+      - name: Testes de dominio e unidade Android
+        run: ./gradlew :core:test :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Derivar versão da tag
         run: |
           release_tag="$GITHUB_REF_NAME"

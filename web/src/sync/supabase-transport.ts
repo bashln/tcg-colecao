@@ -117,12 +117,25 @@ function isCurrency(value: unknown): value is Currency {
 }
 
 function toMinorUnits(amount: number): number {
+  if (!Number.isFinite(amount)) {
+    throw new SupabaseSyncError('unavailable', 'O preço pago precisa ser um número válido')
+  }
+  if (amount < 0) {
+    throw new SupabaseSyncError('unavailable', 'O preço pago não pode ser negativo')
+  }
   const scaled = amount * 100
   const rounded = Math.round(scaled)
-  if (!Number.isFinite(amount) || !Number.isSafeInteger(rounded) || Math.abs(scaled - rounded) > 1e-7) {
+  if (Math.abs(scaled - rounded) > 1e-7) {
     throw new SupabaseSyncError('unavailable', 'O preço pago precisa ter no máximo duas casas decimais')
   }
+  if (!Number.isSafeInteger(rounded)) {
+    throw new SupabaseSyncError('unavailable', 'O preço pago é maior que o limite suportado')
+  }
   return rounded
+}
+
+function fromMinorUnits(minor: number): number {
+  return minor / 100
 }
 
 function canonical(value: unknown): unknown {
@@ -633,5 +646,5 @@ function parseRemotePrice(value: unknown): SyncItem['pricePaid'] {
   const currency = raw.currency
   if (!Number.isSafeInteger(amount) || amount < 0) throw new SupabaseSyncError('unavailable', 'Preço remoto inválido')
   if (!isCurrency(currency)) throw new SupabaseSyncError('unavailable', 'Moeda remota desconhecida')
-  return { amount: amount / 100, currency: currency satisfies Currency }
+  return { amount: fromMinorUnits(amount), currency: currency satisfies Currency }
 }

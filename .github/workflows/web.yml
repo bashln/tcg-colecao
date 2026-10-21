@@ -45,3 +45,39 @@ jobs:
           path: web/dist/
           if-no-files-found: error
           retention-days: 7
+
+  # O navegador alvo do usuario sem iPhone. Roda separado do job de Chromium para
+  # que uma falha de Safari nao esconda o resultado do Chromium.
+  webkit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Instalar web dependencies
+        run: npm ci
+
+      - name: Instalar WebKit para os testes de navegador
+        run: npx playwright install --with-deps webkit
+
+      - name: Rodar testes de navegador no WebKit
+        run: npx playwright test --project=webkit
+
+      - name: Guardar relatorio do WebKit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webkit-report
+          path: web/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
