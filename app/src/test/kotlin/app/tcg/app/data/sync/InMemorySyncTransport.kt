@@ -17,15 +17,15 @@ internal class InMemorySyncTransport(failNextPush: Boolean = false) : SyncTransp
         return operations.map { operation ->
             val prior = account.applied[operation.opId]
             if (prior != null) {
-                if (prior.first != operation) PushOutcome.Conflict("id-collision")
-                else PushOutcome.AlreadyApplied(prior.second)
+                if (prior.first != operation) PushOutcome.Conflict("id-collision", operation.opId)
+                else PushOutcome.AlreadyApplied(prior.second, operation.opId)
             } else {
                 val outcome = account.apply(operation)
                 if (outcome is PushOutcome.Applied) {
                     account.sequence += 1
                     account.applied[operation.opId] = operation to account.sequence
                     account.log += SequencedOperation(account.sequence, operation)
-                    PushOutcome.Applied(account.sequence)
+                    PushOutcome.Applied(account.sequence, operation.opId)
                 } else outcome
             }
         }
@@ -47,26 +47,26 @@ internal class InMemorySyncTransport(failNextPush: Boolean = false) : SyncTransp
         fun apply(operation: SyncOperation): PushOutcome {
             when (operation) {
                 is SyncOperation.Create -> {
-                    if (rows.containsKey(operation.item.id)) return PushOutcome.Conflict("stale")
+                    if (rows.containsKey(operation.item.id)) return PushOutcome.Conflict("stale", operation.opId)
                     if (rows.values.any { it.second?.sameConfiguration(operation.item) == true }) {
-                        return PushOutcome.Conflict("duplicate-configuration")
+                        return PushOutcome.Conflict("duplicate-configuration", operation.opId)
                     }
                     rows[operation.item.id] = 1L to operation.item
                 }
                 is SyncOperation.Replace -> {
-                    val current = rows[operation.item.id] ?: return PushOutcome.Conflict("missing")
-                    if (current.first != operation.baseRevision) return PushOutcome.Conflict("stale")
-                    if (current.second == null) return PushOutcome.Conflict("deleted")
+                    val current = rows[operation.item.id] ?: return PushOutcome.Conflict("missing", operation.opId)
+                    if (current.first != operation.baseRevision) return PushOutcome.Conflict("stale", operation.opId)
+                    if (current.second == null) return PushOutcome.Conflict("deleted", operation.opId)
                     rows[operation.item.id] = current.first + 1 to operation.item
                 }
                 is SyncOperation.Delete -> {
-                    val current = rows[operation.itemId] ?: return PushOutcome.Conflict("missing")
-                    if (current.first != operation.baseRevision) return PushOutcome.Conflict("stale")
-                    if (current.second == null) return PushOutcome.Conflict("deleted")
+                    val current = rows[operation.itemId] ?: return PushOutcome.Conflict("missing", operation.opId)
+                    if (current.first != operation.baseRevision) return PushOutcome.Conflict("stale", operation.opId)
+                    if (current.second == null) return PushOutcome.Conflict("deleted", operation.opId)
                     rows[operation.itemId] = current.first + 1 to null
                 }
             }
-            return PushOutcome.Applied(0)
+            return PushOutcome.Applied(0, operation.opId)
         }
 
         private fun SyncItem.sameConfiguration(other: SyncItem) =

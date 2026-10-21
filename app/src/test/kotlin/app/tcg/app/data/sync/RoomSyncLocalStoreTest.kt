@@ -13,6 +13,7 @@ import app.tcg.core.domain.model.Money
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -568,5 +569,57 @@ class RoomSyncLocalStoreTest {
 
         assertEquals(3L, store.lastSequence("acct-a"))
         assertEquals(8L, store.lastSequence("acct-b"))
+    }
+
+    @Test
+    fun push_conflicts_block_the_row_op_id_and_the_rejected_operation_op_id() = runTest {
+        db.collectionDao().setSyncBinding(app.tcg.app.data.local.SyncBindingEntity(identity = "acct", deviceId = "device-0001"))
+        db.collectionDao().insertSyncOperation(outbox("op-row", "acct", "create", "item-row"))
+        db.collectionDao().insertSyncOperation(outbox("op-rejected", "acct", "create", "item-rejected"))
+        db.collectionDao().insertSyncOperation(outbox("op-free", "acct", "create", "item-free"))
+        val rejected = SyncOperation.Create("op-rejected", "device-0001", syncItem("item-rejected"))
+        val rowConflict = PushConflict(
+            id = "row-conflict", opId = "op-row", itemId = "item-row", reason = "stale",
+            deviceId = "device-0001", rejectedOperation = null, cloudItem = null, conflictingItem = null,
+            highWater = 3L, resolution = null,
+        )
+        val rejectedConflict = PushConflict(
+            id = "rejected-conflict", opId = null, itemId = "item-rejected", reason = "invalid-payload",
+            deviceId = "device-0001", rejectedOperation = rejected, cloudItem = null, conflictingItem = null,
+            highWater = 3L, resolution = null,
+        )
+
+        assertTrue(store.savePushConflict("acct", rowConflict))
+        assertTrue(store.savePushConflict("acct", rejectedConflict))
+
+        assertEquals(listOf("op-free"), store.pending("acct").map { it.opId })
+    }
+
+    @Test
+    fun push_conflict_local_payload_keeps_the_price_in_minor_units() = runTest {
+        db.collectionDao().setSyncBinding(app.tcg.app.data.local.SyncBindingEntity(identity = "acct", deviceId = "device-0001"))
+        db.collectionDao().insertIfAbsent(
+            CollectionItemEntity(
+                id = "item-price", cardId = "base1-4", quantity = 1, condition = Condition.NEAR_MINT,
+                variant = CardVariant.NORMAL, pricePaidAmount = 12.34, pricePaidCurrency = "USD",
+                addedAt = 1L, revision = 1,
+            ),
+        )
+        val rejected = SyncOperation.Replace(
+            "op-price", "device-0001", 1L,
+            syncItem("item-price", pricePaid = Money(12.34, Currency.USD)),
+        )
+        val conflict = PushConflict(
+            id = "price-conflict", opId = rejected.opId, itemId = "item-price", reason = "stale",
+            deviceId = "device-0001", rejectedOperation = rejected, cloudItem = null, conflictingItem = null,
+            highWater = 5L, resolution = null,
+        )
+
+        assertTrue(store.savePushConflict("acct", conflict))
+
+        val stored = db.collectionDao().listSyncConflicts("acct").single()
+        val payload = Json.parseToJsonElement(checkNotNull(stored.localPayload)).jsonObject
+        assertEquals(1234L, payload.getValue("pricePaid").jsonObject.getValue("amount").jsonPrimitive.content.toLong())
+        assertEquals(12.34, store.conflicts("acct").single().local?.pricePaid?.amount!!, 1e-9)
     }
 }

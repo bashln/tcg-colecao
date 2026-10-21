@@ -27,6 +27,7 @@ class CollectionSyncCoordinatorTest {
     @Test
     fun sync_propagates_cancellation_from_transport() = runTest {
         val local = TestLocalSyncStore()
+        local.enqueue(createOperation("op-1", "item-1"))
         val transport = object : SyncTransport {
             override suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome> =
                 throw CancellationException("cancel sync")
@@ -214,7 +215,191 @@ class CollectionSyncCoordinatorTest {
         assertTrue(local.conflicts("user-a").any { it.serverConflictId == conflict.id })
         assertEquals(0, local.pending("user-a").size)
     }
+
+    @Test
+    fun pending_operations_are_pushed_in_blocks_of_at_most_one_hundred() = runTest {
+        val batches = mutableListOf<Int>()
+        val transport = object : SyncTransport {
+            override suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome> {
+                batches += operations.size
+                return operations.map { PushOutcome.Applied(1L, it.opId) }
+            }
+
+            override suspend fun pull(identity: String, afterSequence: Long) = PullPage(emptyList(), afterSequence)
+        }
+        val local = TestLocalSyncStore()
+        repeat(250) { index -> local.enqueue(createOperation("op-$index", "item-$index")) }
+        val coordinator = CollectionSyncCoordinator(transport, local)
+        coordinator.bindIdentity("user-a")
+
+        assertEquals(SyncResult.Complete(applied = 250, pending = 0), coordinator.syncOnce())
+        assertEquals(listOf(100, 100, 50), batches)
+    }
+
+    @Test
+    fun a_failing_block_stops_the_push_and_leaves_the_later_blocks_pending() = runTest {
+        val batches = mutableListOf<Int>()
+        val transport = object : SyncTransport {
+            override suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome> {
+                batches += operations.size
+                if (batches.size == 2) error("transporte indisponível")
+                return operations.map { PushOutcome.Applied(1L, it.opId) }
+            }
+
+            override suspend fun pull(identity: String, afterSequence: Long) = PullPage(emptyList(), afterSequence)
+        }
+        val local = TestLocalSyncStore()
+        repeat(250) { index -> local.enqueue(createOperation("op-$index", "item-$index")) }
+        val coordinator = CollectionSyncCoordinator(transport, local)
+        coordinator.bindIdentity("user-a")
+
+        val result = coordinator.syncOnce()
+
+        assertTrue(result is SyncResult.Error)
+        assertEquals(listOf(100, 100), batches)
+        assertEquals(150, local.pending("user-a").size)
+    }
+
+    @Test
+    fun out_of_order_responses_are_attributed_by_their_op_id() = runTest {
+        val transport = object : SyncTransport {
+            override suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome> =
+                operations.reversed().map { operation ->
+                    if (operation.opId == "op-b") PushOutcome.Conflict("stale", "op-b", "conflict-b")
+                    else PushOutcome.Applied(1L, "op-a")
+                }
+
+            override suspend fun pull(identity: String, afterSequence: Long) = PullPage(emptyList(), afterSequence)
+        }
+        val local = TestLocalSyncStore()
+        local.enqueue(createOperation("op-a", "item-a"))
+        local.enqueue(createOperation("op-b", "item-b"))
+        val coordinator = CollectionSyncCoordinator(transport, local)
+        coordinator.bindIdentity("user-a")
+
+        val result = coordinator.syncOnce() as SyncResult.Conflicts
+
+        assertEquals(1, result.count)
+        assertEquals("item-b", result.details.single().itemId)
+        assertEquals("conflict-b", result.details.single().serverConflictId)
+        assertEquals(listOf("op-b"), local.pending("user-a").map { it.opId })
+    }
+
+    @Test
+    fun a_response_without_an_op_id_is_a_protocol_violation() = runTest {
+        val transport = object : SyncTransport {
+            override suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome> =
+                operations.map { PushOutcome.Applied(1L) }
+
+            override suspend fun pull(identity: String, afterSequence: Long) = PullPage(emptyList(), afterSequence)
+        }
+        val local = TestLocalSyncStore()
+        local.enqueue(createOperation("op-a", "item-a"))
+        local.enqueue(createOperation("op-b", "item-b"))
+        val coordinator = CollectionSyncCoordinator(transport, local)
+        coordinator.bindIdentity("user-a")
+
+        assertTrue(coordinator.syncOnce() is SyncResult.Error)
+        assertEquals(2, local.pending("user-a").size)
+    }
+
+    @Test
+    fun a_response_with_an_op_id_that_was_not_sent_is_a_protocol_violation() = runTest {
+        val transport = object : SyncTransport {
+            override suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome> =
+                operations.map { PushOutcome.Applied(1L, "op-not-sent") }
+
+            override suspend fun pull(identity: String, afterSequence: Long) = PullPage(emptyList(), afterSequence)
+        }
+        val local = TestLocalSyncStore()
+        local.enqueue(createOperation("op-a", "item-a"))
+        local.enqueue(createOperation("op-b", "item-b"))
+        val coordinator = CollectionSyncCoordinator(transport, local)
+        coordinator.bindIdentity("user-a")
+
+        assertTrue(coordinator.syncOnce() is SyncResult.Error)
+        assertEquals(2, local.pending("user-a").size)
+    }
+
+    @Test
+    fun a_sent_operation_without_a_response_stays_pending() = runTest {
+        val transport = object : SyncTransport {
+            override suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome> =
+                listOf(PushOutcome.Applied(1L, "op-a"))
+
+            override suspend fun pull(identity: String, afterSequence: Long) = PullPage(emptyList(), afterSequence)
+        }
+        val local = TestLocalSyncStore()
+        local.enqueue(createOperation("op-a", "item-a"))
+        local.enqueue(createOperation("op-b", "item-b"))
+        val coordinator = CollectionSyncCoordinator(transport, local)
+        coordinator.bindIdentity("user-a")
+
+        assertEquals(SyncResult.Complete(applied = 1, pending = 1), coordinator.syncOnce())
+        assertEquals(listOf("op-b"), local.pending("user-a").map { it.opId })
+    }
+
+    @Test
+    fun a_rejected_response_becomes_a_push_conflict_and_is_not_acknowledged() = runTest {
+        val transport = object : SyncTransport {
+            override suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome> =
+                operations.map { PushOutcome.Rejected("invalid-payload", it.opId, "conflict-rejected") }
+
+            override suspend fun pull(identity: String, afterSequence: Long) = PullPage(emptyList(), afterSequence)
+        }
+        val local = TestLocalSyncStore()
+        local.enqueue(createOperation("op-a", "item-a"))
+        val coordinator = CollectionSyncCoordinator(transport, local)
+        coordinator.bindIdentity("user-a")
+
+        val result = coordinator.syncOnce() as SyncResult.Conflicts
+        val detail = result.details.single()
+
+        assertEquals("push", detail.source)
+        assertEquals("invalid-payload", detail.reason)
+        assertEquals("conflict-rejected", detail.serverConflictId)
+        assertEquals(listOf("op-a"), local.pending("user-a").map { it.opId })
+    }
+
+    @Test
+    fun an_operation_blocked_by_the_rejected_operation_is_not_pushed_again() = runTest {
+        val sent = mutableListOf<String>()
+        val transport = object : SyncTransport {
+            override suspend fun push(identity: String, operations: List<SyncOperation>): List<PushOutcome> {
+                sent += operations.map { it.opId }
+                return operations.map { PushOutcome.Applied(1L, it.opId) }
+            }
+
+            override suspend fun pull(identity: String, afterSequence: Long) = PullPage(emptyList(), afterSequence)
+        }
+        val blocked = createOperation("op-blocked", "item-blocked")
+        val local = TestLocalSyncStore()
+        local.enqueue(blocked)
+        local.enqueue(createOperation("op-free", "item-free"))
+        local.savePushConflict(
+            "user-a",
+            PushConflict(
+                id = "server-conflict", opId = null, itemId = "item-blocked", reason = "stale",
+                deviceId = blocked.deviceId, rejectedOperation = blocked, cloudItem = null,
+                conflictingItem = null, highWater = 4L, resolution = null,
+            ),
+        )
+        val coordinator = CollectionSyncCoordinator(transport, local)
+        coordinator.bindIdentity("user-a")
+
+        val result = coordinator.syncOnce()
+        assertEquals(listOf("op-free"), sent)
+        assertTrue(result is SyncResult.Conflicts)
+        result as SyncResult.Conflicts
+        assertEquals(1, result.count)
+        assertEquals(1, result.pending)
+    }
 }
+
+private fun createOperation(opId: String, itemId: String) = SyncOperation.Create(
+    opId, "device-a",
+    SyncItem(itemId, "card-a", 1, CardVariant.NORMAL, Condition.NEAR_MINT, null, 1L),
+)
 
 private class TestLocalSyncStore : SyncLocalStore {
     private val operationsByIdentity = mutableMapOf<String, MutableList<SyncOperation>>()

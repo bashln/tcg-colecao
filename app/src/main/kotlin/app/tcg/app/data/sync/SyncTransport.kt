@@ -44,18 +44,21 @@ data class SequencedOperation(val sequence: Long, val operation: SyncOperation)
 data class PullPage(val operations: List<SequencedOperation>, val highWaterMark: Long)
 
 sealed interface PushOutcome {
-    data class Applied(val sequence: Long, val opId: String? = null) : PushOutcome
-    data class AlreadyApplied(val sequence: Long, val opId: String? = null) : PushOutcome
+    /** The operation the server echoed back; the coordinator attributes outcomes by it. */
+    val opId: String?
+
+    data class Applied(val sequence: Long, override val opId: String? = null) : PushOutcome
+    data class AlreadyApplied(val sequence: Long, override val opId: String? = null) : PushOutcome
     data class Conflict(
         val reason: String,
-        val opId: String? = null,
+        override val opId: String? = null,
         val conflictId: String? = null,
         val highWater: Long? = null,
         val rejectedOperation: SyncOperation? = null,
         val cloudItem: PushCloudItem? = null,
         val conflictingItem: PushCloudItem? = null,
     ) : PushOutcome
-    data class Rejected(val reason: String, val opId: String? = null, val conflictId: String? = null) : PushOutcome
+    data class Rejected(val reason: String, override val opId: String? = null, val conflictId: String? = null) : PushOutcome
 }
 
 sealed interface PushCloudItem {
