@@ -43,8 +43,13 @@ jobs:
 
       # Somente testes de unidade no JVM. Nenhum teste conectado roda aqui: preserva o
       # aparelho de teste ligado via ADB e nunca desinstala dados locais.
+      # Compilar os testes instrumentados mantem o codigo de androidTest quebrando
+      # visivel no PR, mesmo sem aparelho conectado.
       - name: Testes de dominio e unidade Android
         run: ./gradlew :core:test :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Compilar testes instrumentados
+        run: ./gradlew :app:compileDebugAndroidTestKotlin --no-daemon --stacktrace
 
       - name: Compilar APK de debug
         run: ./gradlew :app:assembleDebug --no-daemon
