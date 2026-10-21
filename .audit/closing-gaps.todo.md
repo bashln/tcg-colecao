@@ -15,32 +15,33 @@ verificada antes da seguinte.
 
 ## Slice 2. Correção dos bugs de sync
 
-- [ ] Chunking de push em lotes de 100 operações nos dois clientes.
-- [ ] Mapeamento de resultado de push por `opId`, não por posição.
-- [ ] Web trata `rejected` como conflito, igual ao Android.
-- [ ] Regra única de bloqueio por opId para push conflict.
-- [ ] Uma função de arredondamento de dinheiro por plataforma e vetor
-      cross-platform com valor de três casas.
-- [ ] `pricePaid` com a mesma unidade em todos os codificadores do Android.
+- [x] Chunking de push em lotes de 100 operações nos dois clientes.
+- [x] Mapeamento de resultado de push por `opId`, não por posição.
+- [x] `rejected` já era conflito nos dois clientes. A regra ficou com teste.
+- [x] Regra única de bloqueio por opId, união de `pushConflict.opId` e
+      `pushConflict.rejectedOperation.opId`.
+- [x] Uma função de arredondamento de dinheiro por plataforma, com recusa de
+      valor negativo e vetores cross-platform de `roundingCases`.
+- [x] `pricePaid` com a mesma unidade em todos os codificadores do Android.
 
 ## Slice 3. Fechar o CI
 
-- [ ] Job do harness Postgres.
-- [ ] Workflow de release roda os testes unit antes de publicar.
-- [ ] Job Android compila `app/src/androidTest`.
-- [ ] Projeto WebKit no Playwright.
+- [x] Job do harness Postgres, verde local com 58 asserções.
+- [x] Workflow de release roda os testes unit antes de publicar.
+- [x] Job Android compila `app/src/androidTest`.
+- [x] Projeto WebKit no Playwright, com job próprio no CI.
 
 ## Slice 4. Promessas já feitas na tela
 
-- [ ] Caminho de remoção de posse no Android.
+- [x] Caminho de remoção de posse no Android, com confirmação.
 - [ ] Preço pago no fluxo de adicionar do Android.
 - [ ] Job de atualização periódica de preço.
 - [ ] Filtros por variante, condição e status no Android.
 
 ## Slice 5. Documentos
 
-- [ ] `docs/plans/GOAL.md`
-- [ ] `docs/plans/web-architecture.md`
+- [x] `docs/releasing.md`
+- [x] `docs/plans/GOAL.md`
+- [x] `docs/plans/web-architecture.md`
 - [ ] `web/README.md`
-- [ ] `docs/releasing.md`
 - [ ] Contagens de teste em `todo.md` e `docs/verification/accounts-and-sync.md`
