@@ -16,7 +16,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.BookmarkAdd
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.SearchOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,8 +37,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -60,13 +64,47 @@ fun CollectionItemEditScreen(
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
     onSaved: () -> Unit,
+    onRemoved: () -> Unit = onBack,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val savedMessage = stringResource(R.string.collection_edit_saved)
+    val removedMessage = stringResource(R.string.collection_edit_removed)
+    var confirmRemove by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) { viewModel.load() }
+
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text(stringResource(R.string.collection_edit_remove_title)) },
+            text = { Text(stringResource(R.string.collection_edit_remove_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmRemove = false
+                        scope.launch {
+                            if (viewModel.remove()) {
+                                snackbarHostState.showSnackbar(removedMessage)
+                                onRemoved()
+                            }
+                        }
+                    },
+                ) {
+                    Text(
+                        text = stringResource(R.string.collection_edit_remove_confirm),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRemove = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
 
     Scaffold(
         modifier = modifier,
@@ -181,6 +219,20 @@ fun CollectionItemEditScreen(
                             }
                         }
                     }
+                    item {
+                        TextButton(
+                            enabled = !ready.saving && !ready.removing,
+                            onClick = { confirmRemove = true },
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                        ) {
+                            Icon(Icons.Outlined.Delete, contentDescription = null)
+                            Spacer(Modifier.size(8.dp))
+                            Text(
+                                text = stringResource(R.string.collection_edit_remove),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -244,6 +296,7 @@ private fun EditErrorMessage(error: CollectionItemEditError, onReload: () -> Uni
                     CollectionItemEditError.DUPLICATE_CONFIGURATION -> R.string.collection_edit_duplicate
                     CollectionItemEditError.CHANGED_SINCE_LOADED -> R.string.collection_edit_stale
                     CollectionItemEditError.SAVE_FAILED -> R.string.collection_edit_save_error
+                    CollectionItemEditError.REMOVE_FAILED -> R.string.collection_edit_remove_error
                 },
             ),
             color = MaterialTheme.colorScheme.error,
