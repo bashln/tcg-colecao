@@ -17,7 +17,6 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
-import kotlin.math.abs
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -27,8 +26,6 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
-import java.math.BigDecimal
-import java.math.RoundingMode
 import java.security.MessageDigest
 
 enum class SyncErrorKind {
@@ -114,7 +111,7 @@ private fun encodeSyncItem(item: SyncItem): JsonObject = JsonObject(
             item.pricePaid?.let { money ->
                 JsonObject(
                     mapOf(
-                        "amount" to JsonPrimitive(toMinorUnitsJson(money.amount)),
+                        "amount" to JsonPrimitive(toMinorUnits(money.amount)),
                         "currency" to JsonPrimitive(money.currency.name),
                     ),
                 )
@@ -132,15 +129,6 @@ private fun canonicalizeJson(element: JsonElement): JsonElement = when (element)
     )
     is JsonArray -> JsonArray(element.map { value -> canonicalizeJson(value) })
     else -> element
-}
-
-private fun toMinorUnitsJson(amount: Double): Long {
-    val scaled = amount * 100
-    val rounded = Math.round(scaled)
-    if (abs(scaled - rounded) > 1e-7) {
-        throw SupabaseSyncException(SyncErrorKind.UNAVAILABLE, "Preço pago precisa ter no máximo duas casas decimais")
-    }
-    return rounded
 }
 
 /**
@@ -592,7 +580,7 @@ class SupabaseSyncTransport(
         val amount = price.jsonPrimitiveOrNull("amount")
         if (amount == null || amount < 0) throw unavailable("Preço remoto inválido")
         val currency = enumValueOrNull<Currency>(price.string("currency")) ?: throw unavailable("Moeda remota desconhecida")
-        return Money(amount = amount.toDouble() / MINOR_UNITS_PER_MAJOR, currency = currency)
+        return Money(amount = fromMinorUnits(amount), currency = currency)
     }
     private fun encodeOperation(operation: SyncOperation, deviceId: String): JsonObject {
         val base = when (operation) {
@@ -672,15 +660,6 @@ class SupabaseSyncTransport(
 
     private fun invalidResponse(message: String) = SupabaseSyncException(SyncErrorKind.INVALID_RESPONSE, message)
 
-    private fun toMinorUnits(amount: Double): Long = try {
-        BigDecimal.valueOf(amount)
-            .movePointRight(MINOR_UNIT_SCALE)
-            .setScale(0, RoundingMode.UNNECESSARY)
-            .longValueExact()
-    } catch (_: ArithmeticException) {
-        throw unavailable("Preço pago precisa ter no máximo duas casas decimais")
-    }
-
     private fun JsonObject.string(key: String): String? {
         val primitive = this[key] as? JsonPrimitive ?: return null
         return if (primitive is JsonNull) null else primitive.contentOrNull
@@ -705,8 +684,6 @@ class SupabaseSyncTransport(
     private companion object {
         const val PAGE_LIMIT = 500
         const val MAX_QUANTITY = 100_000L
-        const val MINOR_UNIT_SCALE = 2
-        const val MINOR_UNITS_PER_MAJOR = 100.0
         val UNAUTHORIZED_PATTERN = Regex("not authenticated|permission denied|jwt", RegexOption.IGNORE_CASE)
         val UUID_PATTERN = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", RegexOption.IGNORE_CASE)
         val ITEM_ID_PATTERN = Regex("^[a-zA-Z0-9-]{8,80}$")

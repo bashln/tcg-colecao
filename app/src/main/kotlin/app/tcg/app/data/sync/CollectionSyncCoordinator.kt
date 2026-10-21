@@ -62,34 +62,41 @@ class CollectionSyncCoordinator(
                 if (identity.get() != boundIdentity || !local.savePushConflict(boundIdentity, conflict)) return SyncResult.Offline(null)
             }
             val allPending = local.pending(boundIdentity)
-            val blockedIds = local.conflicts(boundIdentity).filter { it.source == "push" }.mapNotNull { it.pushConflict?.opId }.toSet()
+            val blockedIds = local.conflicts(boundIdentity)
+                .filter { it.source == "push" }
+                .flatMap { listOfNotNull(it.pushConflict?.opId, it.pushConflict?.rejectedOperation?.opId) }
+                .toSet()
             val pending = allPending.filterNot { it.opId in blockedIds }
             if (identity.get() != boundIdentity) return SyncResult.Offline(pending.size)
-            val outcomes = transport.push(boundIdentity, pending)
             var applied = 0
             val conflicts = mutableListOf<SyncConflictDetail>()
-            pending.zip(outcomes).forEach { (operation, outcome) ->
-                if (identity.get() != boundIdentity) return SyncResult.Offline(pending.size)
-                when (outcome) {
-                    is PushOutcome.Conflict -> conflicts += SyncConflictDetail(
-                        itemId = operation.itemId(),
-                        reason = outcome.reason,
-                        local = operation.localItem(),
-                        source = "push",
-                        serverConflictId = outcome.conflictId,
-                    )
-                    is PushOutcome.Rejected -> conflicts += SyncConflictDetail(
-                        itemId = operation.itemId(),
-                        reason = outcome.reason,
-                        local = operation.localItem(),
-                        source = "push",
-                        serverConflictId = outcome.conflictId,
-                    )
-                    is PushOutcome.Applied, is PushOutcome.AlreadyApplied -> {
-                        if (!local.acknowledge(boundIdentity, operation.opId)) {
-                            return SyncResult.Error(pending.size)
+            for (block in pending.chunked(PUSH_BATCH_LIMIT)) {
+                val outcomes = transport.push(boundIdentity, block)
+                val attributed = attributeOutcomes(block, outcomes)
+                for (operation in block) {
+                    val outcome = attributed[operation.opId] ?: continue
+                    if (identity.get() != boundIdentity) return SyncResult.Offline(pending.size)
+                    when (outcome) {
+                        is PushOutcome.Conflict -> conflicts += SyncConflictDetail(
+                            itemId = operation.itemId(),
+                            reason = outcome.reason,
+                            local = operation.localItem(),
+                            source = "push",
+                            serverConflictId = outcome.conflictId,
+                        )
+                        is PushOutcome.Rejected -> conflicts += SyncConflictDetail(
+                            itemId = operation.itemId(),
+                            reason = outcome.reason,
+                            local = operation.localItem(),
+                            source = "push",
+                            serverConflictId = outcome.conflictId,
+                        )
+                        is PushOutcome.Applied, is PushOutcome.AlreadyApplied -> {
+                            if (!local.acknowledge(boundIdentity, operation.opId)) {
+                                return SyncResult.Error(pending.size)
+                            }
+                            if (outcome is PushOutcome.Applied) applied++
                         }
-                        if (outcome is PushOutcome.Applied) applied++
                     }
                 }
             }
@@ -184,6 +191,31 @@ class CollectionSyncCoordinator(
             SyncResult.Error(runCatching { local.pending(boundIdentity).size }.getOrNull())
         }
     }
+
+    private companion object {
+        /** The server refuses a push batch above this many operations. */
+        const val PUSH_BATCH_LIMIT = 100
+    }
+}
+
+/**
+ * Matches every outcome to the operation it answers. An outcome without an opId, or
+ * with an opId that was not sent, breaks the protocol: the block is not applied at all.
+ */
+private fun attributeOutcomes(sent: List<SyncOperation>, outcomes: List<PushOutcome>): Map<String, PushOutcome> {
+    val sentIds = sent.mapTo(HashSet()) { it.opId }
+    val byOpId = HashMap<String, PushOutcome>(outcomes.size)
+    for (outcome in outcomes) {
+        val opId = outcome.opId
+            ?: throw SupabaseSyncException(SyncErrorKind.INVALID_RESPONSE, "Resposta de push sem opId")
+        if (opId !in sentIds) {
+            throw SupabaseSyncException(SyncErrorKind.INVALID_RESPONSE, "Resposta de push com opId desconhecido")
+        }
+        if (byOpId.put(opId, outcome) != null) {
+            throw SupabaseSyncException(SyncErrorKind.INVALID_RESPONSE, "Resposta de push repetida para a mesma operação")
+        }
+    }
+    return byOpId
 }
 
 private fun SyncOperation.itemId(): String = when (this) {
