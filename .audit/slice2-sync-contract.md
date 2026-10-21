@@ -96,8 +96,10 @@ Android, em `app/src/test/kotlin/app/tcg/app/data/sync/`:
 
 - Push de 250 operações pendentes chama o transporte 3 vezes, com 100, 100 e 50
   operações, e confirma as 250.
-- Push de 250 operações onde o segundo bloco falha deixa 100 pendentes.
-- Respostas devolvidas fora de ordem são atribuídas pelo `opId` certo.
+- Push de 250 operações onde o segundo bloco falha deixa 150 pendentes: as 100
+  do bloco que falhou e as 50 do bloco que não foi enviado.
+
+Respostas devolvidas fora de ordem são atribuídas pelo `opId` certo.
 - Resposta sem `opId` devolve erro e não confirma nada.
 - Resposta `rejected` vira conflito de origem `push` e não confirma a operação.
 - Operação bloqueada por `rejectedOperation.opId` não é reenviada.
@@ -111,7 +113,8 @@ Web, em `web/src/sync/`:
 
 - Push de 250 operações pendentes chama o transporte 3 vezes, com 100, 100 e 50
   operações, e confirma as 250.
-- Push de 250 operações onde o segundo bloco falha deixa 100 pendentes.
+- Push de 250 operações onde o segundo bloco falha deixa 150 pendentes: as 100
+  do bloco que falhou e as 50 do bloco que não foi enviado.
 - Respostas devolvidas fora de ordem são atribuídas pelo `opId` certo.
 - Resposta sem `opId` devolve erro e não confirma nada.
 - Resposta `rejected` vira conflito de origem `push` e não confirma a operação.

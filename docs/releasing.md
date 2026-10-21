@@ -23,9 +23,9 @@ arquivo `tcg-colecao-v1.0.0.apk`.
 
 Alphas são GitHub pre-releases, instalados manualmente pelo arquivo APK. O app
 não os oferece no canal OTA estável. Use tags `vMAJOR.MINOR.0-alpha.N`; por
-exemplo, `v0.3.0-alpha.1` recebe `versionCode=201`, enquanto o futuro `v0.3.0`
-recebe `300`. Isso permite atualizar `v0.2.0` com o Alpha e depois atualizar o
-Alpha com o estável.
+exemplo, `v0.3.0-alpha.1` recebe `versionCode=201`, enquanto `v0.3.0` recebe
+`300`. Isso permite atualizar `v0.2.0` com o Alpha e depois atualizar o Alpha
+com o estável.
 
 Crie e envie tag Alpha somente depois de testar o commit escolhido. Como tags
 `v*` acionam o workflow, isso compila e publica automaticamente a pré-release:
@@ -85,9 +85,14 @@ publicado. O workflow verifica o SHA-256 do certificado com
 `scripts/verify-release-signature.sh`. O fingerprint fixado foi confirmado nos
 APKs públicos `v0.1.1` e `v0.2.0`:
 `d31a9c98580212663993b2ee7ea757e05fa284ccd2b54ad3b38e6b92a4c3f88f`.
+O workflow atual verifica o certificado de todo APK que ele publica, então
+qualquer release nova carrega esse certificado ou falha antes de ser publicada.
 O nome `CN=TCG Colecao` sozinho não prova que a chave é a mesma. Se o keystore
 faltar ou o certificado mudar, o workflow falha em vez de publicar um APK que
 não atualiza instalações existentes.
+
+Antes de compilar o APK de release, o workflow roda os testes de domínio e de
+unidade do Android. Uma suíte vermelha impede a publicação.
 
 ## Versão
 
