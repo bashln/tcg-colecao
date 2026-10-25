@@ -274,7 +274,8 @@ export function App() {
 
   const entries = collection.kind === 'ready' ? collection.value : []
   const activeNav = screenNavKind(screen)
-  return <div className="app-shell">
+  const subpage = screen.kind === 'catalog' || screen.kind === 'confirm' || screen.kind === 'edit'
+  return <div className={subpage ? 'app-shell subpage' : 'app-shell'}>
     <aside className="sidebar" aria-label="Navegação principal">
       <button type="button" className="brand" onClick={() => navigate({ kind: 'collection' })}>TCG <span>Coleção</span></button>
       <nav aria-label="Seções">{navigation.map((item) => <button key={item.kind} type="button" className={`nav-link ${activeNav === item.kind ? 'selected' : ''}`} aria-current={activeNav === item.kind ? 'page' : undefined} onClick={() => navigate({ kind: item.kind })}><Icon name={item.icon} size={24} />{item.label}</button>)}</nav>
