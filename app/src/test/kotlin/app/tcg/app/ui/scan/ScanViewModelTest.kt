@@ -1,6 +1,7 @@
 package app.tcg.app.ui.scan
 
 import app.tcg.core.data.repository.CardRepository
+import app.tcg.core.data.repository.PriceRefreshReport
 import app.tcg.core.data.repository.SetCatalogResult
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.OcrLine
@@ -236,6 +237,8 @@ class ScanViewModelTest {
         override suspend fun getCard(id: String): Card? = result.firstOrNull { it.id == id }
 
         override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
+
+        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
     }
 
     private class SplitCardRepository(
@@ -250,6 +253,8 @@ class ScanViewModelTest {
             (byName + byNumber).firstOrNull { it.id == id }
 
         override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
+
+        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
     }
 
     private class DelayedCardRepository(
@@ -266,6 +271,8 @@ class ScanViewModelTest {
         override suspend fun getCard(id: String): Card? = null
 
         override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
+
+        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
     }
 
     private class FakeCardRepository(
@@ -280,6 +287,8 @@ class ScanViewModelTest {
         override suspend fun getCard(id: String): Card? = result.firstOrNull { it.id == id }
 
         override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
+
+        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
 
         private fun respond(): List<Card> = when {
             cancellation -> throw CancellationException("cancelled")

@@ -13,6 +13,7 @@ import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.PriceSource
 import app.tcg.core.domain.model.SetCatalog
+import app.tcg.core.data.repository.PriceRefreshReport
 import app.tcg.core.data.repository.SetCatalogResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
@@ -180,12 +181,70 @@ class CardRepositoryTest {
         assertEquals(198, fromCache.setTotal)
     }
 
+    @Test
+    fun refresh_prices_records_one_observation_per_card() = runTest {
+        source.getResults["swsh3-136"] = pricedCard("swsh3-136", 0.27)
+        source.getResults["swsh3-137"] = pricedCard("swsh3-137", 4.10)
+
+        val report = repo.refreshPrices(listOf("swsh3-136", "swsh3-137"))
+
+        assertEquals(PriceRefreshReport(requested = 2, refreshed = 2, unavailable = 0), report)
+        assertEquals(1, observations("swsh3-136").size)
+        assertEquals(0.27, observations("swsh3-136").single().amount, 0.0)
+        assertEquals(1, observations("swsh3-137").size)
+        assertEquals(4.10, observations("swsh3-137").single().amount, 0.0)
+    }
+
+    @Test
+    fun refresh_prices_fetches_a_repeated_id_once() = runTest {
+        source.getResults["swsh3-136"] = pricedCard("swsh3-136", 0.27)
+
+        val report = repo.refreshPrices(listOf("swsh3-136", "swsh3-136"))
+
+        assertEquals(1, source.getCalls)
+        assertEquals(PriceRefreshReport(requested = 1, refreshed = 1, unavailable = 0), report)
+        assertEquals(1, observations("swsh3-136").size)
+    }
+
+    @Test
+    fun refresh_prices_keeps_going_when_one_card_fails() = runTest {
+        source.getResults["swsh3-136"] = pricedCard("swsh3-136", 0.27)
+        source.getErrors["swsh3-999"] = RuntimeException("offline")
+
+        val report = repo.refreshPrices(listOf("swsh3-136", "swsh3-999"))
+
+        assertEquals(PriceRefreshReport(requested = 2, refreshed = 1, unavailable = 1), report)
+        assertEquals(0.27, observations("swsh3-136").single().amount, 0.0)
+        assertTrue(observations("swsh3-999").isEmpty())
+    }
+
+    @Test
+    fun refresh_prices_rethrows_cancellation() = runTest {
+        source.getErrors["swsh3-136"] = CancellationException("cancelled")
+
+        try {
+            repo.refreshPrices(listOf("swsh3-136"))
+            fail("CancellationException should propagate so the loop stops")
+        } catch (_: CancellationException) {
+            // expected: cancellation is not an unavailable card
+        }
+    }
+
+    private suspend fun observations(cardId: String) = db.cardDao().priceObservationsFor(
+        cardId,
+        PriceSource.TCGPLAYER,
+        CardVariant.NORMAL,
+        Currency.USD,
+    )
+
     private class FakeTcgdexCardSource : TcgdexCardSource {
         var getCalls = 0
         var searchNameCalls = 0
         var searchNumberCalls = 0
         var getResult: Card? = sampleCard()
         var getError: Exception? = null
+        val getResults = mutableMapOf<String, Card>()
+        val getErrors = mutableMapOf<String, Exception>()
         var searchResult: Card = sampleCard()
         var searchError: Exception? = null
         var setCatalogResult = SetCatalog("swsh3", listOf(sampleCard()))
@@ -205,8 +264,9 @@ class CardRepositoryTest {
 
         override suspend fun getCard(id: String, language: String): Card? {
             getCalls++
+            getErrors[id]?.let { throw it }
             getError?.let { throw it }
-            return getResult
+            return getResults[id] ?: getResult
         }
 
         override suspend fun getSetCatalog(setId: String, language: String): SetCatalog {
@@ -217,6 +277,11 @@ class CardRepositoryTest {
 
     private companion object {
         fun briefCard() = sampleCard().copy(attacks = emptyList(), prices = emptyList())
+
+        fun pricedCard(id: String, market: Double) = sampleCard().copy(
+            id = id,
+            prices = listOf(sampleCard().prices.single().copy(market = market)),
+        )
 
         fun fullCard() = sampleCard().copy(
             attacks = listOf(Attack(name = "Pancada", cost = listOf("Incolor"), damage = "30", text = null)),

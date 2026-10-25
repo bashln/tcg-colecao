@@ -2,6 +2,7 @@ package app.tcg.app.ui.collection
 
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.data.repository.CardRepository
+import app.tcg.core.data.repository.PriceRefreshReport
 import app.tcg.core.data.repository.SetCatalogResult
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.CardPrice
@@ -301,6 +302,8 @@ class CollectionViewModelTest {
                 active--
             }
         }
+
+        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
     }
 
     private class CatalogMapRepository(
@@ -314,6 +317,8 @@ class CollectionViewModelTest {
             requested += setId
             return catalogs.getValue(setId)
         }
+
+        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
     }
 
     private class FakeCardRepository(
@@ -327,6 +332,8 @@ class CollectionViewModelTest {
             catalogRequests++
             return result
         }
+
+        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
     }
 
     private class FakeCollectionRepository(

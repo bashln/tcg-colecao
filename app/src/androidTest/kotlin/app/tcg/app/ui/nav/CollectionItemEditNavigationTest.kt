@@ -36,6 +36,7 @@ import app.tcg.app.update.UpdateCoordinator
 import app.tcg.app.update.UpdateInstaller
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
+import app.tcg.core.data.repository.PriceRefreshReport
 import app.tcg.core.data.repository.SetCatalogResult
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.CardVariant
@@ -207,6 +208,7 @@ class CollectionItemEditNavigationTest {
         override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> = emptyList()
         override suspend fun getCard(id: String): Card? = null
         override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
+        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
     }
 
     private fun entry(item: CollectionItem) = CollectionEntry(

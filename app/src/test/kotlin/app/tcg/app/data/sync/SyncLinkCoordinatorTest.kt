@@ -68,6 +68,8 @@ class SyncLinkCoordinatorTest {
             return cards[id]
         }
         override suspend fun getSetCatalog(setId: String): app.tcg.core.data.repository.SetCatalogResult = error("unused")
+        override suspend fun refreshPrices(cardIds: List<String>): app.tcg.core.data.repository.PriceRefreshReport =
+            error("unused")
     }
 
     @Before

@@ -3,6 +3,7 @@ package app.tcg.app.data.repository
 import app.tcg.app.data.local.CardDao
 import app.tcg.app.data.local.toCard
 import app.tcg.core.data.repository.CardRepository
+import app.tcg.core.data.repository.PriceRefreshReport
 import app.tcg.core.data.repository.SetCatalogResult
 import app.tcg.core.data.tcgdex.TcgdexCardSource
 import app.tcg.core.domain.model.Card
@@ -45,6 +46,29 @@ class RoomCardRepository(
         val catalog = fetchOrNull { source.getSetCatalog(setId) } ?: return SetCatalogResult.Unavailable
         if (catalog.cards.isEmpty()) return SetCatalogResult.Unavailable
         return SetCatalogResult.Complete(catalog)
+    }
+
+    override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport {
+        val ids = cardIds.distinct()
+        var refreshed = 0
+        var unavailable = 0
+        for (id in ids) {
+            val stored = try {
+                refreshOne(id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+            if (stored) refreshed++ else unavailable++
+        }
+        return PriceRefreshReport(requested = ids.size, refreshed = refreshed, unavailable = unavailable)
+    }
+
+    private suspend fun refreshOne(id: String): Boolean {
+        val card = fetchOrNull { source.getCard(id) } ?: return false
+        cardDao.captureCardPrices(card, System.currentTimeMillis())
+        return true
     }
 
     private suspend fun <T> fetchOrNull(block: suspend () -> T): T? = try {
