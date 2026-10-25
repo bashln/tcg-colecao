@@ -276,7 +276,7 @@ img { display: block; max-width: 100%; }
   .field-row { grid-template-columns: 95px 1fr; gap: 8px; }
   .field-row > span:first-child, .field-row > label { font-size: 14px; }
   .field-row .quantity-control { grid-template-columns: 45px 1fr 45px; }
-  .paid-control select { width: 62px; }
+  .paid-control select { width: 78px; padding: 0 6px; }
   .section-heading { font-size: 22px; }
   .market-panel { padding: 20px; }
   .desktop-only { display: none; }
