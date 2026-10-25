@@ -89,6 +89,32 @@ class CollectionItemEditViewModelTest {
         assertEquals(CollectionItemEditState.Missing, viewModel.state.value)
     }
 
+    @Test
+    fun removes_the_exact_item_through_the_repository() = runTest {
+        val original = item()
+        val repository = EditRepository(original)
+        val viewModel = CollectionItemEditViewModel(original.id, repository)
+        viewModel.load()
+
+        assertTrue(viewModel.remove())
+
+        assertEquals(original.id, repository.removedItemId)
+    }
+
+    @Test
+    fun failed_removal_keeps_the_item_and_reports_the_error() = runTest {
+        val original = item()
+        val repository = EditRepository(original).apply { failRemove = true }
+        val viewModel = CollectionItemEditViewModel(original.id, repository)
+        viewModel.load()
+
+        assertFalse(viewModel.remove())
+
+        val state = viewModel.state.value as CollectionItemEditState.Ready
+        assertEquals(CollectionItemEditError.REMOVE_FAILED, state.error)
+        assertEquals(original.id, state.original.id)
+    }
+
     private class EditRepository(
         item: CollectionItem,
         var result: CollectionUpdate = CollectionUpdate.NotFound,
@@ -96,6 +122,8 @@ class CollectionItemEditViewModelTest {
         private val entry = CollectionEntry(item, testCard(item.cardId, "Furret"))
         var updatedOriginal: CollectionItem? = null
         var updatedChanges: CollectionItemChanges? = null
+        var removedItemId: String? = null
+        var failRemove: Boolean = false
 
         override suspend fun add(
             card: Card,
@@ -116,7 +144,10 @@ class CollectionItemEditViewModelTest {
         }
 
         override fun observe(): Flow<List<CollectionEntry>> = flowOf(listOf(entry))
-        override suspend fun remove(itemId: String) = Unit
+        override suspend fun remove(itemId: String) {
+            if (failRemove) throw IllegalStateException("removal failed")
+            removedItemId = itemId
+        }
     }
 
     private fun item(pricePaid: Money? = null) = CollectionItem(

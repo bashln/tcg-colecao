@@ -92,7 +92,16 @@ class RoomSyncLocalStore(private val db: TcgDatabase) : SyncLocalStore {
 
     override suspend fun pending(identity: String): List<SyncOperation> =
         db.withTransaction {
-            val blocked = dao.listSyncConflicts(identity).filter { it.source == "push" }.mapNotNull { it.opId }.toSet()
+            val blocked = dao.listSyncConflicts(identity).filter { it.source == "push" }
+                .flatMap { conflict ->
+                    listOfNotNull(
+                        conflict.opId,
+                        conflict.rejectedOperation
+                            ?.let { payload -> runCatching { decodeSyncOperation(payload) }.getOrNull() }
+                            ?.opId,
+                    )
+                }
+                .toSet()
             dao.listPendingOperations(identity).filterNot { it.opId in blocked }.mapNotNull { it.toSyncOperation() }
         }
 
@@ -509,7 +518,7 @@ private fun encodePushCloudItem(cloud: PushCloudItem): String = when (cloud) {
         put("quantity", JsonPrimitive(cloud.item.quantity)); put("variant", JsonPrimitive(cloud.item.variant.name))
         put("condition", JsonPrimitive(cloud.item.condition.name)); put("addedAt", JsonPrimitive(cloud.item.addedAt))
         put("revision", JsonPrimitive(cloud.revision)); put("deleted", JsonPrimitive(false))
-        put("pricePaid", cloud.item.pricePaid?.let { JsonObject(mapOf("amount" to JsonPrimitive((it.amount * 100).toLong()), "currency" to JsonPrimitive(it.currency.name))) } ?: JsonNull)
+        put("pricePaid", cloud.item.pricePaid?.let { JsonObject(mapOf("amount" to JsonPrimitive(toMinorUnits(it.amount)), "currency" to JsonPrimitive(it.currency.name))) } ?: JsonNull)
     }).toString()
     is PushCloudItem.Deleted -> JsonObject(mapOf(
         "itemId" to JsonPrimitive(cloud.itemId), "revision" to JsonPrimitive(cloud.revision), "deleted" to JsonPrimitive(true),
@@ -531,7 +540,7 @@ private fun decodePushCloudItem(element: kotlinx.serialization.json.JsonElement?
         quantity = row.getValue("quantity").jsonPrimitive.intOrNull ?: error("Invalid cloud quantity"),
         variant = CardVariant.valueOf(row.getValue("variant").jsonPrimitive.content),
         condition = Condition.valueOf(row.getValue("condition").jsonPrimitive.content),
-        pricePaid = price?.let { Money(it.getValue("amount").jsonPrimitive.longOrNull!!.toDouble() / 100.0, Currency.valueOf(it.getValue("currency").jsonPrimitive.content)) },
+        pricePaid = price?.let { Money(fromMinorUnits(it.getValue("amount").jsonPrimitive.longOrNull!!), Currency.valueOf(it.getValue("currency").jsonPrimitive.content)) },
         addedAt = row.getValue("addedAt").jsonPrimitive.longOrNull ?: error("Invalid cloud timestamp"),
     )
     return PushCloudItem.Present(item, revision)
@@ -551,7 +560,7 @@ private fun encodeSyncItem(item: SyncItem): String = JsonObject(buildMap {
     put("id", JsonPrimitive(item.id)); put("cardId", JsonPrimitive(item.cardId))
     put("quantity", JsonPrimitive(item.quantity)); put("variant", JsonPrimitive(item.variant.name))
     put("condition", JsonPrimitive(item.condition.name)); put("addedAt", JsonPrimitive(item.addedAt))
-    put("pricePaid", item.pricePaid?.let { JsonObject(mapOf("amount" to JsonPrimitive(it.amount), "currency" to JsonPrimitive(it.currency.name))) } ?: JsonNull)
+    put("pricePaid", item.pricePaid?.let { JsonObject(mapOf("amount" to JsonPrimitive(toMinorUnits(it.amount)), "currency" to JsonPrimitive(it.currency.name))) } ?: JsonNull)
 }).toString()
 
 private fun encodeSyncOperation(operation: SyncOperation): String = JsonObject(buildMap {
@@ -578,7 +587,7 @@ private fun decodeSyncItem(payload: String): SyncItem {
         quantity = row.getValue("quantity").jsonPrimitive.intOrNull ?: error("Invalid quantity"),
         variant = CardVariant.valueOf(row.getValue("variant").jsonPrimitive.content),
         condition = Condition.valueOf(row.getValue("condition").jsonPrimitive.content),
-        pricePaid = price?.let { Money(it.getValue("amount").jsonPrimitive.content.toDouble(), Currency.valueOf(it.getValue("currency").jsonPrimitive.content)) },
+        pricePaid = price?.let { Money(fromMinorUnits(it.getValue("amount").jsonPrimitive.content.toLong()), Currency.valueOf(it.getValue("currency").jsonPrimitive.content)) },
         addedAt = row.getValue("addedAt").jsonPrimitive.longOrNull ?: error("Invalid timestamp"),
     )
 }

@@ -242,11 +242,11 @@ img { display: block; max-width: 100%; }
   .quantity-control button { height: 43px; }
   .quantity-control output { font-size: 16px; }
   .edit-button { min-height: 44px; }
-  .empty-collection { min-height: 0; margin: 0 auto 24px; padding: 8px 0 24px; gap: 10px; }
-  .empty-icon { width: 110px; height: 72px; }
-  .empty-collection h2 { font-size: 30px; }
-  .empty-collection p { margin-bottom: 8px; font-size: 17px; }
-  .empty-collection .primary-button, .empty-collection .secondary-button { min-height: 56px; }
+  .empty-collection { min-height: 0; margin: 0 auto 24px; padding: 8px 0 24px; gap: 8px; }
+  .empty-icon { width: 96px; height: 60px; }
+  .empty-collection h2 { font-size: 27px; }
+  .empty-collection p { margin-bottom: 4px; font-size: 16px; }
+  .empty-collection .primary-button, .empty-collection .secondary-button { min-height: 52px; }
   .bottom-nav { position: fixed; z-index: 10; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(4, 1fr); min-height: calc(75px + env(safe-area-inset-bottom)); padding: 5px 5px env(safe-area-inset-bottom); border-top: 1px solid #3b4650; border-radius: 11px 11px 0 0; background: #11171bef; backdrop-filter: blur(18px); }
   .bottom-nav button { position: relative; display: grid; place-content: center; justify-items: center; gap: 3px; min-width: 0; min-height: 64px; padding: 4px 0; border: 0; background: transparent; color: #c5ced8; font-size: 12px; }
   .bottom-nav button.selected { color: #12d4d2; }

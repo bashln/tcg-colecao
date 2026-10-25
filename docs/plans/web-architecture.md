@@ -58,7 +58,7 @@ The empty collection offers `Escanear carta` and `Buscar no catálogo`. Loading,
 
 IndexedDB is the only owner of browser collection state in this phase. The UI identifies the current browser as the storage location and does not promise permanent retention. Profile supports JSON export and validated import. Browser storage, catalog cache, and OCR asset cache have separate retention behavior.
 
-Do not add a sync scheduler, account screen, Supabase client, or remote schema in this phase. Future sync must preserve stable item IDs, edits, and deletions. The future phase must define Auth, RLS, conflict policy, idempotent operations, and recovery before it changes remote state.
+That constraint applied to the first slice only. The account and sync phase has since landed, and it exceeded it on purpose. `web/src/account/auth.ts` holds the browser session, `web/src/sync/supabase-transport.ts` is the Supabase RPC boundary, `web/src/sync/outbox.ts` is the persistent outbox, and `web/src/sync/coordinator.ts` owns push, pull and conflict resolution. The protocol is specified in `docs/plans/web-account-sync.md` and the same wire contract runs on Android, with shared vectors in `testdata/sync-wire-vectors.json`.
 
 ## Verification gates
 

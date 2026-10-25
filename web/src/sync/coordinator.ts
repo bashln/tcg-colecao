@@ -6,6 +6,7 @@ export interface SyncTransport {
     kind: 'applied' | 'already-applied' | 'conflict' | 'rejected'
     reason?: string
     sequence?: number
+    opId?: string
     conflictId?: string
   }[]>
   listPushConflicts?(expectedIdentity: string): Promise<PushConflict[]>
@@ -47,6 +48,9 @@ export interface SyncConflictDetail {
 }
 
 export type RemoteApplyResult = { kind: 'applied' } | { kind: 'conflict'; detail: SyncConflictDetail }
+
+/** The server refuses a batch above this many operations, so the coordinator splits the outbox. */
+const PUSH_BATCH_LIMIT = 100
 
 export type SyncResult =
   | { kind: 'complete'; applied: number; pending: number }
@@ -90,28 +94,38 @@ export function createSyncCoordinator(input: {
         const existingConflicts = await input.local.listConflicts(boundIdentity)
         const blockedOperationIds = new Set(existingConflicts
           .filter((conflict) => conflict.source === 'push')
-          .map((conflict) => conflict.pushConflict?.opId ?? conflict.pushConflict?.rejectedOperation?.opId)
-          .filter((opId): opId is string => opId !== null && opId !== undefined))
+          .flatMap((conflict) => [conflict.pushConflict?.opId, conflict.pushConflict?.rejectedOperation?.opId])
+          .filter((opId): opId is string => typeof opId === 'string' && opId.length > 0))
         const pending = allPending.filter((operation) => !blockedOperationIds.has(operation.opId))
-        const outcomes = await input.transport.push(boundIdentity, pending)
         let applied = 0
         const conflictDetails: SyncConflictDetail[] = []
-        for (let index = 0; index < outcomes.length; index += 1) {
-          const outcome = outcomes[index]
-          const operation = pending[index]
-          if (outcome === undefined || operation === undefined) continue
-          if (outcome.kind === 'conflict' || outcome.kind === 'rejected') {
-            conflictDetails.push({
-              itemId: operation.kind === 'delete' ? operation.itemId : operation.item.id,
-              reason: outcome.reason ?? 'conflict',
-              source: 'push',
-              serverConflictId: outcome.conflictId,
-            })
-          } else if (identity === boundIdentity) {
-            const acknowledged = await input.local.acknowledgeOperation(operation.opId, boundIdentity)
-            if (identity !== boundIdentity || !acknowledged) return { kind: 'offline', pending: pending.length }
-            if (outcome.kind === 'applied') applied += 1
+        for (let start = 0; start < pending.length; start += PUSH_BATCH_LIMIT) {
+          const batch = pending.slice(start, start + PUSH_BATCH_LIMIT)
+          const outcomes = await input.transport.push(boundIdentity, batch)
+          const outcomeByOpId = new Map<string, (typeof outcomes)[number]>()
+          for (const outcome of outcomes) {
+            if (outcome.opId === undefined || !batch.some((operation) => operation.opId === outcome.opId)) {
+              return { kind: 'error', pending: pending.length }
+            }
+            outcomeByOpId.set(outcome.opId, outcome)
           }
+          for (const operation of batch) {
+            const outcome = outcomeByOpId.get(operation.opId)
+            if (outcome === undefined) continue
+            if (outcome.kind === 'conflict' || outcome.kind === 'rejected') {
+              conflictDetails.push({
+                itemId: operation.kind === 'delete' ? operation.itemId : operation.item.id,
+                reason: outcome.reason ?? 'conflict',
+                source: 'push',
+                serverConflictId: outcome.conflictId,
+              })
+            } else if (identity === boundIdentity) {
+              const acknowledged = await input.local.acknowledgeOperation(operation.opId, boundIdentity)
+              if (identity !== boundIdentity || !acknowledged) return { kind: 'offline', pending: pending.length }
+              if (outcome.kind === 'applied') applied += 1
+            }
+          }
+          if (identity !== boundIdentity) return { kind: 'offline', pending: pending.length }
         }
         if (identity !== boundIdentity) return { kind: 'offline', pending: pending.length }
 

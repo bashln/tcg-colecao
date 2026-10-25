@@ -59,6 +59,12 @@
     <string name="collection_edit_retry">Tentar novamente</string>
     <string name="collection_edit_back">Voltar à coleção</string>
     <string name="collection_edit_choose_copy">Escolha a cópia que deseja editar</string>
+    <string name="collection_edit_remove">Remover da coleção</string>
+    <string name="collection_edit_remove_title">Remover esta carta?</string>
+    <string name="collection_edit_remove_body">A posse sai da sua coleção e também das suas contas sincronizadas. Não dá para desfazer.</string>
+    <string name="collection_edit_remove_confirm">Remover</string>
+    <string name="collection_edit_removed">Carta removida da coleção</string>
+    <string name="collection_edit_remove_error">Não foi possível remover a carta. Tente novamente.</string>
     <string name="common_cancel">Cancelar</string>
     <string name="detail_hp">HP %1$d</string>
     <string name="detail_save">Salvar na coleção</string>

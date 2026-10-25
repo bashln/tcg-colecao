@@ -28,6 +28,7 @@ sealed interface CollectionItemEditState {
         val pricePaidAmount: String,
         val pricePaidCurrency: Currency,
         val saving: Boolean = false,
+        val removing: Boolean = false,
         val error: CollectionItemEditError? = null,
     ) : CollectionItemEditState {
         val pricePaidIsValid: Boolean
@@ -51,6 +52,7 @@ enum class CollectionItemEditError {
     DUPLICATE_CONFIGURATION,
     CHANGED_SINCE_LOADED,
     SAVE_FAILED,
+    REMOVE_FAILED,
 }
 
 class CollectionItemEditViewModel(
@@ -122,6 +124,22 @@ class CollectionItemEditViewModel(
                 _state.value = ready.copy(saving = false, error = CollectionItemEditError.DUPLICATE_CONFIGURATION)
                 false
             }
+        }
+    }
+
+    suspend fun remove(): Boolean {
+        val ready = _state.value as? CollectionItemEditState.Ready ?: return false
+        if (ready.removing) return false
+        _state.value = ready.copy(removing = true, error = null)
+        return try {
+            collection.remove(itemId)
+            true
+        } catch (e: CancellationException) {
+            _state.value = ready.copy(removing = false)
+            throw e
+        } catch (_: Exception) {
+            _state.value = ready.copy(removing = false, error = CollectionItemEditError.REMOVE_FAILED)
+            false
         }
     }
 
