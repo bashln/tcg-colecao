@@ -24,6 +24,7 @@ import app.tcg.app.data.backup.SafBackupDocumentStore
 import app.tcg.app.data.local.CardDao
 import app.tcg.app.data.local.CollectionDao
 import app.tcg.app.data.local.TcgDatabase
+import app.tcg.app.data.prices.PriceRefresher
 import app.tcg.app.data.repository.RoomCardRepository
 import app.tcg.app.data.repository.RoomCollectionRepository
 import app.tcg.app.data.sync.CollectionSyncCoordinator
@@ -110,6 +111,13 @@ object AppModule {
     ): CollectionRepository = RoomCollectionRepository(collectionDao, cardDao) {
         CollectionBackupWorker.enqueue(context)
     }
+
+    @Provides
+    @Singleton
+    fun providePriceRefresher(
+        collectionRepository: CollectionRepository,
+        cardRepository: CardRepository,
+    ): PriceRefresher = PriceRefresher(collectionRepository, cardRepository)
 
     @Provides
     @Singleton

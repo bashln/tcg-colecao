@@ -173,3 +173,13 @@
 - [x] Review findings: fixed Web keep-cloud outbox residue, Android same-ID overwrite, and status false-zero on identity switch; one-pass rule honored.
 - [x] Record hosted round-trip block (no SMTP/domain and two confirmed isolated accounts), WebKit/iPhone limit, low-priority findings, and push-side conflict ruling.
 - [ ] Commit task 7 records and fixes; push authorized branch only. No merge, deploy, or release.
+
+# Closing gaps (2026-10-25)
+
+- [x] Merge PR #7 with the WebKit mobile layout fix; all checks green.
+- [x] Record an optional paid price in the Android add flow, sharing the price draft with the edit flow.
+- [x] Refresh collection market prices and daily observations with a daily background job.
+- [x] Filter owned Android cards by variant and condition. The Tenho/Faltam tabs carry ownership status.
+- [x] Update `web/README.md` for account sync, backup limits, and WebKit verification.
+- [x] Local gates: PostgreSQL 58/58, Web unit 95/95, Chromium E2E 40/40, WebKit E2E 40/40 in CI, Android app 387/core 66, both builds pass.
+- [ ] Physical Android and iPhone checks, hosted two-account round-trip, release and deploy remain open.

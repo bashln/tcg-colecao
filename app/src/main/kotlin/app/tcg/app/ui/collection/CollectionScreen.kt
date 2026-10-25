@@ -14,12 +14,15 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.items as columnItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.QrCodeScanner
@@ -48,6 +51,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -61,6 +68,8 @@ import app.tcg.app.ui.components.LoadingState
 import app.tcg.app.ui.components.TotalValueHero
 import app.tcg.app.ui.components.conditionLabel
 import app.tcg.app.ui.components.variantLabel
+import app.tcg.core.domain.model.CardVariant
+import app.tcg.core.domain.model.Condition
 import coil.compose.AsyncImage
 
 @Composable
@@ -176,6 +185,9 @@ fun CollectionScreen(
                 state = state,
                 onScanClick = onScanClick,
                 onClearSearch = { viewModel.onQuery("") },
+                onVariantFilter = viewModel::onVariantFilter,
+                onConditionFilter = viewModel::onConditionFilter,
+                onClearFilters = viewModel::onClearCardFilters,
                 onCollectionItemSelected = onCollectionItemSelected,
             )
             state.section == CollectionSection.CARDS -> GlobalMissingSection(
@@ -206,10 +218,22 @@ private fun ColumnScope.CardsSection(
     state: CollectionUiState,
     onScanClick: () -> Unit,
     onClearSearch: () -> Unit,
+    onVariantFilter: (CardVariant?) -> Unit,
+    onConditionFilter: (Condition?) -> Unit,
+    onClearFilters: () -> Unit,
     onCollectionItemSelected: (String) -> Unit,
 ) {
+    val filtersActive = state.variantFilter != null || state.conditionFilter != null
+    if (state.savedCopies > 0) {
+        CardFilterControls(
+            state = state,
+            onVariantFilter = onVariantFilter,
+            onConditionFilter = onConditionFilter,
+            onClearFilters = onClearFilters,
+        )
+    }
     when {
-        state.entries.isEmpty() && state.query.isBlank() -> Centered {
+        state.entries.isEmpty() && state.query.isBlank() && !filtersActive -> Centered {
             EmptyState(
                 icon = Icons.Outlined.CollectionsBookmark,
                 title = stringResource(R.string.collection_empty_title),
@@ -221,6 +245,14 @@ private fun ColumnScope.CardsSection(
                         Text(stringResource(R.string.collection_empty_action))
                     }
                 },
+            )
+        }
+        state.entries.isEmpty() && filtersActive -> Centered {
+            EmptyState(
+                icon = Icons.Outlined.SearchOff,
+                title = stringResource(R.string.collection_no_results_title),
+                body = stringResource(R.string.collection_filter_no_results),
+                action = { TextButton(onClick = onClearFilters) { Text(stringResource(R.string.collection_filter_clear)) } },
             )
         }
         state.entries.isEmpty() -> Centered {
@@ -250,6 +282,99 @@ private fun ColumnScope.CardsSection(
             }
         }
     }
+}
+
+@Composable
+private fun CardFilterControls(
+    state: CollectionUiState,
+    onVariantFilter: (CardVariant?) -> Unit,
+    onConditionFilter: (Condition?) -> Unit,
+    onClearFilters: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterOptionRow(
+            groupLabel = stringResource(R.string.collection_filter_variant),
+            options = state.ownedVariants.map { it to variantLabel(it) },
+            selected = state.variantFilter,
+            onSelect = onVariantFilter,
+        )
+        FilterOptionRow(
+            groupLabel = stringResource(R.string.collection_filter_condition),
+            options = state.ownedConditions.map { it to conditionLabel(it) },
+            selected = state.conditionFilter,
+            onSelect = onConditionFilter,
+        )
+        if (state.variantFilter != null || state.conditionFilter != null) {
+            TextButton(onClick = onClearFilters) {
+                Text(stringResource(R.string.collection_filter_clear))
+            }
+        }
+    }
+}
+
+@Composable
+private fun <T> FilterOptionRow(
+    groupLabel: String,
+    options: List<Pair<T, String>>,
+    selected: T?,
+    onSelect: (T?) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            groupLabel,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilterOptionChip(
+                groupLabel = groupLabel,
+                label = stringResource(R.string.collection_filter_all),
+                isSelected = selected == null,
+                onClick = { onSelect(null) },
+            )
+            options.forEach { (value, label) ->
+                FilterOptionChip(
+                    groupLabel = groupLabel,
+                    label = label,
+                    isSelected = value == selected,
+                    onClick = { onSelect(value) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterOptionChip(
+    groupLabel: String,
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+) {
+    val description = stringResource(R.string.cd_filter_option, groupLabel, label)
+    val selectedDescription = stringResource(R.string.cd_filter_selected)
+    FilterChip(
+        selected = isSelected,
+        onClick = onClick,
+        label = { Text(label) },
+        leadingIcon = if (isSelected) {
+            { Icon(Icons.Outlined.Check, contentDescription = null) }
+        } else {
+            null
+        },
+        modifier = Modifier.semantics {
+            contentDescription = description
+            selected = isSelected
+            if (isSelected) stateDescription = selectedDescription
+        },
+    )
 }
 
 @Composable

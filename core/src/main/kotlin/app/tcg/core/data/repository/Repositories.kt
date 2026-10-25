@@ -21,7 +21,14 @@ interface CardRepository {
     suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card>
     suspend fun getCard(id: String): Card?
     suspend fun getSetCatalog(setId: String): SetCatalogResult
+    suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport
 }
+
+data class PriceRefreshReport(
+    val requested: Int,
+    val refreshed: Int,
+    val unavailable: Int,
+)
 
 sealed interface SetCatalogResult {
     data class Complete(val catalog: SetCatalog) : SetCatalogResult

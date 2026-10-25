@@ -34,14 +34,14 @@ verificada antes da seguinte.
 ## Slice 4. Promessas já feitas na tela
 
 - [x] Caminho de remoção de posse no Android, com confirmação.
-- [ ] Preço pago no fluxo de adicionar do Android.
-- [ ] Job de atualização periódica de preço.
-- [ ] Filtros por variante, condição e status no Android.
+- [x] Preço pago no fluxo de adicionar do Android.
+- [x] Job de atualização periódica de preço.
+- [x] Filtros por variante e condição no Android. O status de posse usa as abas Tenho/Faltam.
 
 ## Slice 5. Documentos
 
 - [x] `docs/releasing.md`
 - [x] `docs/plans/GOAL.md`
 - [x] `docs/plans/web-architecture.md`
-- [ ] `web/README.md`
-- [ ] Contagens de teste em `todo.md` e `docs/verification/accounts-and-sync.md`
+- [x] `web/README.md`
+- [x] Contagens de teste em `todo.md` e `docs/verification/accounts-and-sync.md`

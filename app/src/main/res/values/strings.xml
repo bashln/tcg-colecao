@@ -112,6 +112,11 @@
     <string name="collection_no_results_title">Nenhuma carta encontrada</string>
     <string name="collection_no_results">Nenhuma carta corresponde a “%1$s”.</string>
     <string name="collection_clear_search">Limpar busca</string>
+    <string name="collection_filter_variant">Variante</string>
+    <string name="collection_filter_condition">Condição</string>
+    <string name="collection_filter_all">Todas</string>
+    <string name="collection_filter_clear">Limpar filtros</string>
+    <string name="collection_filter_no_results">Nenhuma carta corresponde aos filtros escolhidos.</string>
     <string name="collection_missing_no_sets_title">Nenhuma expansão iniciada</string>
     <string name="collection_missing_no_sets_body">Adicione uma carta à coleção para descobrir o que falta na expansão.</string>
     <string name="collection_missing_checking">Consultando as expansões da sua coleção…</string>
@@ -162,6 +167,8 @@
     <string name="cd_gallery_button">Escolher da galeria</string>
     <string name="cd_close_search">Fechar busca por nome</string>
     <string name="cd_clear_search">Limpar busca</string>
+    <string name="cd_filter_option">%1$s: %2$s</string>
+    <string name="cd_filter_selected">Selecionado</string>
     <string name="cd_close_set">Voltar para expansões</string>
     <string name="cd_open_card">Ver detalhes da carta</string>
     <string name="cd_back">Voltar</string>

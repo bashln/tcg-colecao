@@ -6,12 +6,14 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.tcg.app.ui.theme.TcgTheme
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
+import app.tcg.core.data.repository.PriceRefreshReport
 import app.tcg.core.data.repository.SetCatalogResult
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.CardVariant
@@ -318,6 +320,38 @@ class CollectionScreenTest {
         rule.runOnIdle { assertEquals(listOf("item-swsh3-136-reverse"), selectedItemIds) }
     }
 
+    @Test
+    fun variant_filter_chip_narrows_owned_cards_and_clear_restores_them() {
+        val normal = entry(furret())
+        val holoCard = furret().copy(id = "swsh3-137", name = "Crobat", collectorNumber = "137")
+        val holo = entry(holoCard, variant = CardVariant.HOLOFOIL)
+        val viewModel = CollectionViewModel(
+            FakeCollectionRepository(listOf(normal, holo)),
+            FakeCardRepository(),
+        )
+        rule.setContent {
+            TcgTheme {
+                CollectionScreen(viewModel = viewModel)
+            }
+        }
+
+        rule.onNodeWithText("Furret").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Variante: Holo").performClick()
+
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodesWithText("Furret").fetchSemanticsNodes().isEmpty()
+        }
+        rule.onNodeWithContentDescription("Variante: Holo").assertIsSelected()
+        rule.onNodeWithText("Crobat").assertIsDisplayed()
+
+        rule.onNodeWithText("Limpar filtros").performClick()
+
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodesWithText("Furret").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithContentDescription("Variante: Todas").assertIsSelected()
+    }
+
     private class FakeCollectionRepository(
         initial: List<CollectionEntry> = emptyList(),
     ) : CollectionRepository {
@@ -353,6 +387,7 @@ class CollectionScreenTest {
         override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> = emptyList()
         override suspend fun getCard(id: String): Card? = null
         override suspend fun getSetCatalog(setId: String): SetCatalogResult = pendingCatalog?.await() ?: catalogResult
+        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
     }
 
     private fun entry(
