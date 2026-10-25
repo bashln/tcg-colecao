@@ -8,8 +8,8 @@ import app.tcg.core.domain.model.CollectionItem
 import app.tcg.core.domain.model.CollectionItemChanges
 import app.tcg.core.domain.model.CollectionUpdate
 import app.tcg.core.domain.model.Condition
+import app.tcg.app.ui.components.PricePaidDraft
 import app.tcg.core.domain.model.Currency
-import app.tcg.core.domain.model.Money
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,25 +25,19 @@ sealed interface CollectionItemEditState {
         val quantity: Int,
         val variant: CardVariant,
         val condition: Condition,
-        val pricePaidAmount: String,
-        val pricePaidCurrency: Currency,
+        val pricePaid: PricePaidDraft = PricePaidDraft(),
         val saving: Boolean = false,
         val removing: Boolean = false,
         val error: CollectionItemEditError? = null,
     ) : CollectionItemEditState {
         val pricePaidIsValid: Boolean
-            get() = pricePaidAmount.isBlank() || parsedPrice() != null
-
-        private fun parsedPrice(): Double? = pricePaidAmount.trim()
-            .replace(',', '.')
-            .toDoubleOrNull()
-            ?.takeIf { it.isFinite() && it >= 0.0 }
+            get() = pricePaid.isValid
 
         fun changes() = CollectionItemChanges(
             quantity = quantity,
             variant = variant,
             condition = condition,
-            pricePaid = parsedPrice()?.let { Money(it, pricePaidCurrency) },
+            pricePaid = pricePaid.toMoney(),
         )
     }
 }
@@ -75,8 +69,10 @@ class CollectionItemEditViewModel(
                     quantity = details.item.quantity,
                     variant = details.item.variant,
                     condition = details.item.condition,
-                    pricePaidAmount = details.item.pricePaid?.amount?.toString().orEmpty(),
-                    pricePaidCurrency = details.item.pricePaid?.currency ?: Currency.USD,
+                    pricePaid = PricePaidDraft(
+                        amount = details.item.pricePaid?.amount?.toString().orEmpty(),
+                        currency = details.item.pricePaid?.currency ?: Currency.USD,
+                    ),
                 )
             }
         } catch (e: CancellationException) {
@@ -92,9 +88,11 @@ class CollectionItemEditViewModel(
 
     fun setQuantity(quantity: Int) = updateReady { copy(quantity = quantity.coerceAtLeast(1), error = null) }
 
-    fun setPricePaidAmount(amount: String) = updateReady { copy(pricePaidAmount = amount, error = null) }
+    fun setPricePaidAmount(amount: String) =
+        updateReady { copy(pricePaid = pricePaid.copy(amount = amount), error = null) }
 
-    fun selectPricePaidCurrency(currency: Currency) = updateReady { copy(pricePaidCurrency = currency, error = null) }
+    fun selectPricePaidCurrency(currency: Currency) =
+        updateReady { copy(pricePaid = pricePaid.copy(currency = currency), error = null) }
 
     suspend fun save(): Boolean {
         val ready = _state.value as? CollectionItemEditState.Ready ?: return false

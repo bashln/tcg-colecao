@@ -17,7 +17,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CardDetailViewModelTest {
@@ -36,6 +38,40 @@ class CardDetailViewModelTest {
     fun missing_source_yields_null_price_not_crash() = runTest {
         val vm = CardDetailViewModel(cardWithOnlyTcgplayer(), RecordingCollectionRepository())
         assertNull(vm.state.value.cardmarket)
+    }
+
+    @Test
+    fun saves_the_typed_price_with_the_selected_currency() = runTest {
+        val repo = RecordingCollectionRepository()
+        val vm = CardDetailViewModel(card = cardWithBothPrices(), collection = repo)
+
+        vm.setPricePaidAmount("12,50")
+        vm.selectPricePaidCurrency(Currency.EUR)
+        vm.save(CardVariant.NORMAL, Condition.NEAR_MINT, 1)
+
+        assertEquals(Money(12.5, Currency.EUR), repo.saved.single().pricePaid)
+    }
+
+    @Test
+    fun blank_price_saves_no_price_paid() = runTest {
+        val repo = RecordingCollectionRepository()
+        val vm = CardDetailViewModel(card = cardWithBothPrices(), collection = repo)
+
+        vm.save(CardVariant.NORMAL, Condition.NEAR_MINT, 1)
+
+        assertNull(repo.saved.single().pricePaid)
+    }
+
+    @Test
+    fun negative_price_is_invalid_and_saves_nothing() = runTest {
+        val repo = RecordingCollectionRepository()
+        val vm = CardDetailViewModel(card = cardWithBothPrices(), collection = repo)
+
+        vm.setPricePaidAmount("-3")
+        vm.save(CardVariant.NORMAL, Condition.NEAR_MINT, 1)
+
+        assertFalse(vm.state.value.pricePaid.isValid)
+        assertTrue(repo.saved.isEmpty())
     }
 
     private class RecordingCollectionRepository : CollectionRepository {

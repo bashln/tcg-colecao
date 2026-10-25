@@ -56,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tcg.app.R
+import app.tcg.app.ui.components.PricePaidEditor
 import app.tcg.app.ui.components.PriceRow
 import app.tcg.app.ui.components.SectionHeader
 import app.tcg.app.ui.components.conditionLabel
@@ -134,6 +135,13 @@ fun CardDetailScreen(
                     )
                 }
                 item {
+                    PricePaidEditor(
+                        draft = state.pricePaid,
+                        onAmountChange = viewModel::setPricePaidAmount,
+                        onCurrencyChange = viewModel::selectPricePaidCurrency,
+                    )
+                }
+                item {
                     Button(
                         onClick = {
                             if (saving) return@Button
@@ -153,7 +161,7 @@ fun CardDetailScreen(
                                 }
                             }
                         },
-                        enabled = !saving,
+                        enabled = !saving && state.pricePaid.isValid,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                     ) {
                         if (saving) {

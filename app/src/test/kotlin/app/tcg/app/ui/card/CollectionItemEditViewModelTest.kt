@@ -33,8 +33,8 @@ class CollectionItemEditViewModelTest {
         val state = viewModel.state.value as CollectionItemEditState.Ready
         assertEquals("owned-2", state.original.id)
         assertEquals(3, state.quantity)
-        assertEquals("8.25", state.pricePaidAmount)
-        assertEquals(Currency.EUR, state.pricePaidCurrency)
+        assertEquals("8.25", state.pricePaid.amount)
+        assertEquals(Currency.EUR, state.pricePaid.currency)
         assertEquals("Furret", state.card?.name)
     }
 
