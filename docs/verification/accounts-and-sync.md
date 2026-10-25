@@ -43,5 +43,5 @@ Preconditions:
 - Do not merge ID collisions or duplicate configurations silently.
 - Hosted round-trip and RLS need dedicated isolated-account tests.
 - Custom SMTP and a production callback domain are not configured in this checkout.
-- Local push-conflict verification (2026-10-12): PostgreSQL harness 56/56, Web unit 84/84, Chromium E2E 40/40, Android app 307 and core 65 tests, Web production build and Android `assembleDebug` pass. These prove local client/RPC harness behavior only.
-- Hosted Android↔Web round-trip and two-account isolation remain blocked until SMTP/domain and two confirmed isolated test accounts are available. No release or deployment was run. WebKit/iPhone remains unverified.
+- Local closing-gaps verification (2026-10-25): PostgreSQL harness 58/58, Web unit 95/95, Chromium E2E 40/40, WebKit E2E 40/40 in CI, Android app 387 and core 66 tests, Web production build and Android `assembleDebug` pass. These prove local client/RPC harness behavior only.
+- Hosted Android↔Web round-trip and two-account isolation remain blocked until SMTP/domain and two confirmed isolated test accounts are available. No release or deployment was run. WebKit automation now runs in CI; physical iPhone, camera, OCR, keyboard and screen reader remain unverified.
