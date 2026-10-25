@@ -77,6 +77,160 @@ class CollectionViewModelTest {
         assertEquals(listOf("Furret"), vm.state.value.entries.map { it.card.name })
     }
 
+    @Test fun variant_filter_keeps_only_owned_cards_with_that_variant() = runTest {
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(
+                listOf(
+                    entryNamed("Furret"),
+                    entryNamed("Furret Reverse", variant = CardVariant.REVERSE_HOLOFOIL),
+                    entryNamed("Charizard", variant = CardVariant.HOLOFOIL),
+                ),
+            ),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+        )
+        advanceUntilIdle()
+
+        vm.onVariantFilter(CardVariant.HOLOFOIL)
+        advanceUntilIdle()
+
+        assertEquals(listOf("Charizard"), vm.state.value.entries.map { it.card.name })
+        assertEquals(CardVariant.HOLOFOIL, vm.state.value.variantFilter)
+        assertEquals(null, vm.state.value.conditionFilter)
+    }
+
+    @Test fun condition_filter_keeps_only_owned_cards_with_that_condition() = runTest {
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(
+                listOf(
+                    entryNamed("Furret"),
+                    entryNamed("Furret Played", condition = Condition.LIGHTLY_PLAYED),
+                    entryNamed("Charizard", condition = Condition.LIGHTLY_PLAYED),
+                ),
+            ),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+        )
+        advanceUntilIdle()
+
+        vm.onConditionFilter(Condition.LIGHTLY_PLAYED)
+        advanceUntilIdle()
+
+        assertEquals(listOf("Furret Played", "Charizard"), vm.state.value.entries.map { it.card.name })
+        assertEquals(Condition.LIGHTLY_PLAYED, vm.state.value.conditionFilter)
+        assertEquals(null, vm.state.value.variantFilter)
+    }
+
+    @Test fun variant_condition_and_search_narrow_the_owned_cards_together() = runTest {
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(
+                listOf(
+                    entryNamed("Furret", variant = CardVariant.HOLOFOIL),
+                    entryNamed("Furret Played", variant = CardVariant.HOLOFOIL, condition = Condition.LIGHTLY_PLAYED),
+                    entryNamed("Furret Reverse", variant = CardVariant.REVERSE_HOLOFOIL),
+                    entryNamed("Charizard", variant = CardVariant.HOLOFOIL),
+                ),
+            ),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+        )
+        advanceUntilIdle()
+
+        vm.onVariantFilter(CardVariant.HOLOFOIL)
+        vm.onConditionFilter(Condition.NEAR_MINT)
+        vm.onQuery("furret")
+        advanceUntilIdle()
+
+        assertEquals(listOf("Furret"), vm.state.value.entries.map { it.card.name })
+    }
+
+    @Test fun clearing_both_filters_restores_every_owned_card() = runTest {
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(
+                listOf(
+                    entryNamed("Furret"),
+                    entryNamed("Furret Played", condition = Condition.LIGHTLY_PLAYED),
+                    entryNamed("Charizard", variant = CardVariant.HOLOFOIL),
+                ),
+            ),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+        )
+        advanceUntilIdle()
+
+        vm.onVariantFilter(CardVariant.HOLOFOIL)
+        vm.onConditionFilter(Condition.LIGHTLY_PLAYED)
+        advanceUntilIdle()
+        assertEquals(emptyList<String>(), vm.state.value.entries.map { it.card.name })
+
+        vm.onClearCardFilters()
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("Furret", "Furret Played", "Charizard"),
+            vm.state.value.entries.map { it.card.name },
+        )
+        assertEquals(null, vm.state.value.variantFilter)
+        assertEquals(null, vm.state.value.conditionFilter)
+    }
+
+    @Test fun switching_section_clears_both_card_filters() = runTest {
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(listOf(entryNamed("Furret"))),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+        )
+        advanceUntilIdle()
+        vm.onVariantFilter(CardVariant.NORMAL)
+        vm.onConditionFilter(Condition.NEAR_MINT)
+        vm.onQuery("fur")
+
+        vm.onSection(CollectionSection.SETS)
+        advanceUntilIdle()
+
+        assertEquals(null, vm.state.value.variantFilter)
+        assertEquals(null, vm.state.value.conditionFilter)
+        assertEquals("", vm.state.value.query)
+    }
+
+    @Test fun switching_lens_clears_both_card_filters() = runTest {
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(listOf(entryNamed("Furret"))),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+        )
+        advanceUntilIdle()
+        vm.onVariantFilter(CardVariant.NORMAL)
+        vm.onConditionFilter(Condition.NEAR_MINT)
+        vm.onQuery("fur")
+
+        vm.onCardsLens(CardsLens.MISSING)
+        advanceUntilIdle()
+
+        assertEquals(null, vm.state.value.variantFilter)
+        assertEquals(null, vm.state.value.conditionFilter)
+        assertEquals("", vm.state.value.query)
+    }
+
+    @Test fun totals_stay_unfiltered_while_the_visible_list_is_filtered() = runTest {
+        val normal = entryPricedAt(2.0, qty = 3)
+        val holo = normal.copy(
+            item = normal.item.copy(id = "item-furret-holo", variant = CardVariant.HOLOFOIL, quantity = 1),
+            card = normal.card.copy(
+                id = "card-furret-holo",
+                prices = listOf(price(PriceSource.TCGPLAYER, CardVariant.HOLOFOIL, 4.0)),
+            ),
+        )
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(listOf(normal, holo)),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+        )
+        advanceUntilIdle()
+
+        vm.onVariantFilter(CardVariant.HOLOFOIL)
+        advanceUntilIdle()
+
+        assertEquals(listOf("item-furret-holo"), vm.state.value.entries.map { it.item.id })
+        assertEquals(Money(10.0, Currency.USD), vm.state.value.total)
+        assertEquals(2, vm.state.value.distinctOwnedCards)
+        assertEquals(4, vm.state.value.savedCopies)
+        assertEquals(listOf(CardVariant.NORMAL, CardVariant.HOLOFOIL), vm.state.value.ownedVariants)
+    }
+
     @Test fun changing_collection_section_clears_the_previous_search() = runTest {
         val vm = CollectionViewModel(
             FakeCollectionRepository(listOf(entryNamed("Furret"))),
@@ -380,13 +534,17 @@ class CollectionViewModelTest {
         card = card("Furret", listOf(price(PriceSource.TCGPLAYER, CardVariant.NORMAL, market))),
     )
 
-    private fun entryNamed(name: String) = CollectionEntry(
+    private fun entryNamed(
+        name: String,
+        variant: CardVariant = CardVariant.NORMAL,
+        condition: Condition = Condition.NEAR_MINT,
+    ) = CollectionEntry(
         item = CollectionItem(
             id = "item-$name",
             cardId = "card-$name",
             quantity = 1,
-            condition = Condition.NEAR_MINT,
-            variant = CardVariant.NORMAL,
+            condition = condition,
+            variant = variant,
             pricePaid = null,
             addedAt = 0L,
         ),

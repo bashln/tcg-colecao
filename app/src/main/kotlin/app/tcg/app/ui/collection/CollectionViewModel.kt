@@ -6,7 +6,9 @@ import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.data.repository.SetCatalogResult
 import app.tcg.core.domain.model.Card
+import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.CollectionEntry
+import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
 import app.tcg.core.domain.model.PriceSource
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class CollectionSection { CARDS, SETS }
@@ -31,6 +34,12 @@ enum class CollectionSection { CARDS, SETS }
 enum class OwnershipFilter { ALL, OWNED, MISSING }
 
 enum class CardsLens { OWNED, MISSING }
+
+data class CollectionCardFilters(
+    val query: String = "",
+    val variant: CardVariant? = null,
+    val condition: Condition? = null,
+)
 
 data class OwnedSetSummary(
     val id: String,
@@ -52,6 +61,10 @@ sealed interface SelectedSetState {
 data class CollectionUiState(
     val entries: List<CollectionEntry> = emptyList(),
     val query: String = "",
+    val variantFilter: CardVariant? = null,
+    val conditionFilter: Condition? = null,
+    val ownedVariants: List<CardVariant> = emptyList(),
+    val ownedConditions: List<Condition> = emptyList(),
     val total: Money = Money(0.0, Currency.USD),
     val loading: Boolean = false,
     val section: CollectionSection = CollectionSection.CARDS,
@@ -72,7 +85,7 @@ class CollectionViewModel(
     private val cardRepository: CardRepository,
 ) : ViewModel() {
 
-    private val query = MutableStateFlow("")
+    private val filters = MutableStateFlow(CollectionCardFilters())
     private val section = MutableStateFlow(CollectionSection.CARDS)
     private val cardsLens = MutableStateFlow(CardsLens.OWNED)
     private val selectedSet = MutableStateFlow<SelectedSetState>(SelectedSetState.Closed)
@@ -97,9 +110,9 @@ class CollectionViewModel(
     }
 
     val state: StateFlow<CollectionUiState> =
-        combine(entries, query, section, selectedSet, ownershipFilter) {
-                currentEntries, text, currentSection, currentSet, filter ->
-            stateFor(currentEntries, text, currentSection, currentSet, filter)
+        combine(entries, filters, section, selectedSet, ownershipFilter) {
+                currentEntries, cardFilters, currentSection, currentSet, filter ->
+            stateFor(currentEntries, cardFilters, currentSection, currentSet, filter)
         }.combine(cardsLens) { current, lens -> current.copy(cardsLens = lens) }
             .combine(globalMissing) { current, missing -> current.copy(globalMissing = missing) }
             .combine(hasCollectionSnapshot) { current, loaded -> current.copy(loading = !loaded) }
@@ -110,11 +123,23 @@ class CollectionViewModel(
         )
 
     fun onQuery(text: String) {
-        query.value = text
+        filters.update { it.copy(query = text) }
+    }
+
+    fun onVariantFilter(variant: CardVariant?) {
+        filters.update { it.copy(variant = variant) }
+    }
+
+    fun onConditionFilter(condition: Condition?) {
+        filters.update { it.copy(condition = condition) }
+    }
+
+    fun onClearCardFilters() {
+        filters.update { it.copy(variant = null, condition = null) }
     }
 
     fun onSection(section: CollectionSection) {
-        if (this.section.value != section) query.value = ""
+        if (this.section.value != section) resetSearchAndFilters()
         selectedSet.value = SelectedSetState.Closed
         ownershipFilter.value = OwnershipFilter.ALL
         this.section.value = section
@@ -122,9 +147,13 @@ class CollectionViewModel(
 
     fun onCardsLens(lens: CardsLens) {
         if (cardsLens.value == lens) return
-        query.value = ""
+        resetSearchAndFilters()
         cardsLens.value = lens
         if (lens == CardsLens.MISSING) ensureGlobalCatalogs(entries.value)
+    }
+
+    private fun resetSearchAndFilters() {
+        filters.value = CollectionCardFilters()
     }
 
     fun onSetSelected(setId: String) {
@@ -165,11 +194,15 @@ class CollectionViewModel(
 
     private fun stateFor(
         entries: List<CollectionEntry>,
-        query: String,
+        filters: CollectionCardFilters,
         section: CollectionSection,
         selectedSet: SelectedSetState,
         ownershipFilter: OwnershipFilter,
     ): CollectionUiState {
+        val filteredEntries = entries.filter { entry ->
+            (filters.variant == null || entry.item.variant == filters.variant) &&
+                (filters.condition == null || entry.item.condition == filters.condition)
+        }
         val sets = entries.groupBy { it.card.setId }
             .map { (id, setEntries) ->
                 OwnedSetSummary(
@@ -178,7 +211,7 @@ class CollectionViewModel(
                     ownedCards = setEntries.map { it.card.id }.distinct().size,
                 )
             }
-            .filter { it.name.contains(query, ignoreCase = true) }
+            .filter { it.name.contains(filters.query, ignoreCase = true) }
             .sortedBy { it.name.lowercase() }
 
         val selectedId = when (selectedSet) {
@@ -203,8 +236,12 @@ class CollectionViewModel(
             }
 
         return CollectionUiState(
-            entries = entries.filter { it.card.name.contains(query, ignoreCase = true) },
-            query = query,
+            entries = filteredEntries.filter { it.card.name.contains(filters.query, ignoreCase = true) },
+            query = filters.query,
+            variantFilter = filters.variant,
+            conditionFilter = filters.condition,
+            ownedVariants = CardVariant.entries.filter { variant -> entries.any { it.item.variant == variant } },
+            ownedConditions = Condition.entries.filter { condition -> entries.any { it.item.condition == condition } },
             total = Valuation.portfolioTotal(entries, PriceSource.TCGPLAYER),
             loading = false,
             section = section,
