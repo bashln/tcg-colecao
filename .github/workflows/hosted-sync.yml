@@ -1,0 +1,34 @@
+name: hosted-sync
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
+      - name: Check auth settings
+        env:
+          SUPABASE_URL: ${{ secrets.HOSTED_SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.HOSTED_SUPABASE_PUBLISHABLE_KEY }}
+        run: node scripts/verify-hosted-sync.mjs --settings-only
+
+      - name: Verify two-account isolation and cleanup
+        env:
+          SUPABASE_URL: ${{ secrets.HOSTED_SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.HOSTED_SUPABASE_PUBLISHABLE_KEY }}
+          HOSTED_EMAIL_A: ${{ secrets.HOSTED_EMAIL_A }}
+          HOSTED_PASSWORD_A: ${{ secrets.HOSTED_PASSWORD_A }}
+          HOSTED_EMAIL_B: ${{ secrets.HOSTED_EMAIL_B }}
+          HOSTED_PASSWORD_B: ${{ secrets.HOSTED_PASSWORD_B }}
+        run: node scripts/verify-hosted-sync.mjs
