@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
+import { seedLocalCollection } from './helpers.ts'
 
 const card = {
   id: 'base1-4', name: 'Charizard', localId: '4', image: null,
@@ -130,4 +131,59 @@ test('a saved collection stays usable offline and says account sync is not avail
 
   await expect(page.getByRole('heading', { name: 'Charizard' })).toBeVisible()
   await expect(page.getByText('2', { exact: true }).first()).toBeVisible()
+})
+
+test('a catalog subpage hides navigation and keeps its primary action in view until a destination returns', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route('https://api.tcgdex.net/v2/pt/cards**', async (route) => {
+    const url = new URL(route.request().url())
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(url.pathname.endsWith('/base1-4') ? card : [card]) })
+  })
+  await page.goto('/')
+  await expect(page.getByText('Sua coleção está vazia')).toBeVisible()
+  const mainNavigation = page.getByRole('navigation', { name: 'Navegação principal' })
+  await expect(mainNavigation).toBeVisible()
+
+  await page.getByRole('button', { name: 'Buscar no catálogo' }).click()
+  await expect(page.getByRole('heading', { name: 'Buscar no catálogo' })).toBeVisible()
+  await expect(mainNavigation).toHaveCount(0)
+  await expect(page.getByRole('banner')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Voltar' })).toBeVisible()
+
+  await page.getByRole('textbox', { name: 'Nome ou número da carta' }).fill('Charizard')
+  await page.getByRole('button', { name: 'Buscar', exact: true }).click()
+  await page.getByRole('button', { name: /Charizard Base Set/ }).click()
+  await expect(page.getByRole('heading', { name: 'Confirme a carta' })).toBeVisible()
+  await expect(mainNavigation).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Adicionar à coleção' })).toBeInViewport({ ratio: 1 })
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
+
+  await page.getByRole('button', { name: 'Voltar' }).click()
+  await page.getByRole('button', { name: 'Voltar' }).click()
+  await expect(page.getByRole('heading', { name: 'Escanear carta' })).toBeVisible()
+  await expect(mainNavigation).toBeVisible()
+  const navigationBox = await mainNavigation.boundingBox()
+  if (navigationBox === null) throw new Error('The bottom navigation has no bounding box')
+  expect(navigationBox.y + navigationBox.height).toBe(844)
+})
+
+test('the edit subpage drops navigation and leaves its save action uncovered', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await seedLocalCollection(page)
+  await page.reload()
+  await expect(page.getByText('Charizard')).toBeVisible()
+  await page.getByRole('button', { name: 'Editar carta' }).click()
+  await expect(page.getByRole('heading', { name: 'Editar posse' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Navegação principal' })).toHaveCount(0)
+
+  const save = page.getByRole('button', { name: 'Salvar alterações' })
+  await save.scrollIntoViewIfNeeded()
+  await expect(save).toBeInViewport({ ratio: 1 })
+  const uncovered = await save.evaluate((button) => {
+    const box = button.getBoundingClientRect()
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+    return hit !== null && (hit === button || button.contains(hit))
+  })
+  expect(uncovered).toBe(true)
 })

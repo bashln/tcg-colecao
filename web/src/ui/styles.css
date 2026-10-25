@@ -204,8 +204,10 @@ img { display: block; max-width: 100%; }
   .sidebar { display: none; }
   .mobile-brand { display: flex; align-items: center; justify-content: space-between; min-height: 86px; padding: 18px 18px 10px; }
   .mobile-brand .brand { margin: 0; font-size: 27px; }
+  .app-shell.subpage .mobile-brand { display: none; }
   .icon-action { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid #12d4d2; border-radius: 10px; background: #0d999b; color: white; }
   .content { padding: 10px 18px calc(115px + env(safe-area-inset-bottom)); }
+  .app-shell.subpage .content { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
   .content h1 { font-size: 38px; }
   .page-title-row { margin: 0 0 18px; }
   .collection-toolbar { display: grid; grid-template-columns: 1fr; gap: 13px; }
@@ -251,6 +253,7 @@ img { display: block; max-width: 100%; }
   .bottom-nav button { position: relative; display: grid; place-content: center; justify-items: center; gap: 3px; min-width: 0; min-height: 64px; padding: 4px 0; border: 0; background: transparent; color: #c5ced8; font-size: 12px; }
   .bottom-nav button.selected { color: #12d4d2; }
   .bottom-nav button.selected::before { content: ""; position: absolute; top: -6px; left: 31%; width: 38%; height: 3px; border-radius: 3px; background: #12d4d2; }
+  .app-shell.subpage .bottom-nav { display: none; }
   .home-actions, .scan-actions { flex-direction: column; }
   .home-actions > button, .scan-actions > button { width: 100%; }
   .profile-panel { padding: 20px; }
@@ -273,7 +276,7 @@ img { display: block; max-width: 100%; }
   .field-row { grid-template-columns: 95px 1fr; gap: 8px; }
   .field-row > span:first-child, .field-row > label { font-size: 14px; }
   .field-row .quantity-control { grid-template-columns: 45px 1fr 45px; }
-  .paid-control select { width: 62px; }
+  .paid-control select { width: 78px; padding: 0 6px; }
   .section-heading { font-size: 22px; }
   .market-panel { padding: 20px; }
   .desktop-only { display: none; }
