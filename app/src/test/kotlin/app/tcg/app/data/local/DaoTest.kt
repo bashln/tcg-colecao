@@ -102,6 +102,17 @@ class DaoTest {
     }
 
     @Test
+    fun caching_search_result_preserves_existing_prices() = runTest {
+        val dao = db.cardDao()
+        val pricedCard = testCard("swsh3-136", prices = listOf(testPrice(0.27)))
+
+        dao.captureCardPrices(pricedCard, Instant.parse("2026-10-09T23:59:00Z").toEpochMilli())
+        dao.cacheCard(pricedCard.copy(prices = emptyList()))
+
+        assertEquals(listOf(testPrice(0.27)), dao.pricesFor(pricedCard.id).map { it.toPrice() })
+    }
+
+    @Test
     fun migration_2_3_creates_daily_observation_table() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val helper = FrameworkSQLiteOpenHelperFactory().create(
