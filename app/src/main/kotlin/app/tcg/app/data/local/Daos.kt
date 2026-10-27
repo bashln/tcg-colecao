@@ -54,9 +54,8 @@ abstract class CardDao {
         currency: Currency,
     ): List<CardPriceObservationEntity>
 
-    @Transaction
     open suspend fun cacheCard(card: Card) {
-        persistCard(card, emptyList())
+        upsert(card.toEntity())
     }
 
     @Transaction
