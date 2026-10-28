@@ -61,6 +61,8 @@ import app.tcg.app.ui.components.formatMoney
 import app.tcg.app.ui.components.variantLabel
 import app.tcg.core.domain.model.Money
 import app.tcg.core.domain.stats.CollectionStats
+import app.tcg.core.domain.stats.ProfitResult
+import app.tcg.core.domain.stats.ProfitUnavailableReason
 import app.tcg.core.domain.stats.StatBucket
 
 @Composable
@@ -471,11 +473,16 @@ private fun ProfileContent(stats: CollectionStats) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            TotalValueHero(label = stringResource(R.string.profile_total_value), total = stats.totalValue)
+            TotalValueHero(
+                label = stringResource(R.string.profile_total_value),
+                total = stats.totalValue,
+                unpricedCards = stats.unpricedCards,
+                totalCards = stats.totalCards,
+            )
         }
         item { CollectionKeyNumbers(stats) }
-        stats.invested?.let { invested ->
-            item { InvestmentCard(invested = invested, profit = stats.profit) }
+        stats.investment?.let { investment ->
+            item { InvestmentCard(investment.investedByCurrency, investment.profit) }
         }
         if (stats.byCondition.isNotEmpty()) {
             item {
@@ -508,8 +515,9 @@ private fun ProfileContent(stats: CollectionStats) {
 }
 
 @Composable
-private fun InvestmentCard(invested: Money, profit: Money?) {
-    val isProfit = (profit?.amount ?: 0.0) >= 0.0
+private fun InvestmentCard(invested: List<Money>, profit: ProfitResult) {
+    val availableProfit = (profit as? ProfitResult.Available)?.amount
+    val isProfit = (availableProfit?.amount ?: 0.0) >= 0.0
     Card(
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -520,18 +528,34 @@ private fun InvestmentCard(invested: Money, profit: Money?) {
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            MoneyRow(
-                label = stringResource(R.string.profile_invested),
-                value = invested,
-                valueColor = MaterialTheme.colorScheme.onSurface,
-            )
-            MoneyRow(
-                label = stringResource(if (isProfit) R.string.profile_profit else R.string.profile_loss),
-                value = profit,
-                valueColor = if (isProfit) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
-            )
+            invested.forEach { amount ->
+                MoneyRow(
+                    label = stringResource(R.string.profile_invested_currency, amount.currency.name),
+                    value = amount,
+                    valueColor = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            when (profit) {
+                is ProfitResult.Available -> MoneyRow(
+                    label = stringResource(if (isProfit) R.string.profile_profit else R.string.profile_loss),
+                    value = availableProfit,
+                    valueColor = if (isProfit) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
+                )
+                is ProfitResult.Unavailable -> Text(
+                    text = stringResource(profit.reason.toStringResource()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
+}
+
+private fun ProfitUnavailableReason.toStringResource(): Int = when (this) {
+    ProfitUnavailableReason.INCOMPLETE_PURCHASE_RECORDS -> R.string.profile_profit_incomplete
+    ProfitUnavailableReason.MIXED_PURCHASE_CURRENCIES -> R.string.profile_profit_mixed_currencies
+    ProfitUnavailableReason.PURCHASE_CURRENCY_DIFFERS_FROM_MARKET -> R.string.profile_profit_currency_mismatch
+    ProfitUnavailableReason.MISSING_MARKET_QUOTES -> R.string.profile_profit_missing_quotes
 }
 
 @Composable

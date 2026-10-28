@@ -115,6 +115,7 @@ img { display: block; max-width: 100%; }
 .home-panel p { margin: 0; color: #aab4bf; }
 .home-panel strong { font-size: 42px; }
 .home-panel span { color: #d3dce4; }
+.home-panel small { color: #aab4bf; }
 .home-panel .summary-currency { position: absolute; top: 27px; right: 27px; }
 .home-actions { display: flex; gap: 12px; margin-top: 24px; }
 .profile-panel h2 { margin: 0; }

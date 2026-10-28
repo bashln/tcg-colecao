@@ -70,6 +70,7 @@
     <string name="detail_save">Salvar na coleção</string>
     <string name="detail_saving">Salvando…</string>
     <string name="detail_saved">Carta salva na coleção</string>
+    <string name="detail_saved_purchase_amount_kept">Carta adicionada. O valor pago salvo anteriormente foi mantido.</string>
     <string name="detail_save_error">Não foi possível salvar. Tente novamente.</string>
     <string name="detail_loading">Carregando carta…</string>
     <string name="detail_not_found_title">Carta não encontrada</string>
@@ -175,6 +176,7 @@
 
     <string name="home_title">Início</string>
     <string name="home_total_label">Valor da coleção</string>
+    <string name="value_partial_disclosure">%1$d de %2$d unidades sem cotação; o total é parcial.</string>
     <string name="home_stat_cards">Cartas</string>
     <string name="home_stat_distinct">Distintas</string>
     <string name="home_stat_sets">Sets</string>
@@ -195,8 +197,13 @@
     <string name="profile_title">Perfil</string>
     <string name="profile_total_value">Valor total</string>
     <string name="profile_invested">Investido</string>
+    <string name="profile_invested_currency">Investido (%1$s)</string>
     <string name="profile_profit">Lucro</string>
     <string name="profile_loss">Prejuízo</string>
+    <string name="profile_profit_incomplete">Lucro indisponível: faltam custos de compra em algumas cartas.</string>
+    <string name="profile_profit_mixed_currencies">Lucro indisponível: os custos de compra usam moedas diferentes.</string>
+    <string name="profile_profit_currency_mismatch">Lucro indisponível: a moeda dos custos difere da cotação do mercado.</string>
+    <string name="profile_profit_missing_quotes">Lucro indisponível: faltam cotações de mercado para algumas cartas.</string>
     <string name="profile_breakdown_condition">Por condição</string>
     <string name="profile_breakdown_variant">Por variante</string>
     <string name="profile_breakdown_rarity">Por raridade</string>

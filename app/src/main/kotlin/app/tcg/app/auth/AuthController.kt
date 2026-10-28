@@ -1,5 +1,6 @@
 package app.tcg.app.auth
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +33,8 @@ class AuthController(
             val refreshed = remote.refresh(stored.refreshToken)
             store.write(refreshed)
             _state.value = AuthState.SignedIn(refreshed)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             store.clear()
             _state.value = AuthState.SignedOut

@@ -344,7 +344,14 @@ export function App() {
           onManual={() => navigate({ kind: 'catalog', photoUrl: screen.photoUrl })}
           onSave={async (draft) => {
             const result = await addToCollection(screen.card, draft)
-            if (result.kind === 'saved') { navigate({ kind: 'collection' }); setNotice('Carta adicionada à coleção.'); await refreshCollection() }
+            if (result.kind === 'saved') {
+              const purchaseAmountKept = draft.pricePaid !== null && result.item.pricePaid !== draft.pricePaid
+              navigate({ kind: 'collection' })
+              setNotice(purchaseAmountKept
+                ? 'Carta adicionada. O valor pago salvo anteriormente foi mantido.'
+                : 'Carta adicionada à coleção.')
+              await refreshCollection()
+            }
             else if (result.kind === 'conflict') setNotice(result.reason === 'revision-limit' ? revisionLimitMessage() : 'A quantidade ultrapassa o limite. Revise a posse existente.')
             else setNotice(storageMessage())
             return result.kind === 'saved'
@@ -453,7 +460,7 @@ function StatePanel({ title, description, action, onAction }: { title: string; d
 
 function HomeScreen({ entries, currency, onCurrency, onCollection, onScan }: { entries: CollectionEntry[]; currency: Currency; onCurrency: (currency: Currency) => void; onCollection: () => void; onScan: () => void }) {
   const estimate = collectionEstimate(entries, currency)
-  return <><h1>Início</h1><div className="home-panel"><p>Sua coleção neste navegador</p><strong>{entries.reduce((sum, entry) => sum + entry.item.quantity, 0)} cartas</strong><span>{estimate.amount === null ? 'Sem cotação de mercado' : `${formatMoney(estimate.amount, currency)} estimados`}</span><label className="summary-currency"><span className="sr-only">Moeda da estimativa</span><select value={currency} onChange={(event) => onCurrency(event.target.value as Currency)}>{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label></div><div className="home-actions"><button type="button" className="primary-button" onClick={onCollection}><Icon name="cards" />Ver coleção</button><button type="button" className="secondary-button" onClick={onScan}><Icon name="camera" />Escanear carta</button></div><p className="storage-footnote">Entre na conta e vincule a coleção para sincronizar entre seus aparelhos.</p></>
+  return <><h1>Início</h1><div className="home-panel"><p>Sua coleção neste navegador</p><strong>{entries.reduce((sum, entry) => sum + entry.item.quantity, 0)} cartas</strong><span>{estimate.amount === null ? 'Sem cotação de mercado' : `${formatMoney(estimate.amount, currency)} estimados`}</span><small>{estimate.pricedUnits} com preço · {estimate.missingUnits} sem preço</small><label className="summary-currency"><span className="sr-only">Moeda da estimativa</span><select value={currency} onChange={(event) => onCurrency(event.target.value as Currency)}>{CURRENCIES.map((option) => <option key={option}>{option}</option>)}</select></label></div><div className="home-actions"><button type="button" className="primary-button" onClick={onCollection}><Icon name="cards" />Ver coleção</button><button type="button" className="secondary-button" onClick={onScan}><Icon name="camera" />Escanear carta</button></div><p className="storage-footnote">Entre na conta e vincule a coleção para sincronizar entre seus aparelhos.</p></>
 }
 
 function ProfileScreen({ entries, onRetry, onNotice, onImport, authState, auth, onAuthState, syncBinding, deviceId, onLinked, syncState, onSyncNow, onResolveConflict, isIdentityCurrent, completeLink }: {

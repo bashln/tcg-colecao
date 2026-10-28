@@ -4,6 +4,7 @@ import app.tcg.app.data.local.CollectionDao
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 
 sealed interface BackupStatus {
@@ -70,6 +71,8 @@ class RoomCollectionBackup(
             }
             try {
                 withContext(Dispatchers.Default) { BackupEncryption.decrypt(bytes, selected) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (ex: Exception) {
                 if (!enteredByUser) return ImportPreview.PasswordRequired
                 return ImportPreview.Invalid(ex.message ?: "Senha incorreta ou arquivo criptografado inválido")
@@ -110,7 +113,15 @@ class RoomCollectionBackup(
                 return false
             }
         }
-        val saved = try { passphrases.write(passphrase) } catch (_: Exception) { false } finally { passphrase?.fill('\u0000') }
+        val saved = try {
+            passphrases.write(passphrase)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        } finally {
+            passphrase?.fill('\u0000')
+        }
         if (saved) {
             dao.requestBackupRewrite()
             backupManager.runBackup()

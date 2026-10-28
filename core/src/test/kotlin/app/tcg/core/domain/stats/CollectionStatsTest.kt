@@ -27,8 +27,7 @@ class CollectionStatsTest {
         assertTrue(stats.byVariant.isEmpty())
         assertTrue(stats.byRarity.isEmpty())
         assertTrue(stats.mostValuable.isEmpty())
-        assertNull(stats.invested)
-        assertNull(stats.profit)
+        assertNull(stats.investment)
     }
 
     @Test
@@ -115,13 +114,12 @@ class CollectionStatsTest {
     }
 
     @Test
-    fun invested_and_profit_appear_only_when_a_price_paid_exists() {
+    fun investment_requires_complete_purchase_and_quote_coverage_for_profit() {
         val none = CollectionStats.compute(
             listOf(entry(card("a", prices = listOf(price(4.0))), qty = 1)),
             PriceSource.TCGPLAYER,
         )
-        assertNull(none.invested)
-        assertNull(none.profit)
+        assertNull(none.investment)
 
         val priced = CollectionStats.compute(
             listOf(
@@ -130,8 +128,8 @@ class CollectionStatsTest {
             ),
             PriceSource.TCGPLAYER,
         )
-        assertEquals(Money(3.0, Currency.USD), priced.invested)
-        assertEquals(Money(2.0, Currency.USD), priced.profit)
+        assertEquals(listOf(Money(3.0, Currency.USD)), priced.investment?.investedByCurrency)
+        assertEquals(ProfitResult.Available(Money(2.0, Currency.USD)), priced.investment?.profit)
     }
 
     @Test

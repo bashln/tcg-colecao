@@ -66,6 +66,7 @@ data class CollectionUiState(
     val ownedVariants: List<CardVariant> = emptyList(),
     val ownedConditions: List<Condition> = emptyList(),
     val total: Money = Money(0.0, Currency.USD),
+    val unpricedCards: Int = 0,
     val loading: Boolean = false,
     val section: CollectionSection = CollectionSection.CARDS,
     val ownedSets: List<OwnedSetSummary> = emptyList(),
@@ -243,6 +244,9 @@ class CollectionViewModel(
             ownedVariants = CardVariant.entries.filter { variant -> entries.any { it.item.variant == variant } },
             ownedConditions = Condition.entries.filter { condition -> entries.any { it.item.condition == condition } },
             total = Valuation.portfolioTotal(entries, PriceSource.TCGPLAYER),
+            unpricedCards = entries.filter {
+                Valuation.itemValue(it.card, it.item.variant, PriceSource.TCGPLAYER) == null
+            }.sumOf { it.item.quantity },
             loading = false,
             section = section,
             ownedSets = sets,

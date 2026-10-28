@@ -39,7 +39,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 
 /** Prominent portfolio value banner shared by Home and Coleção. */
 @Composable
-fun TotalValueHero(label: String, total: Money, modifier: Modifier = Modifier) {
+fun TotalValueHero(
+    label: String,
+    total: Money,
+    unpricedCards: Int = 0,
+    totalCards: Int = 0,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -85,6 +91,13 @@ fun TotalValueHero(label: String, total: Money, modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onPrimary,
             )
+            if (unpricedCards > 0) {
+                Text(
+                    text = stringResource(R.string.value_partial_disclosure, unpricedCards, totalCards),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
+                )
+            }
         }
     }
 }
