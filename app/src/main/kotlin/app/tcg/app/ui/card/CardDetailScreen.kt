@@ -84,6 +84,7 @@ fun CardDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var saving by remember { mutableStateOf(false) }
     val savedMessage = stringResource(R.string.detail_saved)
+    val keptPurchaseAmountMessage = stringResource(R.string.detail_saved_purchase_amount_kept)
     val saveErrorMessage = stringResource(R.string.detail_save_error)
     val card = state.card
 
@@ -149,7 +150,9 @@ fun CardDetailScreen(
                                 saving = true
                                 try {
                                     viewModel.save(state.variant, state.condition, state.quantity)
-                                    snackbarHostState.showSnackbar(savedMessage)
+                                    snackbarHostState.showSnackbar(
+                                        if (viewModel.state.value.purchaseAmountNotApplied) keptPurchaseAmountMessage else savedMessage,
+                                    )
                                     delay(600)
                                     onSaved()
                                 } catch (e: CancellationException) {

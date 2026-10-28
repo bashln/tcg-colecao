@@ -21,6 +21,7 @@ data class CardDetailUiState(
     val condition: Condition = Condition.NEAR_MINT,
     val quantity: Int = 1,
     val pricePaid: PricePaidDraft = PricePaidDraft(),
+    val purchaseAmountNotApplied: Boolean = false,
     val tcgplayer: Money? = null,
     val cardmarket: Money? = null,
 )
@@ -65,13 +66,16 @@ class CardDetailViewModel(
         _state.update {
             stateFor(it.card, variant).copy(condition = condition, quantity = quantity, pricePaid = pricePaid)
         }
-        collection.add(
+        val saved = collection.add(
             card = _state.value.card,
             variant = variant,
             condition = condition,
             quantity = quantity,
             pricePaid = pricePaid.toMoney(),
         )
+        _state.update {
+            it.copy(purchaseAmountNotApplied = pricePaid.toMoney() != null && saved.pricePaid != pricePaid.toMoney())
+        }
     }
 
     private companion object {

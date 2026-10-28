@@ -126,7 +126,12 @@ private fun HomeContent(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            TotalValueHero(label = stringResource(R.string.home_total_label), total = stats.totalValue)
+            TotalValueHero(
+                label = stringResource(R.string.home_total_label),
+                total = stats.totalValue,
+                unpricedCards = stats.unpricedCards,
+                totalCards = stats.totalCards,
+            )
         }
         item { CollectionKeyNumbers(stats) }
         item { SectionHeader(stringResource(R.string.home_most_valuable)) }

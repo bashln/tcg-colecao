@@ -65,11 +65,11 @@ class ProfileViewModelTest {
 
         assertEquals(false, viewModel.state.value.loading)
         assertEquals(0, viewModel.state.value.stats.totalCards)
-        assertNull(viewModel.state.value.stats.invested)
+        assertNull(viewModel.state.value.stats.investment)
     }
 
     @Test
-    fun stats_carry_breakdowns_and_invested_profit() = runTest {
+    fun stats_carry_breakdowns_and_explain_incomplete_investment() = runTest {
         val viewModel = ProfileViewModel(
             FakeCollectionRepository(
                 listOf(
@@ -91,8 +91,13 @@ class ProfileViewModelTest {
         assertEquals(Money(11.0, Currency.USD), stats.totalValue)
         assertEquals(3, stats.totalCards)
         assertEquals(2, stats.distinctSets)
-        assertEquals(Money(1.0, Currency.USD), stats.invested)
-        assertEquals(Money(10.0, Currency.USD), stats.profit)
+        assertEquals(listOf(Money(1.0, Currency.USD)), stats.investment?.investedByCurrency)
+        assertEquals(
+            app.tcg.core.domain.stats.ProfitResult.Unavailable(
+                app.tcg.core.domain.stats.ProfitUnavailableReason.INCOMPLETE_PURCHASE_RECORDS,
+            ),
+            stats.investment?.profit,
+        )
         assertEquals(Condition.NEAR_MINT, stats.byCondition.first().key)
     }
 

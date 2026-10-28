@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -18,6 +19,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.items as columnItems
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
@@ -87,135 +89,163 @@ fun CollectionScreen(
         viewModel.onCloseSet()
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (selectedSet == SelectedSetState.Closed) {
-                Text(stringResource(R.string.collection_title), style = MaterialTheme.typography.headlineSmall)
-                if (state.section != CollectionSection.CARDS || state.cardsLens == CardsLens.OWNED) {
-                    TotalValueHero(label = stringResource(R.string.collection_total), total = state.total)
-                }
-                TabRow(
-                    selectedTabIndex = if (state.section == CollectionSection.CARDS) 0 else 1,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Tab(
-                        selected = state.section == CollectionSection.CARDS,
-                        onClick = { viewModel.onSection(CollectionSection.CARDS) },
-                        text = { Text(stringResource(R.string.collection_cards)) },
-                    )
-                    Tab(
-                        selected = state.section == CollectionSection.SETS,
-                        onClick = { viewModel.onSection(CollectionSection.SETS) },
-                        text = { Text(stringResource(R.string.collection_sets)) },
-                    )
-                }
-                if (state.section == CollectionSection.CARDS) {
-                    TabRow(
-                        selectedTabIndex = if (state.cardsLens == CardsLens.OWNED) 0 else 1,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Tab(
-                            selected = state.cardsLens == CardsLens.OWNED,
-                            onClick = { viewModel.onCardsLens(CardsLens.OWNED) },
-                            text = { Text(stringResource(R.string.collection_lens_owned)) },
-                        )
-                        Tab(
-                            selected = state.cardsLens == CardsLens.MISSING,
-                            onClick = { viewModel.onCardsLens(CardsLens.MISSING) },
-                            text = { Text(stringResource(R.string.collection_lens_missing)) },
-                        )
-                    }
-                }
-                OutlinedTextField(
-                    value = state.query,
-                    onValueChange = viewModel::onQuery,
-                    label = {
-                        Text(
-                            stringResource(
-                                if (state.section == CollectionSection.CARDS && state.cardsLens == CardsLens.MISSING) {
-                                    R.string.collection_missing_search
-                                } else if (state.section == CollectionSection.CARDS) {
-                                    R.string.collection_search_label
-                                } else {
-                                    R.string.collection_sets_search
-                                },
-                            ),
-                        )
-                    },
-                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                    trailingIcon = {
-                        if (state.query.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.onQuery("") }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Close,
-                                    contentDescription = stringResource(R.string.cd_clear_search),
-                                )
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.medium,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
-                    modifier = Modifier.fillMaxWidth(),
+    if (state.section == CollectionSection.CARDS && state.cardsLens == CardsLens.OWNED) {
+        OwnedCardsCollection(
+            state = state,
+            modifier = modifier,
+            onSection = viewModel::onSection,
+            onCardsLens = viewModel::onCardsLens,
+            onQuery = viewModel::onQuery,
+            onScanClick = onScanClick,
+            onClearSearch = { viewModel.onQuery("") },
+            onVariantFilter = viewModel::onVariantFilter,
+            onConditionFilter = viewModel::onConditionFilter,
+            onClearFilters = viewModel::onClearCardFilters,
+            onCollectionItemSelected = onCollectionItemSelected,
+        )
+    } else {
+        Column(modifier = modifier.fillMaxSize()) {
+            CollectionHeader(
+                state = state,
+                onSection = viewModel::onSection,
+                onCardsLens = viewModel::onCardsLens,
+                onQuery = viewModel::onQuery,
+                onCloseSet = viewModel::onCloseSet,
+            )
+            when {
+                state.loading && state.entries.isEmpty() -> Centered { LoadingState(stringResource(R.string.collection_loading)) }
+                state.section == CollectionSection.CARDS -> GlobalMissingSection(
+                    state = state,
+                    onScanClick = onScanClick,
+                    onRetry = viewModel::onRetryMissingCatalogs,
+                    onClearSearch = { viewModel.onQuery("") },
+                    onCardSelected = onCardSelected,
                 )
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = viewModel::onCloseSet) {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = stringResource(R.string.cd_close_set),
-                        )
-                    }
-                    Text(
-                        text = state.selectedSetName,
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                selectedSet == SelectedSetState.Closed -> SetsSection(
+                    state = state,
+                    onSetSelected = viewModel::onSetSelected,
+                    onClearSearch = { viewModel.onQuery("") },
+                )
+                else -> SelectedSetSection(
+                    state = state,
+                    onFilter = viewModel::onOwnershipFilter,
+                    onRetry = viewModel::onRetryCatalog,
+                    onCardSelected = onCardSelected,
+                    onCollectionItemSelected = onCollectionItemSelected,
+                )
             }
-        }
-
-        when {
-            state.loading && state.entries.isEmpty() -> Centered { LoadingState(stringResource(R.string.collection_loading)) }
-            state.section == CollectionSection.CARDS && state.cardsLens == CardsLens.OWNED -> CardsSection(
-                state = state,
-                onScanClick = onScanClick,
-                onClearSearch = { viewModel.onQuery("") },
-                onVariantFilter = viewModel::onVariantFilter,
-                onConditionFilter = viewModel::onConditionFilter,
-                onClearFilters = viewModel::onClearCardFilters,
-                onCollectionItemSelected = onCollectionItemSelected,
-            )
-            state.section == CollectionSection.CARDS -> GlobalMissingSection(
-                state = state,
-                onScanClick = onScanClick,
-                onRetry = viewModel::onRetryMissingCatalogs,
-                onClearSearch = { viewModel.onQuery("") },
-                onCardSelected = onCardSelected,
-            )
-            selectedSet == SelectedSetState.Closed -> SetsSection(
-                state = state,
-                onSetSelected = viewModel::onSetSelected,
-                onClearSearch = { viewModel.onQuery("") },
-            )
-            else -> SelectedSetSection(
-                state = state,
-                onFilter = viewModel::onOwnershipFilter,
-                onRetry = viewModel::onRetryCatalog,
-                onCardSelected = onCardSelected,
-                onCollectionItemSelected = onCollectionItemSelected,
-            )
         }
     }
 }
 
 @Composable
-private fun ColumnScope.CardsSection(
+private fun CollectionHeader(
     state: CollectionUiState,
+    onSection: (CollectionSection) -> Unit,
+    onCardsLens: (CardsLens) -> Unit,
+    onQuery: (String) -> Unit,
+    onCloseSet: (() -> Unit)? = null,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (state.selectedSet == SelectedSetState.Closed) {
+            Text(stringResource(R.string.collection_title), style = MaterialTheme.typography.headlineSmall)
+            if (state.section != CollectionSection.CARDS || state.cardsLens == CardsLens.OWNED) {
+                TotalValueHero(
+                    label = stringResource(R.string.collection_total),
+                    total = state.total,
+                    unpricedCards = state.unpricedCards,
+                    totalCards = state.savedCopies,
+                )
+            }
+            TabRow(
+                selectedTabIndex = if (state.section == CollectionSection.CARDS) 0 else 1,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Tab(
+                    selected = state.section == CollectionSection.CARDS,
+                    onClick = { onSection(CollectionSection.CARDS) },
+                    text = { Text(stringResource(R.string.collection_cards)) },
+                )
+                Tab(
+                    selected = state.section == CollectionSection.SETS,
+                    onClick = { onSection(CollectionSection.SETS) },
+                    text = { Text(stringResource(R.string.collection_sets)) },
+                )
+            }
+            if (state.section == CollectionSection.CARDS) {
+                TabRow(
+                    selectedTabIndex = if (state.cardsLens == CardsLens.OWNED) 0 else 1,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Tab(
+                        selected = state.cardsLens == CardsLens.OWNED,
+                        onClick = { onCardsLens(CardsLens.OWNED) },
+                        text = { Text(stringResource(R.string.collection_lens_owned)) },
+                    )
+                    Tab(
+                        selected = state.cardsLens == CardsLens.MISSING,
+                        onClick = { onCardsLens(CardsLens.MISSING) },
+                        text = { Text(stringResource(R.string.collection_lens_missing)) },
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = state.query,
+                onValueChange = onQuery,
+                label = {
+                    Text(
+                        stringResource(
+                            if (state.section == CollectionSection.CARDS && state.cardsLens == CardsLens.MISSING) {
+                                R.string.collection_missing_search
+                            } else if (state.section == CollectionSection.CARDS) {
+                                R.string.collection_search_label
+                            } else {
+                                R.string.collection_sets_search
+                            },
+                        ),
+                    )
+                },
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (state.query.isNotEmpty()) {
+                        IconButton(onClick = { onQuery("") }) {
+                            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.cd_clear_search))
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onCloseSet != null) {
+                    IconButton(onClick = onCloseSet) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.cd_close_set))
+                    }
+                }
+                Text(
+                    text = state.selectedSetName,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OwnedCardsCollection(
+    state: CollectionUiState,
+    modifier: Modifier,
+    onSection: (CollectionSection) -> Unit,
+    onCardsLens: (CardsLens) -> Unit,
+    onQuery: (String) -> Unit,
     onScanClick: () -> Unit,
     onClearSearch: () -> Unit,
     onVariantFilter: (CardVariant?) -> Unit,
@@ -224,53 +254,62 @@ private fun ColumnScope.CardsSection(
     onCollectionItemSelected: (String) -> Unit,
 ) {
     val filtersActive = state.variantFilter != null || state.conditionFilter != null
-    if (state.savedCopies > 0) {
-        CardFilterControls(
-            state = state,
-            onVariantFilter = onVariantFilter,
-            onConditionFilter = onConditionFilter,
-            onClearFilters = onClearFilters,
-        )
-    }
-    when {
-        state.entries.isEmpty() && state.query.isBlank() && !filtersActive -> Centered {
-            EmptyState(
-                icon = Icons.Outlined.CollectionsBookmark,
-                title = stringResource(R.string.collection_empty_title),
-                body = stringResource(R.string.collection_empty_body),
-                action = {
-                    Button(onClick = onScanClick) {
-                        Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.collection_empty_action))
-                    }
-                },
-            )
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 156.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.fillMaxSize(),
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            CollectionHeader(state, onSection, onCardsLens, onQuery)
         }
-        state.entries.isEmpty() && filtersActive -> Centered {
-            EmptyState(
-                icon = Icons.Outlined.SearchOff,
-                title = stringResource(R.string.collection_no_results_title),
-                body = stringResource(R.string.collection_filter_no_results),
-                action = { TextButton(onClick = onClearFilters) { Text(stringResource(R.string.collection_filter_clear)) } },
-            )
+        if (state.savedCopies > 0) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                CardFilterControls(state, onVariantFilter, onConditionFilter, onClearFilters)
+            }
         }
-        state.entries.isEmpty() -> Centered {
-            EmptyState(
-                icon = Icons.Outlined.SearchOff,
-                title = stringResource(R.string.collection_no_results_title),
-                body = stringResource(R.string.collection_no_results, state.query),
-                action = { TextButton(onClick = onClearSearch) { Text(stringResource(R.string.collection_clear_search)) } },
-            )
-        }
-        else -> LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 156.dp),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth().weight(1f),
-        ) {
-            items(state.entries, key = { it.item.id }) { entry ->
+        when {
+            state.loading && state.entries.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
+                GridCentered { LoadingState(stringResource(R.string.collection_loading)) }
+            }
+            state.entries.isEmpty() && state.query.isBlank() && !filtersActive -> item(span = { GridItemSpan(maxLineSpan) }) {
+                GridCentered {
+                    EmptyState(
+                        icon = Icons.Outlined.CollectionsBookmark,
+                        title = stringResource(R.string.collection_empty_title),
+                        body = stringResource(R.string.collection_empty_body),
+                        action = {
+                            Button(onClick = onScanClick) {
+                                Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.collection_empty_action))
+                            }
+                        },
+                    )
+                }
+            }
+            state.entries.isEmpty() && filtersActive -> item(span = { GridItemSpan(maxLineSpan) }) {
+                GridCentered {
+                    EmptyState(
+                        icon = Icons.Outlined.SearchOff,
+                        title = stringResource(R.string.collection_no_results_title),
+                        body = stringResource(R.string.collection_filter_no_results),
+                        action = { TextButton(onClick = onClearFilters) { Text(stringResource(R.string.collection_filter_clear)) } },
+                    )
+                }
+            }
+            state.entries.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
+                GridCentered {
+                    EmptyState(
+                        icon = Icons.Outlined.SearchOff,
+                        title = stringResource(R.string.collection_no_results_title),
+                        body = stringResource(R.string.collection_no_results, state.query),
+                        action = { TextButton(onClick = onClearSearch) { Text(stringResource(R.string.collection_clear_search)) } },
+                    )
+                }
+            }
+            else -> items(state.entries, key = { it.item.id }) { entry ->
                 CollectionItemCard(
                     entry = entry,
                     modifier = Modifier.clickable(
@@ -281,6 +320,16 @@ private fun ColumnScope.CardsSection(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun GridCentered(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }
 

@@ -2,6 +2,7 @@ package app.tcg.app.data.backup
 
 import app.tcg.app.data.local.BackupGenerationEntity
 import app.tcg.app.data.local.CollectionDao
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -53,6 +54,9 @@ class LocalBackupManager(
             StoredBackupPassphrase.Unavailable -> return fail("A chave local do backup não está disponível. Reconfigure a senha antes de gravar.")
             is StoredBackupPassphrase.Available -> try {
                 withContext(Dispatchers.Default) { BackupEncryption.encrypt(plaintext, passphraseSetting.value) }
+            } catch (cancelled: CancellationException) {
+                passphraseSetting.value.fill('\u0000')
+                throw cancelled
             } catch (ex: Exception) {
                 passphraseSetting.value.fill('\u0000')
                 return fail("Falha ao criptografar o backup: ${ex.message}")
@@ -83,12 +87,18 @@ class LocalBackupManager(
             try {
                 val payload = if (BackupEncryption.isEncrypted(readBack)) {
                     when (val setting = passphrases.read()) {
-                        is StoredBackupPassphrase.Available -> withContext(Dispatchers.Default) { BackupEncryption.decrypt(readBack, setting.value) }
+                        is StoredBackupPassphrase.Available -> try {
+                            withContext(Dispatchers.Default) { BackupEncryption.decrypt(readBack, setting.value) }
+                        } finally {
+                            setting.value.fill('\u0000')
+                        }
                         StoredBackupPassphrase.Disabled -> throw InvalidBackupException("Senha do backup indisponível")
                         StoredBackupPassphrase.Unavailable -> throw InvalidBackupException("Chave local do backup indisponível")
                     }
                 } else readBack
                 WebBackupAdapter.parse(payload)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (ex: Exception) {
                 return fail("Arquivo gravado inválido: ${ex.message}")
             }

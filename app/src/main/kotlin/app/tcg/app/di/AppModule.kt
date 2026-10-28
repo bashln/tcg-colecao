@@ -59,6 +59,7 @@ import java.io.File
 import java.util.UUID
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -235,6 +236,8 @@ object AppModule {
                     } else {
                         lifecycle.refreshBinding(auth, linkedIdentity)
                     }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (_: Exception) {
                     lifecycle.refreshBinding(auth, null)
                 }
