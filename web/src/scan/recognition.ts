@@ -55,8 +55,20 @@ export function rankCandidates(parsed: ParsedCardText, cards: CardSummary[]): Ca
 
 export async function recognizePhoto(photo: Blob): Promise<RecognitionResult> {
   try {
-    const { createWorker } = await import('tesseract.js')
-    const worker = await createWorker('por')
+    const [{ createWorker }, { default: workerPath }, features] = await Promise.all([
+      import('tesseract.js'),
+      import('tesseract.js/dist/worker.min.js?url'),
+      import('wasm-feature-detect'),
+    ])
+    const corePath = (await features.relaxedSimd())
+      ? (await import('tesseract.js-core/tesseract-core-relaxedsimd-lstm.wasm.js?url')).default
+      : (await features.simd())
+        ? (await import('tesseract.js-core/tesseract-core-simd-lstm.wasm.js?url')).default
+        : (await import('tesseract.js-core/tesseract-core-lstm.wasm.js?url')).default
+    const worker = await createWorker('por', undefined, {
+      workerPath: new URL(workerPath, window.location.href).href,
+      corePath: new URL(corePath, window.location.href).href,
+    })
     try {
       const result = await worker.recognize(photo)
       const text = result.data.text.trim()
