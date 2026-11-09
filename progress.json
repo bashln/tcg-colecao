@@ -9,6 +9,14 @@
       "Nenhuma coleção pessoal é usada, nenhum segredo é rastreado e nenhum release/deploy é publicado"
     ],
     "completed_steps": [
+      "Auditoria de segurança concluída com resolução integral dos pontos identificados e testes TDD cobrindo cada fronteira",
+      "Vulnerabilidade de dependência (Zod <4.6.6 / GHSA-mrhx-c7xc-m3w5) corrigida com upgrade para Zod 4.6.7; npm audit agora reporta 0 vulnerabilidades",
+      "Isolamento e execução local do OCR web: worker e núcleos wasm Tesseract empacotados localmente na origem do app, eliminando execução de código de terceiros via CDN; spec E2E ocr-security valida zero chamadas externas",
+      "Leitura de documentos de backup SAF no Android restrita com BackupEncryption.readBounded contra exaustão de memória",
+      "Concorrência de sessão e renovação de token corrigida com versionamento e exclusão mútua em AuthController (Android) e SupabaseWebAuth (Web)",
+      "Validação estrita de URLs de imagens em backups na Web (Zod refine + store isCard) e no Android (WebBackupAdapter) exigindo HTTPS e descartando esquemas inseguros",
+      "Limpeza imediata e segura de fragmentos com tokens sensíveis no callback de autenticação Web em App.tsx",
+      "Suíte de testes integralmente verde: 99 testes unitários web, 44 testes E2E Playwright Chromium, build de produção TypeScript/Vite, e testes Android :core:test e :app:testDebugUnitTest executados com sucesso",
       "Relidos checkpoint, plano, ledger SDD, progresso, erros e estado do worktree",
       "Goal Worker anterior confirmou fim da implementação local e ausência de commits, push, deploy ou release",
       "Supabase security/performance advisors reconsultados em modo read-only",
