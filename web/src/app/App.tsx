@@ -390,6 +390,7 @@ function CollectionScreen({ collection, currency, onCurrency, onRetry, onScan, o
   const [condition, setCondition] = useState<Condition | ''>('')
   const [sets, setSets] = useState<LoadState<SetOption[]>>({ kind: 'loading' })
   const [coverage, setCoverage] = useState<LoadState<SetCoverage> | null>(null)
+  const coverageRequest = useRef(0)
   const entries = collection.kind === 'ready' ? collection.value : []
   const ownedSetOptions = [...new Map(entries.map((entry) => [entry.card.setId, entry.card.setName])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'))
 
@@ -402,30 +403,34 @@ function CollectionScreen({ collection, currency, onCurrency, onRetry, onScan, o
   useEffect(() => { if (mode === 'missing') void loadSets() }, [mode, loadSets])
 
   const chooseSet = async (nextSetId: string) => {
+    const request = ++coverageRequest.current
     setSetId(nextSetId)
+    setCoverage(null)
     if (mode !== 'missing' || nextSetId === '' || sets.kind !== 'ready') return
     const set = sets.value.find((option) => option.id === nextSetId)
     if (set === undefined) return
     setCoverage({ kind: 'loading' })
-    setCoverage({ kind: 'ready', value: await getSetCoverage(set) })
+    const result = await getSetCoverage(set)
+    if (request === coverageRequest.current) setCoverage({ kind: 'ready', value: result })
   }
 
+  const normalizedSearch = search.toLocaleLowerCase('pt-BR')
   const filtered = entries.filter((entry) =>
     (setId === '' || entry.card.setId === setId) &&
     (variant === '' || entry.item.variant === variant) &&
     (condition === '' || entry.item.condition === condition) &&
-    `${entry.card.name} ${entry.card.collectorNumber} ${entry.card.setName}`.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')))
+    (normalizedSearch === '' || `${entry.card.name} ${entry.card.collectorNumber} ${entry.card.setName}`.toLocaleLowerCase('pt-BR').includes(normalizedSearch)))
   const totalUnits = entries.reduce((sum, entry) => sum + entry.item.quantity, 0)
   const estimate = collectionEstimate(entries, currency)
   const missing = coverage?.kind === 'ready' ? missingFromCompleteCatalog(coverage.value, entries) : null
   const filteredMissing = missing?.filter((card) =>
     (variant === '' || card.variants.includes(variant)) &&
-    `${card.name} ${card.collectorNumber} ${card.setName}`.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))) ?? []
+    (normalizedSearch === '' || `${card.name} ${card.collectorNumber} ${card.setName}`.toLocaleLowerCase('pt-BR').includes(normalizedSearch))) ?? []
 
   return <>
     <div className="page-title-row"><h1>Coleção</h1></div>
-    <div className="collection-toolbar"><label className="search-box"><Icon name="search" size={22} /><span className="sr-only">Buscar na coleção</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar na coleção" />{search !== '' ? <button type="button" aria-label="Limpar busca" onClick={() => setSearch('')}><Icon name="close" size={19} /></button> : null}</label><div className="mode-switch" role="group" aria-label="Tipo de coleção"><button type="button" className={mode === 'owned' ? 'active' : ''} aria-pressed={mode === 'owned'} onClick={() => { setMode('owned'); setSetId(''); setCoverage(null) }}>Tenho</button><button type="button" className={mode === 'missing' ? 'active' : ''} aria-pressed={mode === 'missing'} onClick={() => { setMode('missing'); setSetId(''); setCoverage(null) }}>Faltam</button></div><button type="button" className="primary-button toolbar-scan" onClick={onScan}><Icon name="camera" />Escanear carta</button></div>
-    <div className="filters"><label className="filter-select"><span className="sr-only">Expansão</span><select value={setId} onChange={(event) => { void chooseSet(event.target.value) }}><option value="">Expansão</option>{mode === 'owned' ? ownedSetOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>) : sets.kind === 'ready' ? sets.value.map((set) => <option key={set.id} value={set.id}>{set.name}</option>) : null}</select><Icon name="chevron" size={17} /></label><label className="filter-select"><span className="sr-only">Variante</span><select value={variant} onChange={(event) => setVariant(event.target.value as CardVariant | '')}><option value="">Variante</option>{VARIANTS.map((option) => <option key={option} value={option}>{variantLabels[option]}</option>)}</select><Icon name="chevron" size={17} /></label><label className="filter-select"><span className="sr-only">Condição</span><select value={condition} disabled={mode === 'missing'} onChange={(event) => setCondition(event.target.value as Condition | '')}><option value="">Condição</option>{CONDITIONS.map((option) => <option key={option} value={option}>{conditionLabels[option]}</option>)}</select><Icon name="chevron" size={17} /></label><button type="button" className="text-button clear-filters" onClick={() => { setSearch(''); setSetId(''); setVariant(''); setCondition(''); setCoverage(null) }}>Limpar filtros</button></div>
+    <div className="collection-toolbar"><label className="search-box"><Icon name="search" size={22} /><span className="sr-only">Buscar na coleção</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar na coleção" />{search !== '' ? <button type="button" aria-label="Limpar busca" onClick={() => setSearch('')}><Icon name="close" size={19} /></button> : null}</label><div className="mode-switch" role="group" aria-label="Tipo de coleção"><button type="button" className={mode === 'owned' ? 'active' : ''} aria-pressed={mode === 'owned'} onClick={() => { coverageRequest.current++; setMode('owned'); setSetId(''); setCoverage(null) }}>Tenho</button><button type="button" className={mode === 'missing' ? 'active' : ''} aria-pressed={mode === 'missing'} onClick={() => { coverageRequest.current++; setMode('missing'); setSetId(''); setCoverage(null) }}>Faltam</button></div><button type="button" className="primary-button toolbar-scan" onClick={onScan}><Icon name="camera" />Escanear carta</button></div>
+    <div className="filters"><label className="filter-select"><span className="sr-only">Expansão</span><select value={setId} onChange={(event) => { void chooseSet(event.target.value) }}><option value="">Expansão</option>{mode === 'owned' ? ownedSetOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>) : sets.kind === 'ready' ? sets.value.map((set) => <option key={set.id} value={set.id}>{set.name}</option>) : null}</select><Icon name="chevron" size={17} /></label><label className="filter-select"><span className="sr-only">Variante</span><select value={variant} onChange={(event) => setVariant(event.target.value as CardVariant | '')}><option value="">Variante</option>{VARIANTS.map((option) => <option key={option} value={option}>{variantLabels[option]}</option>)}</select><Icon name="chevron" size={17} /></label><label className="filter-select"><span className="sr-only">Condição</span><select value={condition} disabled={mode === 'missing'} onChange={(event) => setCondition(event.target.value as Condition | '')}><option value="">Condição</option>{CONDITIONS.map((option) => <option key={option} value={option}>{conditionLabels[option]}</option>)}</select><Icon name="chevron" size={17} /></label><button type="button" className="text-button clear-filters" onClick={() => { setSearch(''); setSetId(''); setVariant(''); setCondition(''); coverageRequest.current++; setCoverage(null) }}>Limpar filtros</button></div>
     {mode === 'owned' ? <>
       {collection.kind === 'loading' ? <StatePanel title="Carregando sua coleção..." /> : null}
       {collection.kind === 'error' ? <StatePanel title="Coleção indisponível" description={collection.message} action="Tentar novamente" onAction={onRetry} /> : null}

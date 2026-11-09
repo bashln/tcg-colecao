@@ -187,3 +187,36 @@ test('the edit subpage drops navigation and leaves its save action uncovered', a
   })
   expect(uncovered).toBe(true)
 })
+
+test('late catalog response cannot replace the selected expansion', async ({ page }) => {
+  let releaseFirst: () => void = () => { throw new Error('first request did not start') }
+  let firstStarted: () => void = () => {}
+  let firstFinished: () => void = () => {}
+  const started = new Promise<void>((resolve) => { firstStarted = resolve })
+  const finished = new Promise<void>((resolve) => { firstFinished = resolve })
+  const waiting = new Promise<void>((resolve) => { releaseFirst = resolve })
+  await page.route('https://api.tcgdex.net/v2/pt/sets', (route) => route.fulfill({ json: [
+    { id: 'first', name: 'Primeira', cardCount: { total: 1 } },
+    { id: 'second', name: 'Segunda', cardCount: { total: 1 } },
+  ] }))
+  await page.route('https://api.tcgdex.net/v2/pt/cards**', async (route) => {
+    const set = new URL(route.request().url()).searchParams.get('set')
+    if (set === 'first') { firstStarted(); await waiting }
+    const name = set === 'first' ? 'Carta antiga' : 'Carta atual'
+    await route.fulfill({ json: [{ id: `${set}-1`, name, localId: '1', set: { id: set, name, cardCount: { official: 1 } } }] })
+    if (set === 'first') firstFinished()
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Faltam' }).click()
+  const select = page.getByLabel('Expansão')
+  await expect(select.locator('option[value="second"]')).toHaveCount(1)
+  await select.selectOption('first')
+  await started
+  await select.selectOption('second')
+  await expect(page.getByRole('heading', { name: 'Carta atual' })).toBeVisible()
+  releaseFirst()
+  await finished
+  await expect(page.getByRole('heading', { name: 'Carta atual' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Carta antiga' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Carta atual' })).toBeVisible()
+})
