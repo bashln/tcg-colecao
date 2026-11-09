@@ -217,3 +217,59 @@ test('sign-out clears local session even when remote logout fails', async () => 
   assert.equal(storage.value, null)
   assert.deepEqual(await auth.start(), { kind: 'signed-out' })
 })
+
+test('a refresh finishing after sign-out cannot restore the session or dispatch an RPC', async () => {
+  const storage = new MemoryStorage()
+  let finishRefresh: (response: Response) => void = () => { throw new Error('refresh did not start') }
+  let rpcCalls = 0
+  const auth = new SupabaseWebAuth({
+    url: 'https://project.supabase.co', publishableKey: 'sb_publishable_test', storage, now: () => 1_000,
+    fetcher: async (input) => {
+      const url = new URL(String(input))
+      if (url.searchParams.get('grant_type') === 'password') return new Response(JSON.stringify({ ...sessionBody, expires_at: 1_001 }))
+      if (url.searchParams.get('grant_type') === 'refresh_token') return new Promise<Response>((resolve) => { finishRefresh = resolve })
+      if (url.pathname.includes('/rest/v1/rpc/')) rpcCalls += 1
+      return new Response('{}')
+    },
+  })
+  await auth.signIn('collector@example.test', 'password')
+  const pending = auth.rpc('pull_collection_operations', {}).then(() => 'sent', () => 'rejected')
+  await auth.signOut()
+  finishRefresh(new Response(JSON.stringify(sessionBody)))
+  assert.equal(await pending, 'rejected')
+  assert.equal(storage.value, null)
+  assert.equal(rpcCalls, 0)
+})
+
+test('a stale refresh cannot replace a newer signed-in account', async () => {
+  const storage = new MemoryStorage()
+  let finishRefresh: (response: Response) => void = () => { throw new Error('refresh did not start') }
+  const auth = new SupabaseWebAuth({
+    url: 'https://project.supabase.co', publishableKey: 'sb_publishable_test', storage, now: () => 1_000,
+    fetcher: async (input, init) => {
+      const url = new URL(String(input))
+      if (url.searchParams.get('grant_type') === 'refresh_token') return new Promise<Response>((resolve) => { finishRefresh = resolve })
+      const email = JSON.parse(String(init?.body)).email
+      return new Response(JSON.stringify(email === 'first@example.test'
+        ? { ...sessionBody, expires_at: 1_001 }
+        : { ...sessionBody, user: { id: 'user-2', email } }))
+    },
+  })
+  await auth.signIn('first@example.test', 'password')
+  const pending = auth.user()
+  await auth.signIn('second@example.test', 'password')
+  finishRefresh(new Response(JSON.stringify(sessionBody)))
+  assert.equal(await pending, null)
+  assert.deepEqual(await auth.user(), { id: 'user-2', email: 'second@example.test' })
+})
+
+test('a refresh response for another user is rejected', async () => {
+  const storage = new MemoryStorage()
+  storage.setItem(JSON.stringify({ userId: 'user-1', email: 'one@example.test', accessToken: 'expired', refreshToken: 'refresh', expiresAtEpochSeconds: 900 }))
+  const auth = new SupabaseWebAuth({
+    url: 'https://project.supabase.co', publishableKey: 'sb_publishable_test', storage, now: () => 1_000,
+    fetcher: async () => new Response(JSON.stringify({ ...sessionBody, user: { id: 'user-2', email: 'two@example.test' } })),
+  })
+  assert.deepEqual(await auth.start(), { kind: 'signed-out' })
+  assert.equal(storage.value, null)
+})

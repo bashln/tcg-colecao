@@ -49,6 +49,7 @@ export class SupabaseWebAuth implements SupabaseHttp {
   private readonly options: SupabaseWebAuthOptions
   private current: AuthSession | null = null
   private refreshInFlight: Promise<AuthSession> | null = null
+  private sessionVersion = 0
 
   constructor(options: SupabaseWebAuthOptions) {
     this.options = options
@@ -64,10 +65,11 @@ export class SupabaseWebAuth implements SupabaseHttp {
       return SIGNED_OUT
     }
     this.current = stored
+    const version = this.sessionVersion
     try {
       return { kind: 'signed-in', session: await this.freshSession() }
     } catch {
-      this.clearSession()
+      if (this.sessionVersion === version) this.clearSession()
       return SIGNED_OUT
     }
   }
@@ -125,6 +127,7 @@ export class SupabaseWebAuth implements SupabaseHttp {
 
   async signOut(): Promise<void> {
     const session = this.current ?? this.readStoredSession()
+    this.clearSession()
     try {
       if (session !== null) {
         await this.request('/auth/v1/logout', {
@@ -134,8 +137,6 @@ export class SupabaseWebAuth implements SupabaseHttp {
       }
     } catch {
       // Remote revocation is best-effort; local data and signed-out state stay available.
-    } finally {
-      this.clearSession()
     }
   }
 
@@ -168,16 +169,20 @@ export class SupabaseWebAuth implements SupabaseHttp {
     if (session.expiresAtEpochSeconds > this.now() + EXPIRY_MARGIN_SECONDS) return session
     if (this.refreshInFlight !== null) return this.refreshInFlight
 
+    const version = this.sessionVersion
     const refresh = this.refresh(session.refreshToken)
       .then((refreshed) => {
+        if (version !== this.sessionVersion || refreshed.userId !== session.userId) {
+          throw new Error('A conta mudou durante a renovação da sessão')
+        }
         this.saveSession(refreshed)
         return refreshed
       })
       .catch((error: unknown) => {
-        this.clearSession()
+        if (version === this.sessionVersion) this.clearSession()
         throw error
       })
-      .finally(() => { this.refreshInFlight = null })
+      .finally(() => { if (this.refreshInFlight === refresh) this.refreshInFlight = null })
     this.refreshInFlight = refresh
     return refresh
   }
@@ -242,11 +247,15 @@ export class SupabaseWebAuth implements SupabaseHttp {
   }
 
   private saveSession(session: AuthSession): void {
+    this.sessionVersion += 1
+    this.refreshInFlight = null
     this.current = session
     this.options.storage.setItem(JSON.stringify(session))
   }
 
   private clearSession(): void {
+    this.sessionVersion += 1
+    this.refreshInFlight = null
     this.current = null
     this.options.storage.removeItem()
   }
