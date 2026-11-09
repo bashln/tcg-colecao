@@ -42,7 +42,7 @@ function isCard(value: unknown): value is CardSummary {
   return parseCardId(value.id) !== null && typeof value.name === 'string' &&
     typeof value.setId === 'string' && typeof value.setName === 'string' &&
     typeof value.collectorNumber === 'string' &&
-    (value.imageUrl === null || typeof value.imageUrl === 'string') &&
+    (value.imageUrl === null || (typeof value.imageUrl === 'string' && value.imageUrl.startsWith('https://'))) &&
     Array.isArray(value.variants) && value.variants.every((variant: unknown) => VARIANTS.some((item) => item === variant)) &&
     Array.isArray(value.prices) && value.prices.every((quote: unknown) =>
       isRecord(quote) && (quote.source === 'TCGPLAYER' || quote.source === 'CARDMARKET') &&

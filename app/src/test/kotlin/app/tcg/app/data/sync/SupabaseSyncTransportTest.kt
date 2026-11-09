@@ -105,6 +105,7 @@ class SupabaseSyncTransportTest {
     fun `push serializes operations and maps per-operation outcomes`() = runTest {
         lateinit var body: String
         val engine = MockEngine { request ->
+            assertEquals("Bearer token-account-a", request.headers[HttpHeaders.Authorization])
             body = bodyText(request)
             respond(
                 content = """{"status":"ok","results":[{"opId":"op-1","status":"applied","reason":null,"revision":1}],"highWater":1}""",

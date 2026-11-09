@@ -2,7 +2,7 @@
 set -euo pipefail
 
 script="$(cd "$(dirname "$0")" && pwd)/verify-release-tag.sh"
-test_tmp="${RUNNER_TEMP:-${TMPDIR:-/tmp/opencode}}"
+test_tmp="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 mkdir -p "$test_tmp"
 test_root="$(mktemp -d "$test_tmp/release-tag-check.XXXXXX")"
 origin="$test_root/origin.git"

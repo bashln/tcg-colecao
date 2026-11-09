@@ -1,6 +1,9 @@
 package app.tcg.app.auth
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -19,6 +22,7 @@ class AuthControllerTest {
         var signOutThrows = false
         val signedOutTokens = mutableListOf<String>()
         var refreshCalls = 0
+        var refreshGate: CompletableDeferred<Unit>? = null
 
         override suspend fun signUp(email: String, password: String): RemoteAuth {
             signUpError?.let { throw AuthRemoteException(it, "signup failed") }
@@ -32,6 +36,7 @@ class AuthControllerTest {
 
         override suspend fun refresh(refreshToken: String): AuthSession {
             refreshCalls += 1
+            refreshGate?.await()
             refreshError?.let { throw AuthRemoteException(it, "refresh failed") }
             return checkNotNull(refreshResult)
         }
@@ -145,6 +150,23 @@ class AuthControllerTest {
         assertEquals(AuthState.SignedIn(refreshed), controller.state.value)
         assertEquals(refreshed, store.session)
         assertEquals(1, remote.refreshCalls)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun `late startup refresh does not replace a newer signed in account`() = runTest {
+        store.session = session(expiresAt = 500L)
+        remote.refreshResult = session(token = "refreshed")
+        remote.refreshGate = CompletableDeferred()
+        remote.signInResult = session(token = "new-account", userId = "user-2")
+        val controller = controller()
+        val startup = launch { controller.start() }
+        runCurrent()
+        controller.signIn("new@example.com", "pw")
+        remote.refreshGate?.complete(Unit)
+        startup.join()
+        assertEquals(remote.signInResult, store.session)
+        assertEquals(AuthState.SignedIn(remote.signInResult!!), controller.state.value)
     }
 
     @Test

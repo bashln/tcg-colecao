@@ -175,7 +175,7 @@ private fun parseCard(raw: JsonElement): WebCard {
     val id = value.getValue("id").string()
     invalid(CARD_ID.matches(id), "ID de carta inválido")
     val imageUrl = value.getValue("imageUrl").takeUnless { it == JsonNull }?.string()
-    if (imageUrl != null) invalid(runCatching { URI(imageUrl).let { it.scheme != null && it.host != null } }.getOrDefault(false), "URL de imagem inválida")
+    if (imageUrl != null) invalid(runCatching { URI(imageUrl).let { it.scheme == "https" && it.host != null } }.getOrDefault(false), "URL de imagem inválida")
     val variants = value.getValue("variants").array().map { it.enum<CardVariant>() }
     val prices = value.getValue("prices").array().map(::parseQuote)
     invalid(prices.map { it.source to it.variant }.toSet().size == prices.size, "Cotações com chaves repetidas")

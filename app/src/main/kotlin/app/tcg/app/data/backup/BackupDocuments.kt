@@ -26,7 +26,7 @@ class SafBackupDocumentStore(context: Context) : BackupDocumentStore {
     }.getOrNull()
 
     override suspend fun readDocument(documentUri: String): ByteArray? = runCatching {
-        resolver.openInputStream(Uri.parse(documentUri))?.use { it.readBytes() }
+        resolver.openInputStream(Uri.parse(documentUri))?.use(BackupEncryption::readBounded)
     }.getOrNull()
 
     override suspend fun deleteDocument(documentUri: String): Boolean = runCatching {

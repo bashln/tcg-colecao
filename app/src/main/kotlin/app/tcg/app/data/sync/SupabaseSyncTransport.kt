@@ -391,7 +391,7 @@ class SupabaseSyncTransport(
             httpClient.post("$baseUrl/rest/v1/rpc/$function") {
                 contentType(ContentType.Application.Json)
                 setBody(payload.toString())
-                header(HttpHeaders.Authorization, session?.accessToken ?: apiKey)
+                session?.let { header(HttpHeaders.Authorization, "Bearer ${it.accessToken}") }
                 header("apikey", apiKey)
             }
         } catch (cancelled: CancellationException) {

@@ -4,6 +4,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Auth state machine. It owns only the session (via [AuthRemote] + [SessionStore]) and has
@@ -16,28 +18,39 @@ class AuthController(
     private val nowEpochSeconds: () -> Long = { System.currentTimeMillis() / 1000 },
 ) {
     private val _state = MutableStateFlow<AuthState>(AuthState.SignedOut)
+    private val sessionLock = Mutex()
+    private var sessionVersion = 0L
     val state: StateFlow<AuthState> = _state.asStateFlow()
 
     /** Restores a persisted session on cold start, refreshing it when it has expired. */
     suspend fun start() {
-        val stored = store.read()
+        val (version, stored) = sessionLock.withLock { sessionVersion to store.read() }
         if (stored == null) {
-            _state.value = AuthState.SignedOut
+            sessionLock.withLock { if (sessionVersion == version) _state.value = AuthState.SignedOut }
             return
         }
         if (!isExpired(stored)) {
-            _state.value = AuthState.SignedIn(stored)
+            sessionLock.withLock { if (sessionVersion == version) _state.value = AuthState.SignedIn(stored) }
             return
         }
         try {
             val refreshed = remote.refresh(stored.refreshToken)
-            store.write(refreshed)
-            _state.value = AuthState.SignedIn(refreshed)
+            sessionLock.withLock {
+                if (sessionVersion == version) {
+                    check(refreshed.userId == stored.userId)
+                    store.write(refreshed)
+                    _state.value = AuthState.SignedIn(refreshed)
+                }
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            store.clear()
-            _state.value = AuthState.SignedOut
+            sessionLock.withLock {
+                if (sessionVersion == version) {
+                    store.clear()
+                    _state.value = AuthState.SignedOut
+                }
+            }
         }
     }
 
@@ -45,8 +58,12 @@ class AuthController(
         when (val outcome = remote.signUp(email, password)) {
             is RemoteAuth.Session -> signInState(outcome.session)
             is RemoteAuth.VerificationRequired -> {
-                _state.value = AuthState.AwaitingVerification(outcome.email)
-                AuthResult.Success(_state.value)
+                sessionLock.withLock {
+                    sessionVersion++
+                    store.clear()
+                    _state.value = AuthState.AwaitingVerification(outcome.email)
+                    AuthResult.Success(_state.value)
+                }
             }
         }
     } catch (error: AuthRemoteException) {
@@ -60,20 +77,25 @@ class AuthController(
     }
 
     suspend fun signOut() {
-        val current = _state.value as? AuthState.SignedIn ?: return
+        val current = sessionLock.withLock {
+            sessionVersion++
+            val signedIn = _state.value as? AuthState.SignedIn
+            store.clear()
+            _state.value = AuthState.SignedOut
+            signedIn
+        } ?: return
         try {
             remote.signOut(current.session.accessToken)
         } catch (_: Exception) {
             // Best-effort: a failed remote logout must not block local sign-out.
         }
-        store.clear()
-        _state.value = AuthState.SignedOut
     }
 
-    private suspend fun signInState(session: AuthSession): AuthResult {
+    private suspend fun signInState(session: AuthSession): AuthResult = sessionLock.withLock {
+        sessionVersion++
         store.write(session)
         _state.value = AuthState.SignedIn(session)
-        return AuthResult.Success(_state.value)
+        AuthResult.Success(_state.value)
     }
 
     private fun isExpired(session: AuthSession): Boolean =
