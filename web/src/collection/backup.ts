@@ -36,13 +36,17 @@ const quoteSchema = moneySchema.extend({
   updatedAt: z.string().nullable(),
 }).strict()
 
+const httpsUrlSchema = z.string().url().refine((url) => url.startsWith('https://'), {
+  message: 'Image URL must use HTTPS',
+})
+
 const cardSchema = z.object({
   id: cardIdSchema,
   name: z.string(),
   setId: z.string(),
   setName: z.string(),
   collectorNumber: z.string(),
-  imageUrl: z.string().url().nullable(),
+  imageUrl: httpsUrlSchema.nullable(),
   variants: z.array(z.enum(VARIANTS)),
   prices: z.array(quoteSchema),
   setTotal: z.number().int().nonnegative().nullable(),

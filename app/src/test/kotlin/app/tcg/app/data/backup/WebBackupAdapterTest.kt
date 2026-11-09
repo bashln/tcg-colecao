@@ -205,6 +205,15 @@ class WebBackupAdapterTest {
     }
 
     @Test
+    fun rejects_non_https_image_url() {
+        val bad = validJson.replace("https://example.com/base1-4.png", "http://insecure.test/base1-4.png")
+        val ex = assertThrows(InvalidBackupException::class.java) {
+            WebBackupAdapter.parse(bad.toByteArray())
+        }
+        assertEquals("URL de imagem inválida", ex.message)
+    }
+
+    @Test
     fun rejects_duplicate_item_id() {
         val entry = """
             {

@@ -212,6 +212,9 @@ export function App() {
         setNotice(callbackState.kind === 'signed-in'
           ? 'E-mail confirmado. Sua coleção continua local até você revisar e confirmar o vínculo.'
           : 'O link de confirmação expirou ou não é válido. Entre novamente ou solicite outra confirmação.')
+      }).catch(() => {
+        if (!active) return
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`)
       })
     } else {
       void supabaseAuth.start().then((state) => { if (active) setCurrentAuthState(state) })
