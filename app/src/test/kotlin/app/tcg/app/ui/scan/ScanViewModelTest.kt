@@ -342,12 +342,12 @@ class ScanViewModelTest {
             added.add(card)
             return app.tcg.core.domain.model.CollectionItem(
                 id = "item-${added.size}",
-                card = card,
+                cardId = card.id,
                 variant = variant,
                 condition = condition,
                 quantity = quantity,
                 pricePaid = pricePaid,
-                addedAt = java.time.Instant.now().atOffset(java.time.ZoneOffset.UTC),
+                addedAt = 0L,
             )
         }
 

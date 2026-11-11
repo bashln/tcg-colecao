@@ -97,7 +97,7 @@ class CardDetailViewModelTest {
         override suspend fun getSetCatalog(setId: String): app.tcg.core.data.repository.SetCatalogResult =
             app.tcg.core.data.repository.SetCatalogResult.Unavailable
         override suspend fun refreshPrices(cardIds: List<String>): app.tcg.core.data.repository.PriceRefreshReport =
-            app.tcg.core.data.repository.PriceRefreshReport(0, 0)
+            app.tcg.core.data.repository.PriceRefreshReport(requested = 0, refreshed = 0, unavailable = 0)
 
         override suspend fun saveCardPrice(
             cardId: String,
