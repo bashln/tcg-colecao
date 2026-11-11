@@ -1,12 +1,16 @@
 package app.tcg.app.data.repository
 
 import app.tcg.app.data.local.CardDao
+import app.tcg.app.data.local.CardPriceEntity
 import app.tcg.app.data.local.toCard
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.PriceRefreshReport
 import app.tcg.core.data.repository.SetCatalogResult
 import app.tcg.core.data.tcgdex.TcgdexCardSource
 import app.tcg.core.domain.model.Card
+import app.tcg.core.domain.model.CardVariant
+import app.tcg.core.domain.model.PriceSource
+import app.tcg.core.domain.valuation.Valuation
 import kotlinx.coroutines.CancellationException
 
 class RoomCardRepository(
@@ -63,6 +67,31 @@ class RoomCardRepository(
             if (stored) refreshed++ else unavailable++
         }
         return PriceRefreshReport(requested = ids.size, refreshed = refreshed, unavailable = unavailable)
+    }
+
+    override suspend fun saveCardPrice(
+        cardId: String,
+        source: PriceSource,
+        variant: CardVariant,
+        marketPrice: Double,
+    ) {
+        val currency = Valuation.currencyOf(source)
+        val entity = CardPriceEntity(
+            cardId = cardId,
+            source = source,
+            variant = variant,
+            currency = currency,
+            market = marketPrice,
+            low = null,
+            mid = marketPrice,
+            high = null,
+            trend = null,
+            avg1 = null,
+            avg7 = null,
+            avg30 = null,
+            updatedAt = java.time.Instant.now().toString(),
+        )
+        cardDao.saveSinglePrice(entity, System.currentTimeMillis())
     }
 
     private suspend fun refreshOne(id: String): Boolean {

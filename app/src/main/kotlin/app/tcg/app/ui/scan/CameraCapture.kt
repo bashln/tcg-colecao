@@ -17,9 +17,11 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -79,7 +81,9 @@ internal fun rememberTextRecognizer(): TextRecognizer {
 fun CameraCapture(
     captureRequest: Int,
     recognizer: TextRecognizer,
+    gridMode: ScanGridMode = ScanGridMode.SINGLE,
     onTextRecognized: (List<OcrLine>) -> Unit,
+    onMultiCardTextRecognized: (Map<Int, List<OcrLine>>) -> Unit = {},
     onCapturedBitmap: (Bitmap) -> Unit,
     onAutoCapture: () -> Unit,
     autoCaptureEnabled: Boolean,
@@ -256,38 +260,95 @@ fun CameraCapture(
 
     LaunchedEffect(captureRequest) {
         if (captureRequest > 0 && hasPermission) {
-            capture(imageCapture, executor, recognizer, onTextRecognized, onCapturedBitmap, onError)
+            capture(
+                imageCapture,
+                executor,
+                recognizer,
+                gridMode,
+                onTextRecognized,
+                onMultiCardTextRecognized,
+                onCapturedBitmap,
+                onError,
+            )
         }
     }
 
     BoxWithConstraints(modifier = modifier) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
-        // Portrait card frame: 5:7 width:height, 72% of preview width, clamped to fit the height.
-        val frameWidth = minOf(
-            maxWidth * CARD_FRAME_WIDTH_FRACTION,
-            maxHeight * CARD_FRAME_HEIGHT_FRACTION * CARD_ASPECT,
-        )
-        val frameHeight = frameWidth / CARD_ASPECT
-        Column(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(frameWidth, frameHeight)
-                    .border(2.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(16.dp)),
-            )
-            Spacer(Modifier.height(12.dp))
-            Surface(
-                color = Color.Black.copy(alpha = 0.45f),
-                shape = RoundedCornerShape(50),
+
+        if (gridMode == ScanGridMode.GRID_2X2) {
+            val qWidth = minOf(maxWidth * 0.42f, (maxHeight * 0.38f) * CARD_ASPECT)
+            val qHeight = qWidth / CARD_ASPECT
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    text = stringResource(R.string.scan_hint),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(qWidth, qHeight)
+                            .border(2.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(10.dp)),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(qWidth, qHeight)
+                            .border(2.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(10.dp)),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(qWidth, qHeight)
+                            .border(2.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(10.dp)),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(qWidth, qHeight)
+                            .border(2.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(10.dp)),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = Color.Black.copy(alpha = 0.55f),
+                    shape = RoundedCornerShape(50),
+                ) {
+                    Text(
+                        text = stringResource(R.string.scan_grid_hint),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    )
+                }
+            }
+        } else {
+            // Portrait card frame: 5:7 width:height, 72% of preview width, clamped to fit the height.
+            val frameWidth = minOf(
+                maxWidth * CARD_FRAME_WIDTH_FRACTION,
+                maxHeight * CARD_FRAME_HEIGHT_FRACTION * CARD_ASPECT,
+            )
+            val frameHeight = frameWidth / CARD_ASPECT
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(frameWidth, frameHeight)
+                        .border(2.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(16.dp)),
                 )
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    color = Color.Black.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(50),
+                ) {
+                    Text(
+                        text = stringResource(R.string.scan_hint),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    )
+                }
             }
         }
         if (!hasPermission) {
@@ -362,7 +423,9 @@ private fun capture(
     imageCapture: ImageCapture,
     executor: Executor,
     recognizer: TextRecognizer,
+    gridMode: ScanGridMode,
     onTextRecognized: (List<OcrLine>) -> Unit,
+    onMultiCardTextRecognized: (Map<Int, List<OcrLine>>) -> Unit,
     onCapturedBitmap: (Bitmap) -> Unit,
     onError: (String) -> Unit,
 ) {
@@ -382,17 +445,37 @@ private fun capture(
                 }
                 val rotatedBitmap = bitmap.rotated(rotation)
                 if (rotatedBitmap !== bitmap) bitmap.recycle()
-                val cardBitmap = rotatedBitmap.cropToCard()
-                if (cardBitmap !== rotatedBitmap) rotatedBitmap.recycle()
-                onCapturedBitmap(cardBitmap.previewCopy())
-                recognizeText(
-                    recognizer,
-                    cardBitmap,
-                    0,
-                    onTextRecognized,
-                    onError,
-                    onComplete = { cardBitmap.recycle() },
-                )
+
+                if (gridMode == ScanGridMode.GRID_2X2) {
+                    onCapturedBitmap(rotatedBitmap.previewCopy())
+                    recognizeText(
+                        recognizer,
+                        rotatedBitmap,
+                        0,
+                        onTextRecognized = { lines ->
+                            val quadrants = partitionLinesToQuadrants(
+                                lines = lines,
+                                width = rotatedBitmap.width.toFloat(),
+                                height = rotatedBitmap.height.toFloat(),
+                            )
+                            onMultiCardTextRecognized(quadrants)
+                        },
+                        onError = onError,
+                        onComplete = { rotatedBitmap.recycle() },
+                    )
+                } else {
+                    val cardBitmap = rotatedBitmap.cropToCard()
+                    if (cardBitmap !== rotatedBitmap) rotatedBitmap.recycle()
+                    onCapturedBitmap(cardBitmap.previewCopy())
+                    recognizeText(
+                        recognizer,
+                        cardBitmap,
+                        0,
+                        onTextRecognized,
+                        onError,
+                        onComplete = { cardBitmap.recycle() },
+                    )
+                }
             }
 
             override fun onError(exception: ImageCaptureException) {
@@ -400,6 +483,29 @@ private fun capture(
             }
         },
     )
+}
+
+internal fun partitionLinesToQuadrants(
+    lines: List<OcrLine>,
+    width: Float,
+    height: Float,
+): Map<Int, List<OcrLine>> {
+    val midX = width / 2f
+    val midY = height / 2f
+    val quadrants = mutableMapOf<Int, MutableList<OcrLine>>()
+    for (i in 0..3) quadrants[i] = mutableListOf()
+    for (line in lines) {
+        val cx = line.left + line.width / 2f
+        val cy = line.top + line.height / 2f
+        val quadrant = when {
+            cx < midX && cy < midY -> 0
+            cx >= midX && cy < midY -> 1
+            cx < midX && cy >= midY -> 2
+            else -> 3
+        }
+        quadrants[quadrant]?.add(line)
+    }
+    return quadrants
 }
 
 internal fun recognizeText(

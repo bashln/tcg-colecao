@@ -272,7 +272,90 @@ class ScanViewModelTest {
 
         override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
 
-        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
+    @Test
+    fun toggling_batch_mode_switches_batch_flag() {
+        val vm = ScanViewModel(FakeCardRepository())
+        assertFalse(vm.state.value.isBatchMode)
+        vm.toggleBatchMode()
+        assertTrue(vm.state.value.isBatchMode)
+        vm.toggleBatchMode()
+        assertFalse(vm.state.value.isBatchMode)
+    }
+
+    @Test
+    fun setting_grid_mode_updates_state_and_resets_results() {
+        val vm = ScanViewModel(FakeCardRepository())
+        assertEquals(ScanGridMode.SINGLE, vm.state.value.gridMode)
+        vm.setGridMode(ScanGridMode.GRID_2X2)
+        assertEquals(ScanGridMode.GRID_2X2, vm.state.value.gridMode)
+        assertTrue(vm.state.value.candidates.isEmpty())
+        assertTrue(vm.state.value.multiCardResults.isEmpty())
+    }
+
+    @Test
+    fun quick_add_card_adds_to_collection_and_increments_batch_count() = runTest {
+        val card = card("c1", "Meowth ex", "062", 120)
+        val collection = FakeCollectionRepository()
+        val vm = ScanViewModel(FakeCardRepository(listOf(card)), collection)
+
+        vm.quickAddCard(card, quantity = 2)
+
+        assertEquals(1, collection.added.size)
+        assertEquals("c1", collection.added.first().id)
+        assertEquals(2, vm.state.value.batchCount)
+        assertEquals(card, vm.state.value.lastAddedCard)
+        assertTrue(vm.state.value.candidates.isEmpty())
+    }
+
+    @Test
+    fun quick_add_all_multi_cards_adds_all_and_increments_batch_count() = runTest {
+        val card1 = card("c1", "Meowth ex", "062", 120)
+        val card2 = card("c2", "Pikachu", "025", 60)
+        val collection = FakeCollectionRepository()
+        val vm = ScanViewModel(FakeCardRepository(listOf(card1, card2)), collection)
+
+        vm.setGridMode(ScanGridMode.GRID_2X2)
+        vm.onMultiCardTextRecognized(
+            mapOf(
+                0 to listOf(OcrLine("Meowth ex", 0f, 40f), OcrLine("062/088", 100f, 40f)),
+                1 to listOf(OcrLine("Pikachu", 0f, 40f), OcrLine("025/165", 100f, 40f)),
+            ),
+        )
+
+        assertEquals(2, vm.state.value.multiCardResults.size)
+        vm.quickAddAllMultiCards()
+
+        assertEquals(2, collection.added.size)
+        assertEquals(2, vm.state.value.batchCount)
+        assertTrue(vm.state.value.multiCardResults.isEmpty())
+    }
+
+    private class FakeCollectionRepository : app.tcg.core.data.repository.CollectionRepository {
+        val added = mutableListOf<Card>()
+        override suspend fun add(
+            card: Card,
+            variant: app.tcg.core.domain.model.CardVariant,
+            condition: app.tcg.core.domain.model.Condition,
+            quantity: Int,
+            pricePaid: app.tcg.core.domain.model.Money?,
+        ): app.tcg.core.domain.model.CollectionItem {
+            added.add(card)
+            return app.tcg.core.domain.model.CollectionItem(
+                id = "item-${added.size}",
+                card = card,
+                variant = variant,
+                condition = condition,
+                quantity = quantity,
+                pricePaid = pricePaid,
+                addedAt = java.time.Instant.now().atOffset(java.time.ZoneOffset.UTC),
+            )
+        }
+
+        override suspend fun list() = emptyList<app.tcg.core.domain.model.CollectionEntry>()
+        override suspend fun getById(itemId: String) = null
+        override suspend fun update(original: app.tcg.core.domain.model.CollectionItem, changes: app.tcg.core.domain.model.CollectionItemChanges) = error("unused")
+        override fun observe(): kotlinx.coroutines.flow.Flow<List<app.tcg.core.domain.model.CollectionEntry>> = kotlinx.coroutines.flow.emptyFlow()
+        override suspend fun remove(itemId: String) = Unit
     }
 
     private class FakeCardRepository(

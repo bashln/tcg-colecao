@@ -37,6 +37,7 @@ fun formatMoney(money: Money?): String? {
     val symbol = when (money.currency) {
         Currency.USD -> "US$"
         Currency.EUR -> "€"
+        Currency.BRL -> "R$"
     }
     return "$symbol %.2f".format(amount)
 }

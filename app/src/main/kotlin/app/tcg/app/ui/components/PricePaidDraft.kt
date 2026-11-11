@@ -5,7 +5,7 @@ import app.tcg.core.domain.model.Money
 
 data class PricePaidDraft(
     val amount: String = "",
-    val currency: Currency = Currency.USD,
+    val currency: Currency = Currency.BRL,
 ) {
     val isValid: Boolean
         get() = amount.isBlank() || parsedAmount() != null

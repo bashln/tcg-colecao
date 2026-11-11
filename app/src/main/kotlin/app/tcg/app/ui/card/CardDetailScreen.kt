@@ -86,6 +86,7 @@ fun CardDetailScreen(
     val savedMessage = stringResource(R.string.detail_saved)
     val keptPurchaseAmountMessage = stringResource(R.string.detail_saved_purchase_amount_kept)
     val saveErrorMessage = stringResource(R.string.detail_save_error)
+    val savedLigaPriceMessage = stringResource(R.string.detail_edit_ligapokemon_price_saved)
     val card = state.card
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -114,7 +115,20 @@ fun CardDetailScreen(
                 item { HeroCard(card) }
                 item { TitleBlock(card) }
                 item { AttackSection(card) }
-                item { PriceSection(state.tcgplayer, state.cardmarket) }
+                item {
+                    PriceSection(
+                        card = card,
+                        tcgplayer = state.tcgplayer,
+                        cardmarket = state.cardmarket,
+                        ligapokemon = state.ligapokemon,
+                        onSaveLigaPrice = { priceInBrl ->
+                            scope.launch {
+                                viewModel.updateLigaPokemonPrice(priceInBrl)
+                                snackbarHostState.showSnackbar(savedLigaPriceMessage)
+                            }
+                        },
+                    )
+                }
                 item {
                     VariantSelector(
                         variants = card.variants.ifEmpty { setOf(state.variant) }.toList(),
@@ -262,7 +276,65 @@ private fun AttackSection(card: Card) {
 }
 
 @Composable
-private fun PriceSection(tcgplayer: app.tcg.core.domain.model.Money?, cardmarket: app.tcg.core.domain.model.Money?) {
+private fun PriceSection(
+    card: Card,
+    tcgplayer: app.tcg.core.domain.model.Money?,
+    cardmarket: app.tcg.core.domain.model.Money?,
+    ligapokemon: app.tcg.core.domain.model.Money? = null,
+    onSaveLigaPrice: ((Double) -> Unit)? = null,
+) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val ligaUrl = remember(card) { app.tcg.core.data.ligapokemon.LigaPokemonUrl.buildUrl(card) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var priceInput by remember(ligapokemon) {
+        mutableStateOf(ligapokemon?.amount?.let { "%.2f".format(java.util.Locale.US, it) } ?: "")
+    }
+
+    if (showEditDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text(stringResource(R.string.detail_edit_ligapokemon_price_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(R.string.detail_edit_ligapokemon_price_help),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    androidx.compose.material3.OutlinedTextField(
+                        value = priceInput,
+                        onValueChange = { priceInput = it.replace(',', '.') },
+                        label = { Text("Valor em R$") },
+                        placeholder = { Text("Ex: 12.50") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val parsed = priceInput.toDoubleOrNull()
+                        if (parsed != null && parsed >= 0) {
+                            onSaveLigaPrice?.invoke(parsed)
+                            showEditDialog = false
+                        }
+                    },
+                    enabled = priceInput.toDoubleOrNull() != null && (priceInput.toDoubleOrNull() ?: -1.0) >= 0.0,
+                ) {
+                    Text(stringResource(R.string.collection_edit_save))
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showEditDialog = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionHeader(stringResource(R.string.detail_prices))
         Card(
@@ -273,6 +345,29 @@ private fun PriceSection(tcgplayer: app.tcg.core.domain.model.Money?, cardmarket
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 PriceRow(stringResource(R.string.common_price_tcgplayer), tcgplayer)
                 PriceRow(stringResource(R.string.common_price_cardmarket), cardmarket)
+                PriceRow(stringResource(R.string.common_price_ligapokemon) + " (Brasil)", ligapokemon)
+                androidx.compose.material3.HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { uriHandler.openUri(ligaUrl) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("🇧🇷 LigaPokémon")
+                    }
+                    if (onSaveLigaPrice != null) {
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = { showEditDialog = true },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("✏️ Ajustar R$")
+                        }
+                    }
+                }
             }
         }
     }

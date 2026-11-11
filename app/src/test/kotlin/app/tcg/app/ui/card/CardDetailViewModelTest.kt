@@ -74,6 +74,41 @@ class CardDetailViewModelTest {
         assertTrue(repo.saved.isEmpty())
     }
 
+    @Test
+    fun updates_ligapokemon_price_and_saves_to_repository() = runTest {
+        val repo = RecordingCollectionRepository()
+        val cardRepo = RecordingCardRepository()
+        val vm = CardDetailViewModel(card = cardWithBothPrices(), collection = repo, cardRepository = cardRepo)
+
+        assertNull(vm.state.value.ligapokemon)
+        vm.updateLigaPokemonPrice(3.50)
+
+        assertEquals(Money(3.50, Currency.BRL), vm.state.value.ligapokemon)
+        assertEquals(1, cardRepo.savedPrices.size)
+        assertEquals(Money(3.50, Currency.BRL), cardRepo.savedPrices.single().third)
+    }
+
+    private class RecordingCardRepository : app.tcg.core.data.repository.CardRepository {
+        val savedPrices = mutableListOf<Triple<String, PriceSource, Money>>()
+
+        override suspend fun searchByName(name: String): List<Card> = emptyList()
+        override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> = emptyList()
+        override suspend fun getCard(id: String): Card? = null
+        override suspend fun getSetCatalog(setId: String): app.tcg.core.data.repository.SetCatalogResult =
+            app.tcg.core.data.repository.SetCatalogResult.Unavailable
+        override suspend fun refreshPrices(cardIds: List<String>): app.tcg.core.data.repository.PriceRefreshReport =
+            app.tcg.core.data.repository.PriceRefreshReport(0, 0)
+
+        override suspend fun saveCardPrice(
+            cardId: String,
+            source: PriceSource,
+            variant: CardVariant,
+            price: Money,
+        ) {
+            savedPrices += Triple(cardId, source, price)
+        }
+    }
+
     private class RecordingCollectionRepository : CollectionRepository {
         val saved = mutableListOf<CollectionItem>()
 

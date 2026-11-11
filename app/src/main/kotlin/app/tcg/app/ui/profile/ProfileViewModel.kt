@@ -8,6 +8,7 @@ import app.tcg.app.data.backup.CollectionBackup
 import app.tcg.app.data.backup.ImportPreview
 import app.tcg.app.data.backup.ImportResult
 import app.tcg.app.data.backup.ImportTicket
+import app.tcg.app.data.preferences.AppPreferences
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.domain.model.PriceSource
 import app.tcg.core.domain.stats.CollectionStats
@@ -28,12 +29,21 @@ data class ProfileUiState(
     val previewError: String? = null,
     val importMessage: String? = null,
     val importPasswordRequired: Boolean = false,
+    val priceSource: PriceSource = PriceSource.TCGPLAYER,
 )
 
 class ProfileViewModel(
     repository: CollectionRepository,
     private val backup: CollectionBackup? = null,
+    private val preferences: AppPreferences? = null,
 ) : ViewModel() {
+
+    val selectedPriceSource: StateFlow<PriceSource> =
+        preferences?.priceSource ?: MutableStateFlow(PriceSource.TCGPLAYER)
+
+    fun onPriceSourceSelected(source: PriceSource) {
+        preferences?.setPriceSource(source)
+    }
 
     private val activePreview = MutableStateFlow<ImportTicket?>(null)
     private val previewError = MutableStateFlow<String?>(null)
@@ -47,14 +57,16 @@ class ProfileViewModel(
         activePreview,
         previewError,
         importMessage,
-    ) { entries, backupStatus, preview, error, message ->
+        selectedPriceSource,
+    ) { entries, backupStatus, preview, error, message, source ->
         ProfileUiState(
-            stats = CollectionStats.compute(entries, PriceSource.TCGPLAYER),
+            stats = CollectionStats.compute(entries, source),
             loading = false,
             backupStatus = backupStatus,
             activePreview = preview,
             previewError = error,
             importMessage = message,
+            priceSource = source,
         )
     }
 

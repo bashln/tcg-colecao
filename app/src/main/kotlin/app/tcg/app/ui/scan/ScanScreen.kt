@@ -7,9 +7,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +29,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.PhotoLibrary
@@ -39,14 +40,18 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,20 +63,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tcg.app.R
 import app.tcg.app.ui.components.ErrorBanner
 import app.tcg.app.ui.components.SectionHeader
 import app.tcg.app.ui.components.formatMoney
 import app.tcg.app.ui.components.joinNonBlank
+import app.tcg.core.data.ligapokemon.LigaPokemonUrl
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.PriceSource
 import app.tcg.core.domain.valuation.Valuation
@@ -89,6 +99,7 @@ fun ScanScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val recognizer = rememberTextRecognizer()
     var captureRequest by remember { mutableStateOf(0) }
     var manualQuery by remember { mutableStateOf("") }
@@ -98,6 +109,20 @@ fun ScanScreen(
     var torchAvailable by remember { mutableStateOf(false) }
     var torchEnabled by remember { mutableStateOf(false) }
     var torchError by remember { mutableStateOf(false) }
+
+    // Auto-unfreeze camera on resume: whenever returning from CardDetailScreen, reset stale scan state
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (!state.isBatchMode && state.candidates.isNotEmpty()) {
+                    viewModel.resetForNextScan()
+                    capturedBitmap = null
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
@@ -147,7 +172,22 @@ fun ScanScreen(
         },
         onCardSelected = { card ->
             capturedBitmap = null
+            viewModel.resetForNextScan()
             onCardSelected(card)
+        },
+        onToggleBatchMode = viewModel::toggleBatchMode,
+        onSetGridMode = viewModel::setGridMode,
+        onQuickAddCard = { card ->
+            scope.launch { viewModel.quickAddCard(card) }
+            capturedBitmap = null
+        },
+        onQuickAddAllMultiCards = {
+            scope.launch { viewModel.quickAddAllMultiCards() }
+            capturedBitmap = null
+        },
+        onResetForNext = {
+            capturedBitmap = null
+            viewModel.resetForNextScan()
         },
         onExit = onExit,
         torchAvailable = torchAvailable,
@@ -159,7 +199,9 @@ fun ScanScreen(
             CameraCapture(
                 captureRequest = captureRequest,
                 recognizer = recognizer,
+                gridMode = state.gridMode,
                 onTextRecognized = { lines -> scope.launch { viewModel.onTextRecognized(lines) } },
+                onMultiCardTextRecognized = { quadrants -> scope.launch { viewModel.onMultiCardTextRecognized(quadrants) } },
                 onCapturedBitmap = {
                     capturedBitmap = null
                     capturedBitmap = it
@@ -172,7 +214,8 @@ fun ScanScreen(
                 },
                 autoCaptureEnabled = !captureReserved && capturedBitmap == null &&
                     !state.loading && state.error == null && !state.manualSearch &&
-                    !manualSearchRevealed && state.candidates.isEmpty(),
+                    !manualSearchRevealed && state.candidates.isEmpty() &&
+                    state.multiCardResults.isEmpty() && state.gridMode == ScanGridMode.SINGLE,
                 torchEnabled = torchEnabled,
                 onTorchAvailabilityChanged = { available -> torchAvailable = available },
                 onTorchError = { torchError = true; torchEnabled = false },
@@ -207,6 +250,11 @@ fun ScanContent(
     torchEnabled: Boolean = false,
     torchError: Boolean = false,
     onToggleTorch: () -> Unit = {},
+    onToggleBatchMode: () -> Unit = {},
+    onSetGridMode: (ScanGridMode) -> Unit = {},
+    onQuickAddCard: (Card) -> Unit = {},
+    onQuickAddAllMultiCards: () -> Unit = {},
+    onResetForNext: () -> Unit = {},
     modifier: Modifier = Modifier,
     cameraPreview: @Composable () -> Unit = {},
 ) {
@@ -222,23 +270,110 @@ fun ScanContent(
     Column(modifier = modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().weight(1f)) {
             cameraPreview()
-            Surface(
-                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
-                color = Color.Black.copy(alpha = 0.55f),
-                contentColor = Color.White,
-                shape = RoundedCornerShape(24.dp),
+
+            // Header bar: Title, Exit, and Mode toggles
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp)
+                    .align(Alignment.TopStart),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onExit) {
-                        Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.scan_exit))
+                Surface(
+                    color = Color.Black.copy(alpha = 0.55f),
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(24.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onExit) {
+                            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.scan_exit))
+                        }
+                        Text(
+                            text = stringResource(R.string.scan_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(end = 12.dp),
+                        )
                     }
-                    Text(
-                        text = stringResource(R.string.scan_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(end = 16.dp),
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilterChip(
+                        selected = state.isBatchMode,
+                        onClick = onToggleBatchMode,
+                        label = { Text(if (state.isBatchMode) "⚡ " + stringResource(R.string.scan_mode_batch) else stringResource(R.string.scan_mode_single)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Color.Black.copy(alpha = 0.55f),
+                            labelColor = Color.White,
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    )
+                    FilterChip(
+                        selected = state.gridMode == ScanGridMode.GRID_2X2,
+                        onClick = {
+                            onSetGridMode(
+                                if (state.gridMode == ScanGridMode.SINGLE) ScanGridMode.GRID_2X2 else ScanGridMode.SINGLE,
+                            )
+                        },
+                        label = { Text(if (state.gridMode == ScanGridMode.GRID_2X2) stringResource(R.string.scan_mode_grid) else "1x1") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Color.Black.copy(alpha = 0.55f),
+                            labelColor = Color.White,
+                            selectedContainerColor = MaterialTheme.colorScheme.secondary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onSecondary,
+                        ),
                     )
                 }
             }
+
+            // Batch counter badge
+            if (state.batchCount > 0) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 64.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shadowElevation = 4.dp,
+                ) {
+                    Text(
+                        text = stringResource(R.string.scan_batch_counter, state.batchCount),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
+
+            // Flash toast notification for last added card
+            state.lastAddedCard?.let { lastCard ->
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = if (state.batchCount > 0) 100.dp else 64.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    shadowElevation = 6.dp,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Text(
+                            text = stringResource(R.string.scan_added_success, lastCard.name),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
+            }
+
             if (state.loading) {
                 Box(
                     modifier = Modifier
@@ -260,6 +395,7 @@ fun ScanContent(
                 }
             }
         }
+
         CaptureControls(
             onCapture = onCapture,
             onGallery = onGallery,
@@ -269,16 +405,40 @@ fun ScanContent(
             torchError = torchError,
             onToggleTorch = onToggleTorch,
         )
+
         if (state.loading) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
         }
+
         state.error?.let { message ->
             ErrorBanner(
                 message = message,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
+
         when {
+            // Mode 1: Fast Continuous Batch Mode - Instant Quick Add Card overlay
+            state.isBatchMode && state.candidates.isNotEmpty() -> {
+                BatchQuickAddCard(
+                    card = state.candidates.first().value,
+                    onQuickAdd = { onQuickAddCard(state.candidates.first().value) },
+                    onDetails = { onCardSelected(state.candidates.first().value) },
+                    onSkip = onResetForNext,
+                )
+            }
+
+            // Mode 2: Multi-card Grid Review (4 cards in 2x2 grid)
+            state.gridMode == ScanGridMode.GRID_2X2 && state.multiCardResults.isNotEmpty() -> {
+                MultiCardReviewCard(
+                    results = state.multiCardResults,
+                    onAddAll = onQuickAddAllMultiCards,
+                    onDismiss = onResetForNext,
+                    onCardClick = onCardSelected,
+                )
+            }
+
+            // Mode 3: Normal Individual Scanning - Candidates list
             state.candidates.isNotEmpty() -> {
                 if (showManual) {
                     ManualSearchPanel(
@@ -318,6 +478,7 @@ fun ScanContent(
                     }
                 }
             }
+
             showManual -> ManualSearchPanel(
                 query = manualQuery,
                 onQueryChange = onManualQueryChange,
@@ -327,6 +488,165 @@ fun ScanContent(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
             else -> Unit
+        }
+    }
+}
+
+@Composable
+private fun BatchQuickAddCard(
+    card: Card,
+    onQuickAdd: () -> Unit,
+    onDetails: () -> Unit,
+    onSkip: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val uriHandler = LocalUriHandler.current
+    val ligaUrl = remember(card) { LigaPokemonUrl.buildUrl(card) }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 54.dp, height = 76.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surface),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        model = card.imageUrl,
+                        contentDescription = card.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize().padding(4.dp),
+                    )
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        text = card.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = joinNonBlank(card.setName, card.collectorNumber),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "🇧🇷 LigaPokemon",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { uriHandler.openUri(ligaUrl) },
+                    )
+                }
+                IconButton(onClick = onSkip) {
+                    Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.scan_next_card))
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = onQuickAdd,
+                    modifier = Modifier.weight(1f).height(46.dp),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Icon(Icons.Filled.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.scan_quick_add))
+                }
+                OutlinedButton(
+                    onClick = onDetails,
+                    modifier = Modifier.height(46.dp),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text(stringResource(R.string.detail_prices))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MultiCardReviewCard(
+    results: List<MultiCardResult>,
+    onAddAll: () -> Unit,
+    onDismiss: () -> Unit,
+    onCardClick: (Card) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.scan_multi_found_count, results.size),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Outlined.Close, contentDescription = null)
+                }
+            }
+            results.forEachIndexed { index, item ->
+                val card = item.selectedCard
+                if (card != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .clickable { onCardClick(card) }
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = "#${index + 1}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(card.name, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                joinNonBlank(card.setName, card.collectorNumber),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+            Button(
+                onClick = onAddAll,
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(stringResource(R.string.scan_multi_add_all, results.size))
+            }
         }
     }
 }
@@ -508,7 +828,6 @@ private fun ManualSearchPanel(
                         }
                     },
                     singleLine = true,
-                    shape = MaterialTheme.shapes.medium,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { onSearch() }),
                     modifier = Modifier.weight(1f),
@@ -526,6 +845,9 @@ private fun CandidateCard(card: Card, onClick: () -> Unit) {
     val price = card.variants.firstOrNull()?.let {
         Valuation.itemValue(card, it, PriceSource.TCGPLAYER)
     }
+    val uriHandler = LocalUriHandler.current
+    val ligaUrl = remember(card) { LigaPokemonUrl.buildUrl(card) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -568,11 +890,22 @@ private fun CandidateCard(card: Card, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                formatMoney(price)?.let { formatted ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    formatMoney(price)?.let { formatted ->
+                        Text(
+                            text = formatted,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Text(
-                        text = formatted,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
+                        text = "🇧🇷 LigaPokemon",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.clickable { uriHandler.openUri(ligaUrl) },
                     )
                 }
             }

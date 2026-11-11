@@ -2,8 +2,10 @@ package app.tcg.app.ui.card
 
 import androidx.lifecycle.ViewModel
 import app.tcg.app.ui.components.PricePaidDraft
+import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.domain.model.Card
+import app.tcg.core.domain.model.CardPrice
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
@@ -24,11 +26,13 @@ data class CardDetailUiState(
     val purchaseAmountNotApplied: Boolean = false,
     val tcgplayer: Money? = null,
     val cardmarket: Money? = null,
+    val ligapokemon: Money? = null,
 )
 
 class CardDetailViewModel(
     card: Card,
     private val collection: CollectionRepository,
+    private val cardRepository: CardRepository? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(stateFor(card, defaultVariant(card)))
@@ -40,6 +44,37 @@ class CardDetailViewModel(
                 variant = variant,
                 tcgplayer = Valuation.itemValue(it.card, variant, PriceSource.TCGPLAYER),
                 cardmarket = Valuation.itemValue(it.card, variant, PriceSource.CARDMARKET),
+                ligapokemon = Valuation.itemValue(it.card, variant, PriceSource.LIGAPOKEMON),
+            )
+        }
+    }
+
+    suspend fun updateLigaPokemonPrice(priceInBrl: Double) {
+        val cardRepo = cardRepository ?: return
+        val currentVariant = _state.value.variant
+        val money = Money(priceInBrl, Currency.BRL)
+        cardRepo.saveCardPrice(
+            cardId = _state.value.card.id,
+            source = PriceSource.LIGAPOKEMON,
+            variant = currentVariant,
+            price = money,
+        )
+        val newPrice = CardPrice(
+            source = PriceSource.LIGAPOKEMON,
+            variant = currentVariant,
+            currency = Currency.BRL,
+            market = priceInBrl,
+            low = null, mid = null, high = null, trend = null,
+            avg1 = null, avg7 = null, avg30 = null, updatedAt = null,
+        )
+        val filteredPrices = _state.value.card.prices.filterNot {
+            it.source == PriceSource.LIGAPOKEMON && it.variant == currentVariant
+        }
+        val updatedCard = _state.value.card.copy(prices = filteredPrices + newPrice)
+        _state.update {
+            it.copy(
+                card = updatedCard,
+                ligapokemon = money,
             )
         }
     }
@@ -84,6 +119,7 @@ class CardDetailViewModel(
             variant = variant,
             tcgplayer = Valuation.itemValue(card, variant, PriceSource.TCGPLAYER),
             cardmarket = Valuation.itemValue(card, variant, PriceSource.CARDMARKET),
+            ligapokemon = Valuation.itemValue(card, variant, PriceSource.LIGAPOKEMON),
         )
 
         fun defaultVariant(card: Card): CardVariant =

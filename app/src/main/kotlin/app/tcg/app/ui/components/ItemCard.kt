@@ -29,7 +29,11 @@ import app.tcg.core.domain.valuation.Valuation
 import coil.compose.AsyncImage
 
 @Composable
-fun CollectionItemCard(entry: CollectionEntry, modifier: Modifier = Modifier) {
+fun CollectionItemCard(
+    entry: CollectionEntry,
+    modifier: Modifier = Modifier,
+    priceSource: PriceSource = PriceSource.TCGPLAYER,
+) {
     val card = entry.card
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -92,7 +96,7 @@ fun CollectionItemCard(entry: CollectionEntry, modifier: Modifier = Modifier) {
             }
             Text(
                 text = formatMoney(
-                    Valuation.itemValue(card, entry.item.variant, PriceSource.TCGPLAYER),
+                    Valuation.itemValue(card, entry.item.variant, priceSource),
                 ) ?: stringResource(R.string.common_no_price),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
