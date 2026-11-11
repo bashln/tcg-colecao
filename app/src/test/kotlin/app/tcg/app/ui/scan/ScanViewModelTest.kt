@@ -272,6 +272,9 @@ class ScanViewModelTest {
 
         override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
 
+        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
+    }
+
     @Test
     fun toggling_batch_mode_switches_batch_flag() {
         val vm = ScanViewModel(FakeCardRepository())
