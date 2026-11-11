@@ -35,7 +35,7 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.loading)
-        assertEquals(Money(0.0, Currency.USD), viewModel.state.value.stats.totalValue)
+        assertEquals(Money(0.0, Currency.BRL), viewModel.state.value.stats.totalValue)
         assertEquals(0, viewModel.state.value.stats.totalCards)
     }
 
@@ -44,15 +44,15 @@ class HomeViewModelTest {
         val viewModel = HomeViewModel(
             FakeCollectionRepository(
                 listOf(
-                    testEntry(testCard("a", name = "A", prices = listOf(testPrice(2.0))), qty = 3),
-                    testEntry(testCard("b", name = "B", prices = listOf(testPrice(5.0)))),
+                    testEntry(testCard("a", name = "A", prices = listOf(ligaPrice(2.0))), qty = 3),
+                    testEntry(testCard("b", name = "B", prices = listOf(ligaPrice(5.0)))),
                 ),
             ),
         )
         advanceUntilIdle()
 
         val stats = viewModel.state.value.stats
-        assertEquals(Money(11.0, Currency.USD), stats.totalValue)
+        assertEquals(Money(11.0, Currency.BRL), stats.totalValue)
         assertEquals(4, stats.totalCards)
         assertEquals(2, stats.distinctCards)
         assertEquals(listOf("A", "B"), stats.mostValuable.map { it.card.name })
@@ -66,36 +66,48 @@ class HomeViewModelTest {
         assertEquals(0, viewModel.state.value.stats.totalCards)
 
         repository.entries.value = listOf(
-            testEntry(testCard("a", prices = listOf(testPrice(1.0))), qty = 2),
+            testEntry(testCard("a", prices = listOf(ligaPrice(1.0))), qty = 2),
         )
         advanceUntilIdle()
 
         assertEquals(2, viewModel.state.value.stats.totalCards)
-        assertEquals(Money(2.0, Currency.USD), viewModel.state.value.stats.totalValue)
+        assertEquals(Money(2.0, Currency.BRL), viewModel.state.value.stats.totalValue)
     }
 
     @Test
     fun price_source_switches_the_history_without_changing_the_home_total() = runTest {
         val repository = FakeCollectionRepository(
-            listOf(testEntry(testCard("a", prices = listOf(testPrice(2.0))), qty = 2)),
+            listOf(
+                testEntry(
+                    testCard(
+                        "a",
+                        prices = listOf(
+                            ligaPrice(2.0),
+                            testPrice(2.0, source = PriceSource.TCGPLAYER, currency = Currency.USD),
+                            testPrice(2.0, source = PriceSource.CARDMARKET, currency = Currency.EUR),
+                        ),
+                    ),
+                    qty = 2,
+                ),
+            ),
         )
         val viewModel = HomeViewModel(repository, clock)
         advanceUntilIdle()
-        assertEquals(PriceSource.TCGPLAYER, viewModel.priceSource.value)
-        assertEquals(Money(4.0, Currency.USD), viewModel.state.value.stats.totalValue)
+        assertEquals(PriceSource.LIGAPOKEMON, viewModel.priceSource.value)
+        assertEquals(Money(4.0, Currency.BRL), viewModel.state.value.stats.totalValue)
 
         viewModel.selectPriceSource(PriceSource.CARDMARKET)
         advanceUntilIdle()
 
         val history = (viewModel.priceHistory.value as PriceHistoryUiState.Ready).history
         assertEquals(PriceSource.CARDMARKET, history.source)
-        assertEquals(Money(4.0, Currency.USD), viewModel.state.value.stats.totalValue)
+        assertEquals(Money(4.0, Currency.EUR), viewModel.state.value.stats.totalValue)
     }
 
     @Test
     fun history_error_can_retry_without_hiding_collection_stats() = runTest {
         val repository = FakeCollectionRepository(
-            listOf(testEntry(testCard("a", prices = listOf(testPrice(2.0))))),
+            listOf(testEntry(testCard("a", prices = listOf(ligaPrice(2.0))))),
         )
         repository.failHistory = true
         val viewModel = HomeViewModel(repository, clock)
@@ -108,8 +120,11 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         assertEquals(
-            CurrentHoldingsHistory(PriceSource.TCGPLAYER, java.time.LocalDate.parse("2026-01-10"), 0, emptyList(), null),
+            CurrentHoldingsHistory(PriceSource.LIGAPOKEMON, java.time.LocalDate.parse("2026-01-10"), 0, emptyList(), null),
             (viewModel.priceHistory.value as PriceHistoryUiState.Ready).history,
         )
     }
+
+    private fun ligaPrice(market: Double) =
+        testPrice(market, source = PriceSource.LIGAPOKEMON, currency = Currency.BRL)
 }
