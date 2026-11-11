@@ -23,5 +23,6 @@ object Valuation {
     fun currencyOf(source: PriceSource) = when (source) {
         PriceSource.TCGPLAYER -> Currency.USD
         PriceSource.CARDMARKET -> Currency.EUR
+        PriceSource.LIGAPOKEMON -> Currency.BRL
     }
 }

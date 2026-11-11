@@ -1,5 +1,6 @@
 package app.tcg.app.ui.nav
 
+import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,6 +43,7 @@ import androidx.navigation.navArgument
 import app.tcg.app.BuildConfig
 import app.tcg.app.R
 import app.tcg.app.auth.AuthController
+import app.tcg.app.data.preferences.AppPreferences
 import app.tcg.app.data.sync.SyncLinkCoordinator
 import app.tcg.app.data.sync.SyncLifecycle
 import app.tcg.app.data.sync.SyncLinkRepository
@@ -102,6 +104,11 @@ fun AppNav(
     updateInstaller: UpdateInstaller,
     navController: NavHostController = rememberNavController(),
 ) {
+    val context = LocalContext.current
+    val appPreferences = remember {
+        AppPreferences(context.getSharedPreferences("tcg_app_prefs", Context.MODE_PRIVATE))
+    }
+
     // Restore any persisted session once so a returning signed-in user sees their state.
     LaunchedEffect(Unit) { authController.start() }
 
@@ -179,7 +186,7 @@ fun AppNav(
         ) {
             composable(Routes.HOME) {
                 val viewModel: HomeViewModel = viewModel(
-                    factory = viewModelFactory { initializer { HomeViewModel(collectionRepository) } },
+                    factory = viewModelFactory { initializer { HomeViewModel(collectionRepository, appPreferences) } },
                 )
                 HomeScreen(
                     viewModel = viewModel,
@@ -189,7 +196,7 @@ fun AppNav(
             }
             composable(Routes.SCAN) {
                 val viewModel: ScanViewModel = viewModel(
-                    factory = viewModelFactory { initializer { ScanViewModel(cardRepository) } },
+                    factory = viewModelFactory { initializer { ScanViewModel(cardRepository, collectionRepository) } },
                 )
                 ScanScreen(
                     viewModel = viewModel,
@@ -199,7 +206,7 @@ fun AppNav(
             }
             composable(Routes.COLLECTION) {
                 val viewModel: CollectionViewModel = viewModel(
-                    factory = viewModelFactory { initializer { CollectionViewModel(collectionRepository, cardRepository) } },
+                    factory = viewModelFactory { initializer { CollectionViewModel(collectionRepository, cardRepository, appPreferences) } },
                 )
                 CollectionScreen(
                     viewModel = viewModel,
@@ -210,7 +217,7 @@ fun AppNav(
             }
             composable(Routes.PROFILE) {
                 val viewModel: ProfileViewModel = viewModel(
-                    factory = viewModelFactory { initializer { ProfileViewModel(collectionRepository, collectionBackup) } },
+                    factory = viewModelFactory { initializer { ProfileViewModel(collectionRepository, collectionBackup, appPreferences) } },
                 )
                 ProfileScreen(
                     viewModel = viewModel,
@@ -338,7 +345,7 @@ private fun CardDetailRoute(
             val viewModel: CardDetailViewModel = viewModel(
                 key = "card-detail-$cardId",
                 factory = viewModelFactory {
-                    initializer { CardDetailViewModel(resolved, collectionRepository) }
+                    initializer { CardDetailViewModel(resolved, collectionRepository, cardRepository) }
                 },
             )
             CardDetailScreen(viewModel = viewModel, onBack = onSaved, onSaved = onSaved)

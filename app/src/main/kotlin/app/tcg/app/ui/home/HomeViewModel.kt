@@ -2,6 +2,7 @@ package app.tcg.app.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.tcg.app.data.preferences.AppPreferences
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.domain.model.CurrentHoldingsHistory
 import app.tcg.core.domain.model.PriceSource
@@ -33,9 +34,10 @@ sealed interface PriceHistoryUiState {
 class HomeViewModel(
     repository: CollectionRepository,
     private val clock: Clock = Clock.systemUTC(),
+    private val preferences: AppPreferences? = null,
 ) : ViewModel() {
 
-    private val selectedSource = MutableStateFlow(PriceSource.TCGPLAYER)
+    private val selectedSource = MutableStateFlow(preferences?.priceSource?.value ?: PriceSource.LIGAPOKEMON)
     private val retryVersion = MutableStateFlow(0)
 
     val priceSource: StateFlow<PriceSource> = selectedSource
@@ -51,15 +53,14 @@ class HomeViewModel(
 
     fun selectPriceSource(source: PriceSource) {
         selectedSource.value = source
+        preferences?.setPriceSource(source)
     }
 
     fun retryPriceHistory() {
         retryVersion.value += 1
     }
 
-    val state: StateFlow<HomeUiState> = repository.observe()
-        .map { entries ->
-            HomeUiState(stats = CollectionStats.compute(entries, PriceSource.TCGPLAYER), loading = false)
-        }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
+    val state: StateFlow<HomeUiState> = combine(repository.observe(), selectedSource) { entries, source ->
+        HomeUiState(stats = CollectionStats.compute(entries, source), loading = false)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
 }

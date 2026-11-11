@@ -2,6 +2,7 @@ package app.tcg.app.ui.collection
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.tcg.app.data.preferences.AppPreferences
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.data.repository.SetCatalogResult
@@ -67,6 +68,7 @@ data class CollectionUiState(
     val ownedConditions: List<Condition> = emptyList(),
     val total: Money = Money(0.0, Currency.USD),
     val unpricedCards: Int = 0,
+    val priceSource: PriceSource = PriceSource.TCGPLAYER,
     val loading: Boolean = false,
     val section: CollectionSection = CollectionSection.CARDS,
     val ownedSets: List<OwnedSetSummary> = emptyList(),
@@ -84,6 +86,7 @@ data class CollectionUiState(
 class CollectionViewModel(
     private val repository: CollectionRepository,
     private val cardRepository: CardRepository,
+    private val preferences: AppPreferences? = null,
 ) : ViewModel() {
 
     private val filters = MutableStateFlow(CollectionCardFilters())
@@ -95,6 +98,8 @@ class CollectionViewModel(
     private val catalogJobs = mutableMapOf<String, Job>()
     private val catalogSemaphore = Semaphore(2)
     private val hasCollectionSnapshot = MutableStateFlow(false)
+    val currentPriceSource: StateFlow<PriceSource> =
+        preferences?.priceSource ?: MutableStateFlow(PriceSource.TCGPLAYER)
     private val entries = repository.observe().onEach { hasCollectionSnapshot.value = true }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -111,9 +116,9 @@ class CollectionViewModel(
     }
 
     val state: StateFlow<CollectionUiState> =
-        combine(entries, filters, section, selectedSet, ownershipFilter) {
-                currentEntries, cardFilters, currentSection, currentSet, filter ->
-            stateFor(currentEntries, cardFilters, currentSection, currentSet, filter)
+        combine(entries, filters, section, selectedSet, ownershipFilter, currentPriceSource) {
+                currentEntries, cardFilters, currentSection, currentSet, filter, source ->
+            stateFor(currentEntries, cardFilters, currentSection, currentSet, filter, source)
         }.combine(cardsLens) { current, lens -> current.copy(cardsLens = lens) }
             .combine(globalMissing) { current, missing -> current.copy(globalMissing = missing) }
             .combine(hasCollectionSnapshot) { current, loaded -> current.copy(loading = !loaded) }
@@ -199,6 +204,7 @@ class CollectionViewModel(
         section: CollectionSection,
         selectedSet: SelectedSetState,
         ownershipFilter: OwnershipFilter,
+        priceSource: PriceSource,
     ): CollectionUiState {
         val filteredEntries = entries.filter { entry ->
             (filters.variant == null || entry.item.variant == filters.variant) &&
@@ -241,11 +247,12 @@ class CollectionViewModel(
             query = filters.query,
             variantFilter = filters.variant,
             conditionFilter = filters.condition,
+            priceSource = priceSource,
             ownedVariants = CardVariant.entries.filter { variant -> entries.any { it.item.variant == variant } },
             ownedConditions = Condition.entries.filter { condition -> entries.any { it.item.condition == condition } },
-            total = Valuation.portfolioTotal(entries, PriceSource.TCGPLAYER),
+            total = Valuation.portfolioTotal(entries, priceSource),
             unpricedCards = entries.filter {
-                Valuation.itemValue(it.card, it.item.variant, PriceSource.TCGPLAYER) == null
+                Valuation.itemValue(it.card, it.item.variant, priceSource) == null
             }.sumOf { it.item.quantity },
             loading = false,
             section = section,

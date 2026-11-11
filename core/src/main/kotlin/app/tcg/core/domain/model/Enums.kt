@@ -1,8 +1,8 @@
 package app.tcg.core.domain.model
 
-enum class Currency { USD, EUR }
+enum class Currency { USD, EUR, BRL }
 
-enum class PriceSource { TCGPLAYER, CARDMARKET }
+enum class PriceSource { TCGPLAYER, CARDMARKET, LIGAPOKEMON }
 
 enum class CardVariant { NORMAL, HOLOFOIL, REVERSE_HOLOFOIL, FIRST_EDITION, PROMO }
 

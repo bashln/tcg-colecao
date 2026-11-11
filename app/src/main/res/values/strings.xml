@@ -34,6 +34,27 @@
     <string name="scan_match_label">Melhor correspondência</string>
     <string name="scan_captured_image_cd">Foto da carta capturada</string>
     <string name="scan_match_image_cd">Imagem de %1$s</string>
+    <string name="scan_mode_single">1 Carta</string>
+    <string name="scan_mode_batch">Modo Lote</string>
+    <string name="scan_mode_grid">Grade 2x2</string>
+    <string name="scan_batch_counter">%1$d no lote</string>
+    <string name="scan_quick_add">+ Adicionar ao lote</string>
+    <string name="scan_added_success">✓ %1$s adicionada!</string>
+    <string name="scan_multi_add_all">Adicionar todas (%1$d cartas)</string>
+    <string name="scan_multi_found_count">%1$d cartas detectadas no bloco</string>
+    <string name="scan_next_card">Próxima carta</string>
+    <string name="scan_grid_hint">Posicione 4 cartas nos quadrantes da tela</string>
+    <string name="common_price_ligapokemon">LigaPokemon</string>
+    <string name="common_open_ligapokemon">Ver na LigaPokemon (Brasil)</string>
+    <string name="currency_preference_title">Moeda e Cotação Padrão</string>
+    <string name="currency_preference_subtitle">Valores exibidos em toda a coleção e perfil</string>
+    <string name="currency_source_ligapokemon">🇧🇷 LigaPokémon (R$)</string>
+    <string name="currency_source_tcgplayer">🇺🇸 TCGplayer (US$)</string>
+    <string name="currency_source_cardmarket">🇪🇺 Cardmarket (€)</string>
+    <string name="detail_edit_ligapokemon_price">Ajustar valor em R$ (LigaPokémon)</string>
+    <string name="detail_edit_ligapokemon_price_title">Cotação LigaPokémon (R$)</string>
+    <string name="detail_edit_ligapokemon_price_help">Insira o valor atual da carta na LigaPokémon para sua coleção.</string>
+    <string name="detail_edit_ligapokemon_price_saved">Valor em R$ salvo com sucesso!</string>
 
     <string name="detail_attacks">Ataques</string>
     <string name="detail_prices">Preços</string>

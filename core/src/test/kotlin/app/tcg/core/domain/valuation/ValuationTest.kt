@@ -56,4 +56,8 @@ class ValuationTest {
             CollectionEntry(CollectionItem("2","b",1,Condition.NEAR_MINT,CardVariant.NORMAL,null,0L), unpriced))
         assertEquals(Money(2.0, Currency.USD), Valuation.portfolioTotal(entries, PriceSource.TCGPLAYER))
     }
+
+    @Test fun currency_of_ligapokemon_is_brl() {
+        assertEquals(Currency.BRL, Valuation.currencyOf(PriceSource.LIGAPOKEMON))
+    }
 }

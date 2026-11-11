@@ -312,6 +312,7 @@ private fun OwnedCardsCollection(
             else -> items(state.entries, key = { it.item.id }) { entry ->
                 CollectionItemCard(
                     entry = entry,
+                    priceSource = state.priceSource,
                     modifier = Modifier.clickable(
                         onClickLabel = stringResource(R.string.cd_open_card),
                         role = Role.Button,
@@ -485,7 +486,7 @@ private fun ColumnScope.SelectedSetSection(
         SelectedSetState.Closed -> Unit
         is SelectedSetState.Loading -> {
             LoadingState(stringResource(R.string.collection_set_loading))
-            OwnedSetCards(state.ownedSetEntries, onCollectionItemSelected)
+            OwnedSetCards(state.ownedSetEntries, state.priceSource, onCollectionItemSelected)
         }
         is SelectedSetState.Unavailable -> {
             EmptyState(
@@ -495,7 +496,7 @@ private fun ColumnScope.SelectedSetSection(
                 action = { Button(onClick = onRetry) { Text(stringResource(R.string.collection_set_retry)) } },
                 modifier = Modifier.padding(vertical = 8.dp),
             )
-            OwnedSetCards(state.ownedSetEntries, onCollectionItemSelected)
+            OwnedSetCards(state.ownedSetEntries, state.priceSource, onCollectionItemSelected)
         }
         is SelectedSetState.Ready -> {
             val catalogSize = catalogState.catalog.cards.size
@@ -567,6 +568,7 @@ private fun ColumnScope.SelectedSetSection(
 @Composable
 private fun ColumnScope.OwnedSetCards(
     entries: List<app.tcg.core.domain.model.CollectionEntry>,
+    priceSource: app.tcg.core.domain.model.PriceSource = app.tcg.core.domain.model.PriceSource.TCGPLAYER,
     onCollectionItemSelected: (String) -> Unit,
 ) {
     if (entries.isEmpty()) return
@@ -580,6 +582,7 @@ private fun ColumnScope.OwnedSetCards(
         items(entries, key = { it.item.id }) { entry ->
             CollectionItemCard(
                 entry = entry,
+                priceSource = priceSource,
                 modifier = Modifier.clickable(
                     onClickLabel = stringResource(R.string.cd_open_card),
                     role = Role.Button,

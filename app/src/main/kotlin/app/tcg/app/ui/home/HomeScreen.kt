@@ -136,7 +136,7 @@ private fun HomeContent(
         item { CollectionKeyNumbers(stats) }
         item { SectionHeader(stringResource(R.string.home_most_valuable)) }
         items(stats.mostValuable, key = { it.item.id }) { entry ->
-            MostValuableRow(entry = entry, onClick = { onCollectionItemSelected(entry.item.id) })
+            MostValuableRow(entry = entry, priceSource = priceSource, onClick = { onCollectionItemSelected(entry.item.id) })
         }
         item {
             PriceHistoryCard(priceHistory, priceSource, onPriceSourceSelected, onPriceHistoryRetry)
@@ -145,7 +145,7 @@ private fun HomeContent(
 }
 
 @Composable
-private fun MostValuableRow(entry: CollectionEntry, onClick: () -> Unit) {
+private fun MostValuableRow(entry: CollectionEntry, priceSource: PriceSource, onClick: () -> Unit) {
     val card = entry.card
     Card(
         modifier = Modifier
@@ -194,7 +194,7 @@ private fun MostValuableRow(entry: CollectionEntry, onClick: () -> Unit) {
                 )
             }
             Text(
-                text = formatMoney(Valuation.itemValue(card, entry.item.variant, PriceSource.TCGPLAYER))
+                text = formatMoney(Valuation.itemValue(card, entry.item.variant, priceSource))
                     ?: stringResource(R.string.common_no_price),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
@@ -233,6 +233,11 @@ private fun PriceHistoryCard(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = source == PriceSource.LIGAPOKEMON,
+                    onClick = { onSourceSelected(PriceSource.LIGAPOKEMON) },
+                    label = { Text("🇧🇷 " + stringResource(R.string.common_price_ligapokemon)) },
+                )
                 FilterChip(
                     selected = source == PriceSource.TCGPLAYER,
                     onClick = { onSourceSelected(PriceSource.TCGPLAYER) },

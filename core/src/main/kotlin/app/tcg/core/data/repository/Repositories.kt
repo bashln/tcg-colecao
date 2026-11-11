@@ -22,6 +22,7 @@ interface CardRepository {
     suspend fun getCard(id: String): Card?
     suspend fun getSetCatalog(setId: String): SetCatalogResult
     suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport
+    suspend fun saveCardPrice(cardId: String, source: PriceSource, variant: CardVariant, marketPrice: Double) {}
 }
 
 data class PriceRefreshReport(

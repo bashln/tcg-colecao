@@ -277,6 +277,14 @@ fun ProfileScreen(
 
         Spacer(Modifier.height(8.dp))
 
+        CurrencyPreferenceCard(
+            currentSource = state.priceSource,
+            onSelectSource = viewModel::onPriceSourceSelected,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+
+        Spacer(Modifier.height(8.dp))
+
         when {
             state.loading -> Box(
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -608,3 +616,58 @@ private fun <K> BreakdownSection(
         }
     }
 }
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun CurrencyPreferenceCard(
+    currentSource: app.tcg.core.domain.model.PriceSource,
+    onSelectSource: (app.tcg.core.domain.model.PriceSource) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.currency_preference_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = stringResource(R.string.currency_preference_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                androidx.compose.material3.FilterChip(
+                    selected = currentSource == app.tcg.core.domain.model.PriceSource.LIGAPOKEMON,
+                    onClick = { onSelectSource(app.tcg.core.domain.model.PriceSource.LIGAPOKEMON) },
+                    label = { Text("🇧🇷 R$ (Liga)") },
+                )
+                androidx.compose.material3.FilterChip(
+                    selected = currentSource == app.tcg.core.domain.model.PriceSource.TCGPLAYER,
+                    onClick = { onSelectSource(app.tcg.core.domain.model.PriceSource.TCGPLAYER) },
+                    label = { Text("🇺🇸 US$") },
+                )
+                androidx.compose.material3.FilterChip(
+                    selected = currentSource == app.tcg.core.domain.model.PriceSource.CARDMARKET,
+                    onClick = { onSelectSource(app.tcg.core.domain.model.PriceSource.CARDMARKET) },
+                    label = { Text("🇪🇺 €") },
+                )
+            }
+        }
+    }
+}
+

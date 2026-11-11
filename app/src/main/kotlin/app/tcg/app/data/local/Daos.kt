@@ -44,7 +44,32 @@ abstract class CardDao {
     abstract suspend fun upsertPrices(prices: List<CardPriceEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun upsertPrice(price: CardPriceEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun upsertPriceObservations(observations: List<CardPriceObservationEntity>)
+
+    @Transaction
+    open suspend fun saveSinglePrice(price: CardPriceEntity, observedAt: Long) {
+        upsertPrice(price)
+        price.market?.let { market ->
+            upsertPriceObservations(
+                listOf(
+                    CardPriceObservationEntity(
+                        cardId = price.cardId,
+                        source = price.source,
+                        variant = price.variant,
+                        currency = price.currency,
+                        amount = market,
+                        observedAt = observedAt,
+                        utcDay = java.time.Instant.ofEpochMilli(observedAt)
+                            .atZone(java.time.ZoneOffset.UTC)
+                            .toLocalDate(),
+                    ),
+                ),
+            )
+        }
+    }
 
     @Query("SELECT * FROM card_price_observations WHERE cardId = :cardId AND source = :source AND variant = :variant AND currency = :currency ORDER BY utcDay")
     abstract suspend fun priceObservationsFor(
