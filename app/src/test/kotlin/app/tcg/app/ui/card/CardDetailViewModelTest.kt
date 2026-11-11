@@ -103,9 +103,9 @@ class CardDetailViewModelTest {
             cardId: String,
             source: PriceSource,
             variant: CardVariant,
-            price: Money,
+            marketPrice: Double,
         ) {
-            savedPrices += Triple(cardId, source, price)
+            savedPrices += Triple(cardId, source, Money(marketPrice, Currency.BRL))
         }
     }
 

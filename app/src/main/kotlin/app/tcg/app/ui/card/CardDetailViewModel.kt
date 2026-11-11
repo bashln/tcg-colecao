@@ -57,7 +57,7 @@ class CardDetailViewModel(
             cardId = _state.value.card.id,
             source = PriceSource.LIGAPOKEMON,
             variant = currentVariant,
-            price = money,
+            marketPrice = priceInBrl,
         )
         val newPrice = CardPrice(
             source = PriceSource.LIGAPOKEMON,

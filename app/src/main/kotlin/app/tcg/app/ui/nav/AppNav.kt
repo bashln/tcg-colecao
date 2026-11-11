@@ -186,7 +186,7 @@ fun AppNav(
         ) {
             composable(Routes.HOME) {
                 val viewModel: HomeViewModel = viewModel(
-                    factory = viewModelFactory { initializer { HomeViewModel(collectionRepository, appPreferences) } },
+                    factory = viewModelFactory { initializer { HomeViewModel(collectionRepository, preferences = appPreferences) } },
                 )
                 HomeScreen(
                     viewModel = viewModel,
