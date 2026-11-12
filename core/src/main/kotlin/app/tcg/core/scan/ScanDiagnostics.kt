@@ -22,7 +22,7 @@ data class ScanDiagnostics(
     val candidates: List<ScannedCandidate>,
     val chosenCardId: String? = null,
 ) {
-    fun toJson(): String = Json { prettyPrint = true }.encodeToString(serializer(), this)
+    fun toJson(): String = json.encodeToString(serializer(), this)
 
     companion object {
         fun from(
@@ -52,6 +52,8 @@ data class ScannedCandidate(
     val hp: Int?,
     val score: Int,
 )
+
+private val json = Json { prettyPrint = true }
 
 private fun Scored<Card>.toSnapshot() = ScannedCandidate(
     id = value.id,

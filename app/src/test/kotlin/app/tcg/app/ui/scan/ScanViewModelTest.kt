@@ -315,6 +315,40 @@ class ScanViewModelTest {
     }
 
     @Test
+    fun manual_retry_keeps_the_lines_the_camera_read() = runTest {
+        val vm = ScanViewModel(FakeCardRepository(emptyList()))
+        vm.onTextRecognized(listOf(OcrLine("Charizard", 0f, 54f, 330f), OcrLine("004/102", 100f, 22f, 380f)))
+
+        vm.onManualSearch("Charizard")
+
+        val diagnostics = requireNotNull(vm.state.value.diagnostics)
+        assertEquals(listOf("Charizard", "004/102"), diagnostics.ocrLines)
+    }
+
+    @Test
+    fun a_failed_search_does_not_leave_the_previous_scan_record() = runTest {
+        val vm = ScanViewModel(FakeCardRepository(listOf(card("c1", "Furret", "136", 110))))
+        vm.onTextRecognized(listOf(OcrLine("Furret", 0f, 40f), OcrLine("136/189", 100f, 40f)))
+        assertNotNull(vm.state.value.diagnostics)
+
+        vm.onCaptureError("offline")
+
+        assertNull(vm.state.value.diagnostics)
+        assertTrue(vm.state.value.manualSearch)
+    }
+
+    @Test
+    fun choosing_a_candidate_is_recorded_in_the_scan_record() = runTest {
+        val card = card("c1", "Furret", "136", 110)
+        val vm = ScanViewModel(FakeCardRepository(listOf(card)))
+        vm.onTextRecognized(listOf(OcrLine("Furret", 0f, 40f), OcrLine("136/189", 100f, 40f)))
+
+        vm.recordChosenCard(card)
+
+        assertEquals("c1", vm.state.value.diagnostics?.chosenCardId)
+    }
+
+    @Test
     fun quick_add_card_adds_to_collection_and_increments_batch_count() = runTest {
         val card = card("c1", "Meowth ex", "062", 120)
         val collection = FakeCollectionRepository()

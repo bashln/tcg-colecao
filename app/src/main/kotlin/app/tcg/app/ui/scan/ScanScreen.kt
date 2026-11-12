@@ -184,6 +184,7 @@ fun ScanScreen(
         },
         onCardSelected = { card ->
             capturedBitmap = null
+            viewModel.recordChosenCard(card)
             viewModel.resetForNextScan()
             onCardSelected(card)
         },
@@ -488,6 +489,16 @@ fun ScanContent(
                     }
                     items(state.candidates, key = { it.value.id }) { scored ->
                         CandidateCard(card = scored.value, onClick = { onCardSelected(scored.value) })
+                    }
+                    if (onShareDiagnostics != null && state.diagnostics != null) {
+                        item(key = "scan-diagnostics") {
+                            TextButton(
+                                onClick = onShareDiagnostics,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            ) {
+                                Text(stringResource(R.string.scan_share_diagnostics))
+                            }
+                        }
                     }
                 }
             }

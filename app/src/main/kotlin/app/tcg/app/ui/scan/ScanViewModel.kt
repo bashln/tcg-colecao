@@ -52,6 +52,9 @@ class ScanViewModel(
     val state: StateFlow<ScanUiState> = _state.asStateFlow()
     private var searchGeneration = 0L
 
+    /** Kept so a manual retry still reports what the camera read, not just the typed query. */
+    private var lastOcrLines: List<OcrLine> = emptyList()
+
     fun toggleBatchMode() {
         _state.update { it.copy(isBatchMode = !it.isBatchMode) }
     }
@@ -73,6 +76,7 @@ class ScanViewModel(
     }
 
     suspend fun onTextRecognized(lines: List<OcrLine>) {
+        lastOcrLines = lines
         search(OcrParser.parse(lines), lines)
     }
 
@@ -110,6 +114,7 @@ class ScanViewModel(
                     loading = false,
                     error = "Não foi possível buscar as cartas do bloco. Verifique sua conexão.",
                     manualSearch = true,
+                    diagnostics = null,
                 )
             }
             return
@@ -128,11 +133,15 @@ class ScanViewModel(
 
     suspend fun onManualSearch(name: String) {
         _state.update { it.copy(candidates = emptyList(), multiCardResults = emptyList()) }
-        search(ParsedCardText(name = name, collectorNumber = null, promoCode = null, hp = null, rawText = name))
+        search(
+            parsed = ParsedCardText(name = name, collectorNumber = null, promoCode = null, hp = null, rawText = name),
+            lines = lastOcrLines,
+        )
     }
 
     fun prepareForCapture() {
         searchGeneration++
+        lastOcrLines = emptyList()
         _state.update {
             ScanUiState(
                 isBatchMode = it.isBatchMode,
@@ -141,6 +150,10 @@ class ScanViewModel(
                 lastAddedCard = it.lastAddedCard,
             )
         }
+    }
+
+    fun recordChosenCard(card: Card) {
+        _state.update { it.copy(diagnostics = it.diagnostics?.copy(chosenCardId = card.id)) }
     }
 
     fun resetForNextScan() {
@@ -158,7 +171,7 @@ class ScanViewModel(
 
     fun onCaptureError(message: String) {
         searchGeneration++
-        _state.update { it.copy(loading = false, error = message, manualSearch = true) }
+        _state.update { it.copy(loading = false, error = message, manualSearch = true, diagnostics = null) }
     }
 
     suspend fun quickAddCard(
@@ -234,6 +247,7 @@ class ScanViewModel(
                     loading = false,
                     error = "Não foi possível buscar agora. Verifique sua conexão e tente de novo.",
                     manualSearch = true,
+                    diagnostics = null,
                 )
             }
             return
