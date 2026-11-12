@@ -67,6 +67,16 @@ class ScanCorpusTest {
         assertEquals(128, parsed.setTotal)
     }
 
+    @Test fun merged_basico_label_does_not_stick_to_the_name() {
+        val photo = listOf(
+            line("BÁSICO Pikachu", 175f, 220f, 54f),
+            line("PS 80", 180f, 900f, 40f),
+            line("027/128", 1270f, 380f),
+        )
+
+        assertEquals("Pikachu", OcrParser.parse(photo).name)
+    }
+
     @Test fun pikachu_048_ignores_its_stamp() {
         val parsed = OcrParser.parse(pika048Split)
 
