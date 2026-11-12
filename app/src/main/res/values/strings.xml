@@ -180,6 +180,8 @@
         <item quantity="one">%1$d selecionada</item>
         <item quantity="other">%1$d selecionadas</item>
     </plurals>
+    <string name="collection_selection_added">Cartas adicionadas às listas.</string>
+    <string name="collection_selection_already">Essas cartas já estavam nas listas.</string>
     <string name="collection_selection_cancel">Cancelar seleção</string>
     <string name="cd_collection_select">Selecionar carta</string>
 

@@ -282,15 +282,19 @@ private fun OwnedCardsCollection(
     val selecting = state.selection != CollectionSelection.None
     val snackbarHostState = remember { SnackbarHostState() }
     var showAddToList by remember { mutableStateOf(false) }
-    var addedCount by remember { mutableStateOf(0) }
-    val addedText = pluralStringResource(R.plurals.lists_added_count, addedCount, addedCount)
     val failureText = stringResource(R.string.lists_error_generic)
+    val addedText = stringResource(R.string.collection_selection_added)
+    val alreadyListedText = stringResource(R.string.collection_selection_already)
+    val messageText = when (state.message) {
+        CollectionMessage.CardsAdded -> addedText
+        CollectionMessage.NothingAdded -> alreadyListedText
+        CollectionMessage.AddFailed -> failureText
+        null -> null
+    }
 
     LaunchedEffect(state.message) {
-        val message = state.message ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(
-            if (message == CollectionMessage.CARDS_ADDED) addedText else failureText,
-        )
+        val text = messageText ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(text)
         onDismissMessage()
     }
 
@@ -390,7 +394,6 @@ private fun OwnedCardsCollection(
             onDismiss = { showAddToList = false },
             onConfirm = { listIds ->
                 showAddToList = false
-                addedCount = selectedIds.size
                 onAddToList(listIds)
             },
         )

@@ -67,7 +67,15 @@ sealed interface CollectionSelection {
     data class Active(val itemIds: Set<String>) : CollectionSelection
 }
 
-enum class CollectionMessage { CARDS_ADDED, ADD_FAILED }
+/**
+ * [addedMemberships] counts card-to-list rows, not cards, so it cannot be shown as a card count.
+ * The message only distinguishes a write that stored something from one that stored nothing.
+ */
+sealed interface CollectionMessage {
+    data object CardsAdded : CollectionMessage
+    data object NothingAdded : CollectionMessage
+    data object AddFailed : CollectionMessage
+}
 
 data class CollectionUiState(
     val entries: List<CollectionEntry> = emptyList(),
@@ -195,8 +203,12 @@ class CollectionViewModel(
         filters.update { it.copy(variant = null, condition = null) }
     }
 
+    /** A long press while already selecting adds to the set instead of dropping the earlier picks. */
     fun startSelection(itemId: String? = null) {
-        selection.value = CollectionSelection.Active(listOfNotNull(itemId).toSet())
+        selection.update { current ->
+            val ids = (current as? CollectionSelection.Active)?.itemIds.orEmpty()
+            CollectionSelection.Active(if (itemId == null) ids else ids + itemId)
+        }
     }
 
     fun toggleSelection(itemId: String) {
@@ -220,15 +232,15 @@ class CollectionViewModel(
         addState.value = AddState(busy = true)
         viewModelScope.launch {
             val message = try {
-                listRepository.addCards(cards, listIds)
-                CollectionMessage.CARDS_ADDED
+                val addition = listRepository.addCards(cards, listIds)
+                if (addition.addedMemberships > 0) CollectionMessage.CardsAdded else CollectionMessage.NothingAdded
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Exception) {
-                CollectionMessage.ADD_FAILED
+                CollectionMessage.AddFailed
             }
             addState.value = AddState(message = message)
-            if (message == CollectionMessage.CARDS_ADDED) clearSelection()
+            if (message != CollectionMessage.AddFailed) clearSelection()
         }
     }
 
