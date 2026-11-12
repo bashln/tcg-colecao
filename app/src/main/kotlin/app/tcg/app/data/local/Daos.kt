@@ -37,8 +37,8 @@ abstract class CardDao {
     @Query("SELECT * FROM card_prices WHERE cardId = :cardId")
     abstract suspend fun pricesFor(cardId: String): List<CardPriceEntity>
 
-    @Query("DELETE FROM card_prices WHERE cardId = :cardId")
-    abstract suspend fun deletePricesFor(cardId: String)
+    @Query("DELETE FROM card_prices WHERE cardId = :cardId AND source IN (:sources)")
+    abstract suspend fun deletePricesForSources(cardId: String, sources: List<PriceSource>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun upsertPrices(prices: List<CardPriceEntity>)
@@ -91,10 +91,17 @@ abstract class CardDao {
 
     private suspend fun persistCard(card: Card, observations: List<CardPriceObservationEntity>) {
         upsert(card.toEntity())
-        deletePricesFor(card.id)
+        // A price refresh republishes only the market feeds it fetched. Quotes the user typed
+        // in (LigaPokemon, in BRL) are not part of the feed and must survive the refresh.
+        deletePricesForSources(card.id, MARKET_SOURCES)
         val prices = card.prices.map { it.toEntity(card.id) }
         if (prices.isNotEmpty()) upsertPrices(prices)
         if (observations.isNotEmpty()) upsertPriceObservations(observations)
+    }
+
+    private companion object {
+        /** Sources that a network refresh owns end to end; everything else is user-entered. */
+        val MARKET_SOURCES = listOf(PriceSource.TCGPLAYER, PriceSource.CARDMARKET)
     }
 }
 

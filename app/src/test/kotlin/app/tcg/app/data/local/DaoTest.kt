@@ -113,6 +113,44 @@ class DaoTest {
     }
 
     @Test
+    fun market_refresh_keeps_the_manual_brazilian_price() = runTest {
+        val dao = db.cardDao()
+        val cardId = "mep-081"
+        val firstRun = Instant.parse("2026-11-09T12:00:00Z").toEpochMilli()
+        dao.captureCardPrices(testCard(cardId, prices = listOf(testPrice(0.77))), firstRun)
+        dao.saveSinglePrice(
+            CardPriceEntity(
+                cardId = cardId,
+                source = PriceSource.LIGAPOKEMON,
+                variant = CardVariant.HOLOFOIL,
+                currency = Currency.BRL,
+                market = 4.99,
+                low = null,
+                mid = null,
+                high = null,
+                trend = null,
+                avg1 = null,
+                avg7 = null,
+                avg30 = null,
+                updatedAt = null,
+            ),
+            firstRun,
+        )
+
+        dao.captureCardPrices(
+            testCard(cardId, prices = listOf(testPrice(0.80))),
+            Instant.parse("2026-11-10T12:00:00Z").toEpochMilli(),
+        )
+
+        val prices = dao.pricesFor(cardId).map { it.toPrice() }
+        assertEquals(listOf(testPrice(0.80)), prices.filter { it.source == PriceSource.TCGPLAYER })
+        assertEquals(
+            listOf(testPrice(4.99, source = PriceSource.LIGAPOKEMON, variant = CardVariant.HOLOFOIL, currency = Currency.BRL)),
+            prices.filter { it.source == PriceSource.LIGAPOKEMON },
+        )
+    }
+
+    @Test
     fun migration_2_3_creates_daily_observation_table() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val helper = FrameworkSQLiteOpenHelperFactory().create(
