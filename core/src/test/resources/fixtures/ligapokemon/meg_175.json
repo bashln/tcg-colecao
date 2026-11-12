@@ -1,0 +1,33 @@
+[
+  {
+    "id": 730,
+    "idkey": "730_175",
+    "idcard": 238,
+    "name": "Megaevolu&ccedil;&atilde;o",
+    "code": "MEG",
+    "img": "//repositorio.sbrauble.com/arquivos/in/pokemon_bkp/cd/730/68d6d9dc22ae0-bd08m-lhc8w-bda68739bd4cf82472222621b2fdd599.jpg",
+    "rarid": {
+      "code": 7,
+      "label": "Rara Ultra",
+      "acron": "RU",
+      "symbol": ""
+    },
+    "num": "175",
+    "color": "C",
+    "type": "Trainer – Item",
+    "date": "2025-09-26",
+    "teap": 730,
+    "price": {
+      "2": {
+        "p": "39.00",
+        "m": 66.48,
+        "g": "510.00"
+      },
+      "0": {
+        "p": "45.00",
+        "m": 62.02,
+        "g": "120.00"
+      }
+    }
+  }
+]

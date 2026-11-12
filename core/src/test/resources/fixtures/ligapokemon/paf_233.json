@@ -1,0 +1,34 @@
+[
+  {
+    "id": 505,
+    "idkey": "505_233",
+    "idcard": 1640,
+    "name": "Destinos de Paldea",
+    "code": "PAF",
+    "img": "//repositorio.sbrauble.com/arquivos/in/pokemon_bkp/cd/505/65b2d72e092d0-89t45-25dsj-fbe35c1a97a95bb5a09599d32d08a022.jpg",
+    "rarid": {
+      "code": 18,
+      "label": "Ilustração Rara Especial",
+      "acron": "IS",
+      "symbol": ""
+    },
+    "num": "233",
+    "artist": "Kuroimori",
+    "color": "P",
+    "type": "Pokémon – Stage 2",
+    "date": "2024-01-26 00:00:00",
+    "teap": 505,
+    "price": {
+      "2": {
+        "p": "239.90",
+        "m": "406.78",
+        "g": "950.00"
+      },
+      "0": {
+        "p": "390.00",
+        "m": "580.00",
+        "g": "650.00"
+      }
+    }
+  }
+]

@@ -2,58 +2,67 @@ package app.tcg.core.data.ligapokemon
 
 import app.tcg.core.domain.model.Card
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class LigaPokemonUrlTest {
 
     @Test
-    fun generates_correct_ligapokemon_url_with_set_total() {
-        val card = Card(
-            id = "sv8-062",
+    fun builds_the_printed_name_and_number_without_an_edition_code() {
+        val card = card(
             name = "Meowth ex",
-            setId = "sv8",
-            setName = "Fagulhas Impetuosas",
             collectorNumber = "062",
-            rarity = "Double Rare",
-            hp = 120,
-            types = listOf("Colorless"),
-            attacks = emptyList(),
-            imageUrl = "https://assets.tcgdex.net/pt/sv/sv08/062",
-            variants = emptySet(),
-            prices = emptyList(),
+            rarity = "Rara Dupla",
             setTotal = 88,
         )
 
-        val url = LigaPokemonUrl.buildUrl(card)
-        // URL should contain card name, collector number, set total, and ed=POR
-        assertTrue("URL contains Meowth+ex", url.contains("Meowth+ex"))
-        assertTrue("URL contains collector number 062", url.contains("num=062"))
-        assertTrue("URL contains ed=POR", url.contains("ed=POR"))
-        assertTrue("URL contains set total 088", url.contains("088"))
+        assertEquals(
+            "https://www.ligapokemon.com.br/?view=cards/card&card=Meowth+ex+%28062%2F088%29&num=062",
+            LigaPokemonUrl.buildUrl(card),
+        )
     }
 
     @Test
-    fun generates_correct_ligapokemon_url_without_set_total() {
-        val card = Card(
-            id = "sv8-062",
+    fun promo_printings_are_numbered_against_infinity() {
+        val card = card(
             name = "Pikachu",
-            setId = "sv8",
-            setName = "Fagulhas Impetuosas",
-            collectorNumber = "025",
-            rarity = "Common",
-            hp = 60,
-            types = listOf("Lightning"),
-            attacks = emptyList(),
-            imageUrl = null,
-            variants = emptySet(),
-            prices = emptyList(),
-            setTotal = null,
+            collectorNumber = "027",
+            rarity = "Promo",
+            setTotal = 225,
         )
 
         val url = LigaPokemonUrl.buildUrl(card)
-        assertTrue("URL contains Pikachu", url.contains("Pikachu"))
-        assertTrue("URL contains num=025", url.contains("num=025"))
-        assertTrue("URL contains ed=POR", url.contains("ed=POR"))
+
+        assertEquals(
+            "https://www.ligapokemon.com.br/?view=cards/card&card=Pikachu+%28027%2F%E2%88%9E%29&num=027",
+            url,
+        )
+        assertFalse(url.contains("ed="))
     }
+
+    @Test
+    fun a_card_without_a_set_total_keeps_only_its_number() {
+        val card = card(name = "Pikachu", collectorNumber = "025", rarity = "Comum", setTotal = null)
+
+        assertEquals(
+            "https://www.ligapokemon.com.br/?view=cards/card&card=Pikachu+%28025%29&num=025",
+            LigaPokemonUrl.buildUrl(card),
+        )
+    }
+
+    private fun card(name: String, collectorNumber: String, rarity: String?, setTotal: Int?) = Card(
+        id = "sv8-$collectorNumber",
+        name = name,
+        setId = "sv8",
+        setName = "Fagulhas Impetuosas",
+        collectorNumber = collectorNumber,
+        rarity = rarity,
+        hp = 120,
+        types = listOf("Incolor"),
+        attacks = emptyList(),
+        imageUrl = null,
+        variants = emptySet(),
+        prices = emptyList(),
+        setTotal = setTotal,
+    )
 }
