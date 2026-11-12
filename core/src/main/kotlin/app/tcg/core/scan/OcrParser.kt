@@ -18,9 +18,9 @@ object OcrParser {
         "BÁSICO", "BASICO", "ESTÁGIO 1", "ESTAGIO 1", "ESTÁGIO 2", "ESTAGIO 2",
         "ESTÁGIO1", "ESTAGIO1", "ESTÁGIO2", "ESTAGIO2", "E5TÁGIO1", "STÁGIO", "GASICO", "ASICO", "BASILD",
     )
-    private val STAGE_PREFIX = Regex("""(?i)^([BEG80]?ASIC[OAD0-9]?|E?[5S]T[ÁA]GIO[L12DIO0-9]?|STAGE\s*[12]?)[):.\-_]?\s*""")
+    private val STAGE_PREFIX = Regex("""(?iu)^(B[ÁA]SIC[O0]?|[BEG80]?ASIC[OAD0-9]?|E?[5S]T[ÁA]GIO[L12DIO0-9]?|STAGE\s*[12]?)[):.\-_]?\s*""")
     private val REGULATION_MARK_PREFIX = Regex("""^[A-Z]\s+(?=[A-Za-z]{2})""")
-    private val MERGED_STAGE_LABEL = Regex("""(?i)^(?:CASS|GAS|ASS|AS|[BEG80]?ASIC[OAD0-9]?)(?:\s+|(?=[A-Z][a-z]))""")
+    private val MERGED_STAGE_LABEL = Regex("""(?iu)^(?:CASS|GAS|ASS|AS|B[ÁA]SIC[O0]?|[BEG80]?ASIC[OAD0-9]?)(?:\s+|(?=[A-Z][a-z]))""")
     private val TRAILING_HP = Regex("""\s*\d{2,3}$""")
     private val SUFFIX_SPACE = Regex("""([a-z])(V|ex)\b""")
 
@@ -45,22 +45,32 @@ object OcrParser {
         )
     }
 
+    private data class PrintedNumber(val number: String, val total: Int?)
+
     // The denominator of the printed "NNN/TTT" is the set size as printed, the one signal
     // that separates same-name, same-number cards from different sets.
-    private fun pickSetTotal(lines: List<OcrLine>): Int? {
-        val match = lines.firstNotNullOfOrNull { SLASH_NUMBER.find(it.text) } ?: return null
-        return match.groupValues[2].replace('o', '0', ignoreCase = true).toIntOrNull()
-    }
+    private fun pickSetTotal(lines: List<OcrLine>): Int? = printedNumber(lines)?.total
 
-    private fun pickCollectorNumber(lines: List<OcrLine>): String? {
-        val fromSlash = lines.firstNotNullOfOrNull { line ->
+    /**
+     * Some cards print a second "NN/TT" pair right of the collector number, such as the
+     * anniversary stamp on the 30th set. Both fit [SLASH_NUMBER], so the pair printed furthest
+     * left wins: the collector number always sits in the bottom-left block.
+     */
+    private fun printedNumber(lines: List<OcrLine>): PrintedNumber? =
+        lines.mapNotNull { line ->
             SLASH_NUMBER.find(line.text)?.let { match ->
                 val raw = match.groupValues[1].replace('o', '0', ignoreCase = true)
                 // When "1" fuses with slash (e.g. "o0/196" instead of "001/196"), recover as "001"
                 val numStr = if (raw.all { it == '0' }) "001" else raw
-                normalizeCollectorNumber(numStr)
+                val total = match.groupValues[2].replace('o', '0', ignoreCase = true).toIntOrNull()
+                // A missing OCR box (width 0) carries no position, so it must not win by default.
+                val position = if (line.width > 0f) line.left else Float.MAX_VALUE
+                position to PrintedNumber(normalizeCollectorNumber(numStr), total)
             }
-        }
+        }.minByOrNull { it.first }?.second
+
+    private fun pickCollectorNumber(lines: List<OcrLine>): String? {
+        val fromSlash = printedNumber(lines)?.number
         if (fromSlash != null) return fromSlash
 
         if (lines.any { PROMO.containsMatchIn(it.text) }) return null
