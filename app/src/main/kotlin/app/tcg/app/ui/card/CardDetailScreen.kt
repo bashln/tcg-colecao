@@ -88,6 +88,13 @@ fun CardDetailScreen(
     val saveErrorMessage = stringResource(R.string.detail_save_error)
     val savedLigaPriceMessage = stringResource(R.string.detail_edit_ligapokemon_price_saved)
     val card = state.card
+    var showLigaFetch by remember { mutableStateOf(false) }
+    val saveLigaPrice: (Double) -> Unit = { priceInBrl ->
+        scope.launch {
+            viewModel.updateLigaPokemonPrice(priceInBrl)
+            snackbarHostState.showSnackbar(savedLigaPriceMessage)
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
@@ -121,12 +128,8 @@ fun CardDetailScreen(
                         tcgplayer = state.tcgplayer,
                         cardmarket = state.cardmarket,
                         ligapokemon = state.ligapokemon,
-                        onSaveLigaPrice = { priceInBrl ->
-                            scope.launch {
-                                viewModel.updateLigaPokemonPrice(priceInBrl)
-                                snackbarHostState.showSnackbar(savedLigaPriceMessage)
-                            }
-                        },
+                        onSaveLigaPrice = saveLigaPrice,
+                        onFetchLigaPrice = { showLigaFetch = true },
                     )
                 }
                 item {
@@ -200,6 +203,14 @@ fun CardDetailScreen(
             SnackbarHost(
                 hostState = snackbarHostState,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+            )
+        }
+        if (showLigaFetch) {
+            LigaPriceDialog(
+                card = card,
+                variant = state.variant,
+                onDismiss = { showLigaFetch = false },
+                onApply = saveLigaPrice,
             )
         }
     }
@@ -282,9 +293,8 @@ private fun PriceSection(
     cardmarket: app.tcg.core.domain.model.Money?,
     ligapokemon: app.tcg.core.domain.model.Money? = null,
     onSaveLigaPrice: ((Double) -> Unit)? = null,
+    onFetchLigaPrice: (() -> Unit)? = null,
 ) {
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-    val ligaUrl = remember(card) { app.tcg.core.data.ligapokemon.LigaPokemonUrl.buildUrl(card) }
     var showEditDialog by remember { mutableStateOf(false) }
     var priceInput by remember(ligapokemon) {
         mutableStateOf(ligapokemon?.amount?.let { "%.2f".format(java.util.Locale.US, it) } ?: "")
@@ -354,10 +364,10 @@ private fun PriceSection(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     androidx.compose.material3.OutlinedButton(
-                        onClick = { uriHandler.openUri(ligaUrl) },
+                        onClick = { onFetchLigaPrice?.invoke() },
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("🇧🇷 LigaPokémon")
+                        Text(stringResource(R.string.detail_liga_web_open))
                     }
                     if (onSaveLigaPrice != null) {
                         androidx.compose.material3.OutlinedButton(

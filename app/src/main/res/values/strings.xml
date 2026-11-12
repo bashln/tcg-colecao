@@ -45,7 +45,6 @@
     <string name="scan_next_card">Próxima carta</string>
     <string name="scan_grid_hint">Posicione 4 cartas nos quadrantes da tela</string>
     <string name="common_price_ligapokemon">LigaPokemon</string>
-    <string name="common_open_ligapokemon">Ver na LigaPokemon (Brasil)</string>
     <string name="currency_preference_title">Moeda e Cotação Padrão</string>
     <string name="currency_preference_subtitle">Valores exibidos em toda a coleção e perfil</string>
     <string name="currency_source_ligapokemon">🇧🇷 LigaPokémon (R$)</string>
@@ -55,6 +54,16 @@
     <string name="detail_edit_ligapokemon_price_title">Cotação LigaPokémon (R$)</string>
     <string name="detail_edit_ligapokemon_price_help">Insira o valor atual da carta na LigaPokémon para sua coleção.</string>
     <string name="detail_edit_ligapokemon_price_saved">Valor em R$ salvo com sucesso!</string>
+    <string name="detail_liga_web_open">🇧🇷 Buscar preço</string>
+    <string name="detail_liga_web_title">Preço na LigaPokémon</string>
+    <string name="detail_liga_web_loading">Lendo o preço na LigaPokémon…</string>
+    <string name="detail_liga_web_normal">Normal: R$ %1$s</string>
+    <string name="detail_liga_web_foil">Foil: R$ %1$s</string>
+    <string name="detail_liga_web_apply">Usar R$ %1$s</string>
+    <string name="detail_liga_web_manual">Ajustar manualmente</string>
+    <string name="detail_liga_web_browser">Abrir no navegador</string>
+    <string name="detail_liga_web_failed">Não foi possível ler o preço na LigaPokémon. O site pode ter pedido uma verificação.</string>
+    <string name="detail_liga_web_close">Fechar</string>
 
     <string name="detail_attacks">Ataques</string>
     <string name="detail_prices">Preços</string>
