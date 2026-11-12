@@ -102,6 +102,27 @@ fun CardDetailScreen(
             snackbarHostState.showSnackbar(savedLigaPriceMessage)
         }
     }
+    val saveCard: () -> Unit = {
+        if (!saving) {
+            scope.launch {
+                saving = true
+                try {
+                    viewModel.save(state.variant, state.condition, state.quantity)
+                    snackbarHostState.showSnackbar(
+                        if (viewModel.state.value.purchaseAmountNotApplied) keptPurchaseAmountMessage else savedMessage,
+                    )
+                    delay(600)
+                    onSaved()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    snackbarHostState.showSnackbar(saveErrorMessage)
+                } finally {
+                    saving = false
+                }
+            }
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
@@ -167,46 +188,6 @@ fun CardDetailScreen(
                     )
                 }
                 item {
-                    Button(
-                        onClick = {
-                            if (saving) return@Button
-                            scope.launch {
-                                saving = true
-                                try {
-                                    viewModel.save(state.variant, state.condition, state.quantity)
-                                    snackbarHostState.showSnackbar(
-                                        if (viewModel.state.value.purchaseAmountNotApplied) keptPurchaseAmountMessage else savedMessage,
-                                    )
-                                    delay(600)
-                                    onSaved()
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (_: Exception) {
-                                    snackbarHostState.showSnackbar(saveErrorMessage)
-                                } finally {
-                                    saving = false
-                                }
-                            }
-                        },
-                        enabled = !saving && state.pricePaid.isValid,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                    ) {
-                        if (saving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary,
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.detail_saving))
-                        } else {
-                            Icon(Icons.Outlined.BookmarkAdd, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.detail_save))
-                        }
-                    }
-                }
-                item {
                     OutlinedButton(
                         onClick = { showAddToList = true },
                         modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -222,6 +203,11 @@ fun CardDetailScreen(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
             )
         }
+        SaveToCollectionBar(
+            saving = saving,
+            enabled = !saving && state.pricePaid.isValid,
+            onSave = saveCard,
+        )
         if (showAddToList) {
             AddToListDialog(
                 lists = lists,
@@ -242,6 +228,37 @@ fun CardDetailScreen(
                 onDismiss = { showLigaFetch = false },
                 onApply = saveLigaPrice,
             )
+        }
+    }
+}
+
+@Composable
+private fun SaveToCollectionBar(
+    saving: Boolean,
+    enabled: Boolean,
+    onSave: () -> Unit,
+) {
+    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp) {
+        Box(Modifier.fillMaxWidth().padding(16.dp)) {
+            Button(
+                onClick = onSave,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) {
+                if (saving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.detail_saving))
+                } else {
+                    Icon(Icons.Outlined.BookmarkAdd, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.detail_save))
+                }
+            }
         }
     }
 }
