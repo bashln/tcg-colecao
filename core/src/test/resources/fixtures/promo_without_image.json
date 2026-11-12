@@ -1,0 +1,36 @@
+{
+  "id": "mep-081",
+  "localId": "081",
+  "name": "Mega Greninja ex",
+  "rarity": "Promo",
+  "set": {
+    "id": "mep",
+    "name": "MEP Black Star Promos",
+    "cardCount": { "official": 0, "total": 80 }
+  },
+  "variants_detailed": [
+    {
+      "type": "Holo",
+      "pricing": {
+        "cardmarket": {
+          "updated": "2026-11-11T23:49:36.432Z",
+          "unit": "EUR",
+          "avg": 1.06,
+          "low": 0.3,
+          "trend": 1.08
+        },
+        "tcgplayer": {
+          "unit": "USD",
+          "updated": "2026-11-11T23:49:51.401Z",
+          "holofoil": {
+            "productId": 704879,
+            "lowPrice": 0.5,
+            "midPrice": 0.96,
+            "highPrice": 15,
+            "marketPrice": 0.77
+          }
+        }
+      }
+    }
+  ]
+}

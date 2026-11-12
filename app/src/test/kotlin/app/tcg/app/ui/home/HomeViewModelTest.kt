@@ -75,7 +75,7 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun price_source_switches_the_history_without_changing_the_home_total() = runTest {
+    fun history_source_switches_the_chart_without_changing_the_home_total() = runTest {
         val repository = FakeCollectionRepository(
             listOf(
                 testEntry(
@@ -93,7 +93,7 @@ class HomeViewModelTest {
         )
         val viewModel = HomeViewModel(repository, clock)
         advanceUntilIdle()
-        assertEquals(PriceSource.LIGAPOKEMON, viewModel.priceSource.value)
+        assertEquals(PriceSource.LIGAPOKEMON, viewModel.historySource.value)
         assertEquals(Money(4.0, Currency.BRL), viewModel.state.value.stats.totalValue)
 
         viewModel.selectPriceSource(PriceSource.CARDMARKET)
@@ -101,7 +101,8 @@ class HomeViewModelTest {
 
         val history = (viewModel.priceHistory.value as PriceHistoryUiState.Ready).history
         assertEquals(PriceSource.CARDMARKET, history.source)
-        assertEquals(Money(4.0, Currency.EUR), viewModel.state.value.stats.totalValue)
+        assertEquals(PriceSource.LIGAPOKEMON, viewModel.collectionSource.value)
+        assertEquals(Money(4.0, Currency.BRL), viewModel.state.value.stats.totalValue)
     }
 
     @Test

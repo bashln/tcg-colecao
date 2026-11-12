@@ -37,12 +37,20 @@ class HomeViewModel(
     private val preferences: AppPreferences? = null,
 ) : ViewModel() {
 
-    private val selectedSource = MutableStateFlow(preferences?.priceSource?.value ?: PriceSource.LIGAPOKEMON)
+    /** Currency of the collection figures; owned by Settings so Home does not overwrite it. */
+    val collectionSource: StateFlow<PriceSource> =
+        preferences?.priceSource ?: MutableStateFlow(PriceSource.LIGAPOKEMON)
+
+    /** Set only when the user picks a chip on the chart; until then the chart follows Settings. */
+    private val historyChoice = MutableStateFlow<PriceSource?>(null)
     private val retryVersion = MutableStateFlow(0)
 
-    val priceSource: StateFlow<PriceSource> = selectedSource
+    /** Currency of the history chart. Chosen on the chart card and never written to Settings. */
+    val historySource: StateFlow<PriceSource> =
+        combine(collectionSource, historyChoice) { configured, chosen -> chosen ?: configured }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, collectionSource.value)
 
-    val priceHistory: StateFlow<PriceHistoryUiState> = combine(selectedSource, retryVersion) { source, _ -> source }
+    val priceHistory: StateFlow<PriceHistoryUiState> = combine(historySource, retryVersion) { source, _ -> source }
         .flatMapLatest { source ->
             repository.observeCurrentHoldingsHistory(source, LocalDate.now(clock))
                 .map<CurrentHoldingsHistory, PriceHistoryUiState>(PriceHistoryUiState::Ready)
@@ -52,15 +60,14 @@ class HomeViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, PriceHistoryUiState.Loading)
 
     fun selectPriceSource(source: PriceSource) {
-        selectedSource.value = source
-        preferences?.setPriceSource(source)
+        historyChoice.value = source
     }
 
     fun retryPriceHistory() {
         retryVersion.value += 1
     }
 
-    val state: StateFlow<HomeUiState> = combine(repository.observe(), selectedSource) { entries, source ->
+    val state: StateFlow<HomeUiState> = combine(repository.observe(), collectionSource) { entries, source ->
         HomeUiState(stats = CollectionStats.compute(entries, source), loading = false)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
 }

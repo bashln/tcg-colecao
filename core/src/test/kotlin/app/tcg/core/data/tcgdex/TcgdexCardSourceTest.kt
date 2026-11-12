@@ -127,6 +127,24 @@ class TcgdexCardSourceTest {
     }
 
     @Test
+    fun card_without_tcgdex_image_falls_back_to_the_tcgplayer_product_image() = runTest {
+        val card = source("promo_without_image.json").getCard("mep-081")!!
+
+        assertEquals(
+            "https://tcgplayer-cdn.tcgplayer.com/product/704879_400w.jpg",
+            card.imageUrl,
+        )
+    }
+
+    @Test
+    fun card_with_tcgdex_image_keeps_the_tcgdex_url() = runTest {
+        val card = source("furret.json").getCard("swsh3-136")!!
+
+        assertTrue(card.imageUrl!!.startsWith("https://assets.tcgdex.net/"), card.imageUrl)
+        assertTrue(card.imageUrl!!.endsWith("/high.webp"), card.imageUrl)
+    }
+
+    @Test
     fun maps_printed_set_total_from_official_count() = runTest {
         val card = source("furret.json").getCard("swsh3-136")!!
         assertEquals(189, card.setTotal)
