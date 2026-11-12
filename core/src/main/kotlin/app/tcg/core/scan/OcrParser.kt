@@ -45,22 +45,30 @@ object OcrParser {
         )
     }
 
+    private data class PrintedNumber(val number: String, val total: Int?)
+
     // The denominator of the printed "NNN/TTT" is the set size as printed, the one signal
     // that separates same-name, same-number cards from different sets.
-    private fun pickSetTotal(lines: List<OcrLine>): Int? {
-        val match = lines.firstNotNullOfOrNull { SLASH_NUMBER.find(it.text) } ?: return null
-        return match.groupValues[2].replace('o', '0', ignoreCase = true).toIntOrNull()
-    }
+    private fun pickSetTotal(lines: List<OcrLine>): Int? = printedNumber(lines)?.total
 
-    private fun pickCollectorNumber(lines: List<OcrLine>): String? {
-        val fromSlash = lines.firstNotNullOfOrNull { line ->
+    /**
+     * Some cards print a second "NN/TT" pair right of the collector number, such as the
+     * anniversary stamp on the 30th set. Both fit [SLASH_NUMBER], so the pair printed furthest
+     * left wins: the collector number always sits in the bottom-left block.
+     */
+    private fun printedNumber(lines: List<OcrLine>): PrintedNumber? =
+        lines.mapNotNull { line ->
             SLASH_NUMBER.find(line.text)?.let { match ->
                 val raw = match.groupValues[1].replace('o', '0', ignoreCase = true)
                 // When "1" fuses with slash (e.g. "o0/196" instead of "001/196"), recover as "001"
                 val numStr = if (raw.all { it == '0' }) "001" else raw
-                normalizeCollectorNumber(numStr)
+                val total = match.groupValues[2].replace('o', '0', ignoreCase = true).toIntOrNull()
+                line.left to PrintedNumber(normalizeCollectorNumber(numStr), total)
             }
-        }
+        }.minByOrNull { it.first }?.second
+
+    private fun pickCollectorNumber(lines: List<OcrLine>): String? {
+        val fromSlash = printedNumber(lines)?.number
         if (fromSlash != null) return fromSlash
 
         if (lines.any { PROMO.containsMatchIn(it.text) }) return null
