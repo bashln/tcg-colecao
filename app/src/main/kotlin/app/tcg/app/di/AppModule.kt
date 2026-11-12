@@ -22,9 +22,11 @@ import app.tcg.app.data.backup.RecoveryStore
 import app.tcg.app.data.backup.RoomCollectionBackup
 import app.tcg.app.data.backup.SafBackupDocumentStore
 import app.tcg.app.data.local.CardDao
+import app.tcg.app.data.local.CardListDao
 import app.tcg.app.data.local.CollectionDao
 import app.tcg.app.data.local.TcgDatabase
 import app.tcg.app.data.prices.PriceRefresher
+import app.tcg.app.data.repository.RoomCardListRepository
 import app.tcg.app.data.repository.RoomCardRepository
 import app.tcg.app.data.repository.RoomCollectionRepository
 import app.tcg.app.data.sync.CollectionSyncCoordinator
@@ -42,6 +44,7 @@ import app.tcg.app.update.InstalledAppInfo
 import app.tcg.app.update.OtaPlatform
 import app.tcg.app.update.UpdateCoordinator
 import app.tcg.app.update.UpdateInstaller
+import app.tcg.core.data.repository.CardListRepository
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.data.tcgdex.KtorTcgdexCardSource
@@ -86,7 +89,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TcgDatabase =
         Room.databaseBuilder(context, TcgDatabase::class.java, "tcg.db")
-            .addMigrations(TcgDatabase.MIGRATION_1_2, TcgDatabase.MIGRATION_2_3, TcgDatabase.MIGRATION_3_4, TcgDatabase.MIGRATION_4_5, TcgDatabase.MIGRATION_5_6, TcgDatabase.MIGRATION_6_7, TcgDatabase.MIGRATION_7_8, TcgDatabase.MIGRATION_8_9)
+            .addMigrations(TcgDatabase.MIGRATION_1_2, TcgDatabase.MIGRATION_2_3, TcgDatabase.MIGRATION_3_4, TcgDatabase.MIGRATION_4_5, TcgDatabase.MIGRATION_5_6, TcgDatabase.MIGRATION_6_7, TcgDatabase.MIGRATION_7_8, TcgDatabase.MIGRATION_8_9, TcgDatabase.MIGRATION_9_10)
             .addCallback(TcgDatabase.BACKUP_TRIGGERS)
             .build()
 
@@ -95,6 +98,9 @@ object AppModule {
 
     @Provides
     fun provideCollectionDao(database: TcgDatabase): CollectionDao = database.collectionDao()
+
+    @Provides
+    fun provideCardListDao(database: TcgDatabase): CardListDao = database.cardListDao()
 
     @Provides
     @Singleton
@@ -112,6 +118,14 @@ object AppModule {
     ): CollectionRepository = RoomCollectionRepository(collectionDao, cardDao) {
         CollectionBackupWorker.enqueue(context)
     }
+
+    @Provides
+    @Singleton
+    fun provideCardListRepository(
+        database: TcgDatabase,
+        cardListDao: CardListDao,
+        cardDao: CardDao,
+    ): CardListRepository = RoomCardListRepository(database, cardListDao, cardDao)
 
     @Provides
     @Singleton

@@ -15,6 +15,8 @@ import kotlinx.serialization.json.JsonObject
 interface TcgdexCardSource {
     suspend fun searchByName(name: String, language: String = "pt"): List<Card>
     suspend fun searchByNumber(setId: String?, collectorNumber: String, language: String = "pt"): List<Card>
+    suspend fun searchByNumbers(collectorNumbers: Set<String>, language: String = "pt"): List<Card> =
+        collectorNumbers.flatMap { searchByNumber(null, it, language) }.distinctBy(Card::id)
     suspend fun getCard(id: String, language: String = "pt"): Card?
     suspend fun getSetCatalog(setId: String, language: String = "pt"): SetCatalog
 }
@@ -38,6 +40,18 @@ class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSourc
         }
         return emptyList()
     }
+
+    override suspend fun searchByNumbers(collectorNumbers: Set<String>, language: String): List<Card> {
+        val localIds = batchLocalIdCandidates(collectorNumbers)
+        if (localIds.isEmpty()) return emptyList()
+        return search(language, "cards") {
+            parameter("localId", localIds.joinToString(","))
+        }
+    }
+
+    /** One request carries every spelling of every number, so a mixed batch costs one round trip. */
+    private fun batchLocalIdCandidates(collectorNumbers: Set<String>): List<String> =
+        collectorNumbers.flatMap { localIdCandidates(it) }.distinct()
 
     private fun localIdCandidates(collectorNumber: String): List<String> {
         val stripped = collectorNumber.trimStart('0').ifEmpty { "0" }

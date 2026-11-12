@@ -291,4 +291,57 @@ class DaoTest {
             helper.close()
         }
     }
+
+    @Test
+    fun migration_9_10_creates_card_lists_that_cascade_on_delete() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(null)
+                .callback(
+                    object : SupportSQLiteOpenHelper.Callback(9) {
+                        override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) = Unit
+
+                        override fun onUpgrade(
+                            db: androidx.sqlite.db.SupportSQLiteDatabase,
+                            oldVersion: Int,
+                            newVersion: Int,
+                        ) = Unit
+                    },
+                )
+                .build(),
+        )
+
+        try {
+            val database = helper.writableDatabase
+            TcgDatabase.MIGRATION_9_10.migrate(database)
+            // Room turns foreign keys on for its own connections, so the cascade is part of the schema contract.
+            database.execSQL("PRAGMA foreign_keys=ON")
+
+            database.query("PRAGMA table_info(`card_list_members`)").use { cursor ->
+                val nameColumn = cursor.getColumnIndexOrThrow("name")
+                val primaryKeyColumn = cursor.getColumnIndexOrThrow("pk")
+                val primaryKeyColumns = buildList {
+                    while (cursor.moveToNext()) {
+                        if (cursor.getInt(primaryKeyColumn) > 0) {
+                            add(cursor.getInt(primaryKeyColumn) to cursor.getString(nameColumn))
+                        }
+                    }
+                }.sortedBy { it.first }.map { it.second }
+
+                assertEquals(listOf("listId", "cardId"), primaryKeyColumns)
+            }
+
+            database.execSQL("INSERT INTO card_lists (id, name, kind, createdAt) VALUES ('l1', 'Quero', 'WANTED', 1)")
+            database.execSQL("INSERT INTO card_list_members (listId, cardId, addedAt) VALUES ('l1', 'swsh3-136', 2)")
+            database.execSQL("DELETE FROM card_lists WHERE id = 'l1'")
+
+            database.query("SELECT COUNT(*) FROM card_list_members").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0, cursor.getInt(0))
+            }
+        } finally {
+            helper.close()
+        }
+    }
 }
