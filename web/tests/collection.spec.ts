@@ -53,6 +53,7 @@ test('a saved card survives reload and an exact edit, then removal returns to th
   await expect(page.getByRole('heading', { name: 'Editar posse' })).toBeVisible()
   await page.getByRole('button', { name: 'Aumentar quantidade' }).click()
   await page.getByRole('button', { name: 'Salvar alterações' }).click()
+  await expect(page.getByRole('heading', { name: 'Editar posse' })).not.toBeVisible()
   await page.reload()
   await expect(page.getByText('3', { exact: true }).first()).toBeVisible()
   await page.getByRole('button', { name: 'Editar carta' }).click()

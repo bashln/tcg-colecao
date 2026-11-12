@@ -51,16 +51,19 @@ class ProfileViewModel(
     private val importPasswordRequired = MutableStateFlow(false)
     private var pendingImportBytes: ByteArray? = null
 
+    private val statsFlow = combine(repository.observe(), selectedPriceSource) { entries, source ->
+        Pair(CollectionStats.compute(entries, source), source)
+    }
+
     private val coreState = combine(
-        repository.observe(),
+        statsFlow,
         backup?.status ?: MutableStateFlow(BackupStatus.Unset),
         activePreview,
         previewError,
         importMessage,
-        selectedPriceSource,
-    ) { entries, backupStatus, preview, error, message, source ->
+    ) { (stats, source), backupStatus, preview, error, message ->
         ProfileUiState(
-            stats = CollectionStats.compute(entries, source),
+            stats = stats,
             loading = false,
             backupStatus = backupStatus,
             activePreview = preview,

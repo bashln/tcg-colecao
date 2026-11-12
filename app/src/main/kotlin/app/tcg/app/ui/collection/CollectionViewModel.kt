@@ -115,10 +115,20 @@ class CollectionViewModel(
         }
     }
 
+    private data class CollectionFiltersState(
+        val filters: CollectionCardFilters,
+        val section: CollectionSection,
+        val selectedSet: SelectedSetState,
+        val ownershipFilter: OwnershipFilter,
+    )
+
+    private val filterState = combine(filters, section, selectedSet, ownershipFilter) { f, s, set, o ->
+        CollectionFiltersState(f, s, set, o)
+    }
+
     val state: StateFlow<CollectionUiState> =
-        combine(entries, filters, section, selectedSet, ownershipFilter, currentPriceSource) {
-                currentEntries, cardFilters, currentSection, currentSet, filter, source ->
-            stateFor(currentEntries, cardFilters, currentSection, currentSet, filter, source)
+        combine(entries, filterState, currentPriceSource) { currentEntries, fs, source ->
+            stateFor(currentEntries, fs.filters, fs.section, fs.selectedSet, fs.ownershipFilter, source)
         }.combine(cardsLens) { current, lens -> current.copy(cardsLens = lens) }
             .combine(globalMissing) { current, missing -> current.copy(globalMissing = missing) }
             .combine(hasCollectionSnapshot) { current, loaded -> current.copy(loading = !loaded) }
