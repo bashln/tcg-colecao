@@ -2,13 +2,10 @@ package app.tcg.app.ui.card
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.tcg.app.ui.theme.TcgTheme
 import app.tcg.core.data.repository.CollectionRepository
@@ -45,19 +42,13 @@ class CardDetailScreenTest {
         }
     }
 
-    private fun scrollToSave() {
-        rule.onNodeWithTag(CardDetailTags.LIST)
-            .performScrollToNode(hasText("Salvar na coleção"))
-    }
-
     @Test
-    fun shows_both_price_labels_and_save_button() {
+    fun shows_both_price_labels_and_keeps_the_save_action_visible_without_scrolling() {
         showDetail()
 
         rule.onNodeWithText("TCGplayer").assertIsDisplayed()
         rule.onNodeWithText("Cardmarket").assertIsDisplayed()
 
-        scrollToSave()
         rule.onNodeWithText("Salvar na coleção").assertIsDisplayed()
     }
 
@@ -65,7 +56,6 @@ class CardDetailScreenTest {
     fun saving_shows_confirmation_snackbar() {
         showDetail()
 
-        scrollToSave()
         rule.onNodeWithText("Salvar na coleção").performClick()
 
         rule.waitUntil(timeoutMillis = 5_000) {

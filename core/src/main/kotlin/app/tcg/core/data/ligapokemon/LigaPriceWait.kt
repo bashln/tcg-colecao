@@ -34,7 +34,7 @@ suspend fun <T : Any> awaitLigaPrice(
     while (true) {
         read()?.let { return it }
         if (waited >= timeoutMs) {
-            if (phase != LigaPricePhase.TIMED_OUT) onPhase(LigaPricePhase.TIMED_OUT)
+            onPhase(LigaPricePhase.TIMED_OUT)
             return null
         }
         delay(retryDelayMs)

@@ -101,8 +101,7 @@ fun LigaPriceDialog(
     }
 
     // The Cloudflare challenge page finishes loading too, so each document gets its own wait
-    // window; the reload after the challenge is what puts cards_editions on the page. A deadline
-    // replaces the old attempt count because the challenge outlasted it on a real device.
+    // window; the reload after the challenge is what puts cards_editions on the page.
     LaunchedEffect(pageLoads) {
         if (pageLoads == 0 || state is LigaState.Ready) return@LaunchedEffect
         state = LigaState.Loading
@@ -130,20 +129,19 @@ fun LigaPriceDialog(
                         Text(stringResource(R.string.detail_liga_web_close))
                     }
                 }
-                if (state is LigaState.Loading || state is LigaState.Verifying) {
+                val progressText = when (state) {
+                    LigaState.Verifying -> R.string.detail_liga_web_verifying
+                    LigaState.Loading -> R.string.detail_liga_web_loading
+                    else -> null
+                }
+                if (progressText != null) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         Text(
-                            text = stringResource(
-                                if (state is LigaState.Verifying) {
-                                    R.string.detail_liga_web_verifying
-                                } else {
-                                    R.string.detail_liga_web_loading
-                                },
-                            ),
+                            text = stringResource(progressText),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
