@@ -60,6 +60,7 @@ class ScanViewModel(
     }
 
     fun setGridMode(mode: ScanGridMode) {
+        lastOcrLines = emptyList()
         _state.update {
             it.copy(
                 gridMode = mode,
@@ -152,12 +153,9 @@ class ScanViewModel(
         }
     }
 
-    fun recordChosenCard(card: Card) {
-        _state.update { it.copy(diagnostics = it.diagnostics?.copy(chosenCardId = card.id)) }
-    }
-
     fun resetForNextScan() {
         searchGeneration++
+        lastOcrLines = emptyList()
         _state.update {
             it.copy(
                 candidates = emptyList(),
@@ -193,7 +191,6 @@ class ScanViewModel(
             it.copy(
                 batchCount = it.batchCount + quantity,
                 lastAddedCard = card,
-                diagnostics = it.diagnostics?.copy(chosenCardId = card.id),
                 candidates = emptyList(),
                 loading = false,
                 error = null,

@@ -20,7 +20,7 @@ class ScanDiagnosticsTest {
             Scored(card("sv03.5-006", "Charizard ex", "006", 165, 330), 0),
         )
 
-        val diagnostics = ScanDiagnostics.from(parsed, lines, ranked, chosenCardId = "30th-027")
+        val diagnostics = ScanDiagnostics.from(parsed, lines, ranked)
         val json = diagnostics.toJson()
 
         assertTrue(json.contains("\"parsedName\": \"Pikachu\""), json)
@@ -28,7 +28,6 @@ class ScanDiagnosticsTest {
         assertTrue(json.contains("\"setTotal\": 128"), json)
         assertTrue(json.contains("\"ocrLines\""), json)
         assertTrue(json.contains("\"score\": 15"), json)
-        assertTrue(json.contains("\"chosenCardId\": \"30th-027\""), json)
     }
 
     @Test fun round_trips_through_json() {
@@ -44,6 +43,5 @@ class ScanDiagnosticsTest {
         )
 
         assertEquals(diagnostics, decoded)
-        assertEquals(null, decoded.chosenCardId)
     }
 }

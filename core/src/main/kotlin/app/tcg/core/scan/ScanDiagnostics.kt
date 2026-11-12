@@ -20,7 +20,6 @@ data class ScanDiagnostics(
     val promoCode: String?,
     val ocrLines: List<String>,
     val candidates: List<ScannedCandidate>,
-    val chosenCardId: String? = null,
 ) {
     fun toJson(): String = json.encodeToString(serializer(), this)
 
@@ -29,7 +28,6 @@ data class ScanDiagnostics(
             parsed: ParsedCardText,
             lines: List<OcrLine>,
             ranked: List<Scored<Card>>,
-            chosenCardId: String? = null,
         ) = ScanDiagnostics(
             parsedName = parsed.name,
             collectorNumber = parsed.collectorNumber,
@@ -38,7 +36,6 @@ data class ScanDiagnostics(
             promoCode = parsed.promoCode,
             ocrLines = lines.map { it.text },
             candidates = ranked.map { it.toSnapshot() },
-            chosenCardId = chosenCardId,
         )
     }
 }

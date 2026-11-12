@@ -184,7 +184,6 @@ fun ScanScreen(
         },
         onCardSelected = { card ->
             capturedBitmap = null
-            viewModel.recordChosenCard(card)
             viewModel.resetForNextScan()
             onCardSelected(card)
         },
