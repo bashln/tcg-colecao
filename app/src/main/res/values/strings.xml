@@ -28,6 +28,7 @@
     <string name="scan_candidates_title">Candidatos</string>
     <string name="scan_feedback_title">Não encontramos a carta</string>
     <string name="scan_feedback_body">Digite o nome da carta abaixo para tentar de novo.</string>
+    <string name="scan_share_diagnostics">Compartilhar diagnóstico do scan</string>
     <string name="scan_searching">Procurando a carta…</string>
     <string name="scan_compare_title">Compare sua carta</string>
     <string name="scan_captured_label">Sua captura</string>
