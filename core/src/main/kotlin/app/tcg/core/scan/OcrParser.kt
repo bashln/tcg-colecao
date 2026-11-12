@@ -2,6 +2,7 @@ package app.tcg.core.scan
 
 import app.tcg.core.domain.model.OcrLine
 import app.tcg.core.domain.model.ParsedCardText
+import java.text.Normalizer
 
 object OcrParser {
     private val SLASH_NUMBER = Regex("""(?i)(?:^|[^\d/])([0-9oO]{1,3})\s*[/|]\s*([0-9oO]{1,4})""")
@@ -19,6 +20,7 @@ object OcrParser {
         "ESTÁGIO1", "ESTAGIO1", "ESTÁGIO2", "ESTAGIO2", "E5TÁGIO1", "STÁGIO", "GASICO", "ASICO", "BASILD",
     )
     private val STAGE_PREFIX = Regex("""(?iu)^(B[ÁA]SIC[O0]?|[BEG80]?ASIC[OAD0-9]?|E?[5S]T[ÁA]GIO[L12DIO0-9]?|STAGE\s*[12]?)[):.\-_]?\s*""")
+    private val STAGE_LABEL_KEYS = STAGE_WORDS.map { labelKey(it) }.toSet()
     private val REGULATION_MARK_PREFIX = Regex("""^[A-Z]\s+(?=[A-Za-z]{2})""")
     private val MERGED_STAGE_LABEL = Regex("""(?iu)^(?:CASS|GAS|ASS|AS|B[ÁA]SIC[O0]?|[BEG80]?ASIC[OAD0-9]?)(?:\s+|(?=[A-Z][a-z]))""")
     private val TRAILING_HP = Regex("""\s*\d{2,3}$""")
@@ -137,11 +139,36 @@ object OcrParser {
         return normalizeCardName(best, lines)
     }
 
-    // Stage/type labels (BASICO, ESTAGIO, TREINADOR, ENERGIA and their OCR variants) are short
-    // all-caps tokens printed above the name and must not be mistaken for it.
+    // Stage/type labels (BASICO, ESTAGIO, TRAINER, ENERGY and their OCR variants) are short
+    // tokens printed above the name and must not be mistaken for it. OCR returns them in any
+    // case and loses accents and digits, so the label vocabulary is compared as bare uppercase
+    // letters.
     private fun isLabel(text: String): Boolean {
         val letters = text.filter { it.isLetter() }
-        return letters.length in 2..14 && letters.none { it.isLowerCase() }
+        if (letters.length !in 2..14) return false
+        val key = labelKey(text)
+        return key in STAGE_LABEL_KEYS ||
+            STAGE_PREFIX.matches(key) ||
+            STAGE_LABEL_KEYS.any { oneEditApart(key, it) }
+    }
+
+    private fun labelKey(text: String): String =
+        Normalizer.normalize(text, Normalizer.Form.NFD)
+            .uppercase()
+            .filter { it in 'A'..'Z' }
+
+    // OCR swaps a single letter on these short labels ("nASICo" for "BÁSICO"), so a key one
+    // edit away still reads as a label. Real names sit further than that from every label.
+    private fun oneEditApart(a: String, b: String): Boolean {
+        if (a.length > b.length) return oneEditApart(b, a)
+        if (b.length - a.length > 1) return false
+        var i = 0
+        while (i < a.length && a[i] == b[i]) i++
+        return if (a.length == b.length) {
+            a.regionMatches(i + 1, b, i + 1, a.length - i - 1)
+        } else {
+            a.regionMatches(i, b, i + 1, a.length - i)
+        }
     }
 
     private fun cleanNameCandidate(text: String): String {
