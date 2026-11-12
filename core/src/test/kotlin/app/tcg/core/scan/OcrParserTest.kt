@@ -44,6 +44,76 @@ class OcrParserTest {
         assertEquals(128, parsed.setTotal)
     }
 
+    // Straight from the device: a PT-BR Finizen (me05-021) whose "BÁSICO" stage label came
+    // back as "nASICo". The label sat above the name and inside the size band, so it won the
+    // name slot, the TCGdex name query returned nothing, and ten unrelated "42" cards were
+    // offered instead.
+    @Test fun mixed_case_stage_label_does_not_beat_the_card_name() {
+        val photo = listOf(
+            line("nASICo", 150f, 200f, 34f),
+            line("Finizen", 186f, 260f, 52f),
+            line("Barbatana Drenante", 520f, 210f, 34f),
+            line("Cure 20 pontos de dano deste Pokémon", 600f, 210f, 28f),
+            line("raquea 42", 1210f, 320f, 26f),
+            line("20", 170f, 900f, 40f),
+        )
+
+        assertEquals("Finizen", OcrParser.parse(photo).name)
+    }
+
+    @Test fun letter_swapped_stage_label_does_not_beat_the_card_name() {
+        val photo = listOf(
+            line("nASICo", 150f, 200f, 34f),
+            line("Finizen", 186f, 260f, 52f),
+        )
+
+        assertEquals("Finizen", OcrParser.parse(photo).name)
+    }
+
+    @Test fun uppercase_stage_label_does_not_beat_the_card_name() {
+        val photo = listOf(
+            line("BASICO", 150f, 200f, 34f),
+            line("Finizen", 186f, 260f, 52f),
+        )
+
+        assertEquals("Finizen", OcrParser.parse(photo).name)
+    }
+
+    @Test fun title_case_stage_label_does_not_beat_the_card_name() {
+        val photo = listOf(
+            line("Básico", 150f, 200f, 34f),
+            line("Finizen", 186f, 260f, 52f),
+        )
+
+        assertEquals("Finizen", OcrParser.parse(photo).name)
+    }
+
+    @Test fun digit_swapped_stage_label_does_not_beat_the_card_name() {
+        val photo = listOf(
+            line("B4SICO", 150f, 200f, 34f),
+            line("Finizen", 186f, 260f, 52f),
+        )
+
+        assertEquals("Finizen", OcrParser.parse(photo).name)
+    }
+
+    @Test fun digit_swapped_stage_two_label_does_not_beat_the_card_name() {
+        val photo = listOf(
+            line("E5TAGIO1", 150f, 200f, 34f),
+            line("Finizen", 186f, 260f, 52f),
+        )
+
+        assertEquals("Finizen", OcrParser.parse(photo).name)
+    }
+
+    // The label check tolerates one edit from a short label, so real names must stay outside
+    // that radius or they would be dropped as labels instead of read as the name.
+    @Test fun real_card_names_are_not_stage_labels() {
+        listOf("Finizen", "Pikachu", "Furret", "Charizard", "Bulbasaur").forEach { name ->
+            assertEquals(name, OcrParser.parse(lines(name, "136/189")).name, "'$name' is a card name")
+        }
+    }
+
     @Test fun extracts_collector_number_with_slash() {
         val r = OcrParser.parse(lines("Furret", "HP 110", "136/189"))
         assertEquals("136", r.collectorNumber)

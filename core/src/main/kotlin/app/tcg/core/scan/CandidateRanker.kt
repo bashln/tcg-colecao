@@ -8,6 +8,9 @@ object CandidateRanker {
     fun rank(parsed: ParsedCardText, candidates: List<Card>): List<Scored<Card>> =
         candidates.map { Scored(it, score(parsed, it)) }.sortedByDescending { it.score }
 
+    // Signal strength, strongest first: exact name (+7), printed set total (+6), collector
+    // number (+4), HP (+2), partial name (+1). An exact name has to outrank a matched number and
+    // HP together, because a printed number is the most error-prone read on the card.
     private fun score(parsed: ParsedCardText, card: Card): Int {
         var score = 0
         if (parsed.collectorNumber != null && sameCollectorNumber(parsed.collectorNumber, card.collectorNumber)) {
@@ -23,7 +26,7 @@ object CandidateRanker {
         }
         val name = parsed.name ?: return score
         if (name.equals(card.name, ignoreCase = true)) {
-            score += 3
+            score += 7
         } else if (nameMatches(name, card.name)) {
             score += 1
         }
