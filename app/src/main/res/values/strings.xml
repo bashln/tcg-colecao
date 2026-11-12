@@ -4,6 +4,7 @@
 
     <string name="nav_scan">Escanear</string>
     <string name="nav_collection">Coleção</string>
+    <string name="nav_lists">Listas</string>
     <string name="nav_home">Início</string>
     <string name="nav_profile">Perfil</string>
 
@@ -373,4 +374,57 @@
     <string name="profile_import_cancel">Cancelar</string>
     <string name="profile_import_success">Cópia aplicada: %1$d adicionadas, %2$d combinadas.</string>
     <string name="profile_import_error">Falha na importação: %1$s</string>
+
+    <string name="lists_title">Listas</string>
+    <string name="lists_create">Criar lista</string>
+    <string name="lists_create_title">Nova lista</string>
+    <string name="lists_name_label">Nome da lista</string>
+    <string name="lists_kind_wanted">Quero</string>
+    <string name="lists_kind_missing">Faltantes</string>
+    <string name="lists_empty_title">Nenhuma lista ainda</string>
+    <string name="lists_empty_body">Crie uma lista para guardar as cartas que você quer e as que faltam no seu álbum.</string>
+    <string name="lists_loading">Carregando suas listas…</string>
+    <string name="lists_rename">Renomear</string>
+    <string name="lists_delete">Excluir</string>
+    <string name="lists_delete_title">Excluir lista?</string>
+    <string name="lists_delete_body">As cartas continuam no seu acervo. Apenas a lista é apagada.</string>
+    <string name="lists_save">Salvar</string>
+    <string name="lists_cancel">Cancelar</string>
+    <string name="lists_error_empty_name">Dê um nome para a lista.</string>
+    <string name="lists_error_long_name">Use no máximo 60 caracteres.</string>
+    <string name="lists_error_generic">Não foi possível salvar. Tente de novo.</string>
+    <plurals name="lists_card_count">
+        <item quantity="one">%d carta</item>
+        <item quantity="other">%d cartas</item>
+    </plurals>
+
+    <string name="lists_detail_not_found_title">Lista não encontrada</string>
+    <string name="lists_detail_not_found">Esta lista não existe mais.</string>
+    <string name="lists_detail_empty_title">Lista vazia</string>
+    <string name="lists_detail_empty_body">Adicione cartas por número impresso, por exemplo 021/084.</string>
+    <string name="lists_add_by_number">Adicionar por número</string>
+    <string name="lists_add_by_number_hint">Um por linha ou separados por vírgula</string>
+    <string name="lists_search">Buscar</string>
+    <string name="lists_searching">Buscando…</string>
+    <string name="lists_batch_invalid">Confira o formato. Use número/total, como 021/084.</string>
+    <string name="lists_batch_offline">Sem conexão para buscar agora.</string>
+    <string name="lists_batch_none">Nenhuma carta encontrada para esses números.</string>
+    <string name="lists_batch_matched">%1$d cartas encontradas.</string>
+    <string name="lists_batch_unmatched">Não encontrados: %1$s</string>
+    <string name="lists_batch_add">Adicionar %1$d cartas</string>
+    <string name="lists_already_in_list">Essas cartas já estavam na lista.</string>
+    <plurals name="lists_added_count">
+        <item quantity="one">%1$d carta adicionada.</item>
+        <item quantity="other">%1$d cartas adicionadas.</item>
+    </plurals>
+    <string name="lists_removed">Carta removida da lista.</string>
+    <string name="lists_remove_card">Remover da lista</string>
+    <string name="lists_add_to_list">Adicionar à lista</string>
+    <string name="lists_add_to_list_title">Adicionar a uma lista</string>
+    <string name="lists_add_to_list_empty">Você ainda não tem listas. Crie uma na aba Listas.</string>
+    <string name="lists_added_to_list">Carta adicionada à lista.</string>
+
+    <string name="cd_lists_create">Criar lista</string>
+    <string name="cd_lists_more">Mais opções da lista</string>
+    <string name="cd_lists_add">Adicionar cartas à lista</string>
 </resources>

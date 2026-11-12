@@ -14,6 +14,7 @@ import app.tcg.app.data.sync.SyncTriggerBinder
 import app.tcg.app.data.sync.SyncLinkRepository
 import app.tcg.app.update.UpdateCoordinator
 import app.tcg.app.update.UpdateInstaller
+import app.tcg.core.data.repository.CardListRepository
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.app.data.backup.CollectionBackup
@@ -29,6 +30,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var collectionRepository: CollectionRepository
+
+    @Inject
+    lateinit var cardListRepository: CardListRepository
 
     @Inject
     lateinit var collectionBackup: CollectionBackup
@@ -65,6 +69,7 @@ class MainActivity : ComponentActivity() {
                 AppNav(
                     cardRepository = cardRepository,
                     collectionRepository = collectionRepository,
+                    cardListRepository = cardListRepository,
                     collectionBackup = collectionBackup,
                     authController = authController,
                     syncLinkRepository = syncLinkRepository,

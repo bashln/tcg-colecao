@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Bookmarks
 import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
@@ -59,6 +60,10 @@ import app.tcg.app.ui.components.EmptyState
 import app.tcg.app.ui.components.LoadingState
 import app.tcg.app.ui.home.HomeScreen
 import app.tcg.app.ui.home.HomeViewModel
+import app.tcg.app.ui.lists.ListDetailScreen
+import app.tcg.app.ui.lists.ListDetailViewModel
+import app.tcg.app.ui.lists.ListsScreen
+import app.tcg.app.ui.lists.ListsViewModel
 import app.tcg.app.ui.profile.ProfileScreen
 import app.tcg.app.ui.profile.ProfileViewModel
 import app.tcg.app.data.backup.CollectionBackup
@@ -68,6 +73,7 @@ import app.tcg.app.ui.update.UpdateScreen
 import app.tcg.app.ui.update.UpdateViewModel
 import app.tcg.app.update.UpdateCoordinator
 import app.tcg.app.update.UpdateInstaller
+import app.tcg.core.data.repository.CardListRepository
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.domain.model.Card
@@ -77,6 +83,7 @@ private object Routes {
     const val HOME = "home"
     const val SCAN = "scan"
     const val COLLECTION = "collection"
+    const val LISTS = "lists"
     const val PROFILE = "profile"
     const val ACCOUNT = "account"
     const val UPDATE = "update"
@@ -84,17 +91,21 @@ private object Routes {
     const val CARD_DETAIL = "card/{$CARD_ID}"
     const val COLLECTION_ITEM_ID = "itemId"
     const val COLLECTION_ITEM_EDIT = "collection-item/{$COLLECTION_ITEM_ID}"
+    const val LIST_ID = "listId"
+    const val LIST_DETAIL = "lists/{$LIST_ID}"
 
-    val topLevel = setOf(HOME, SCAN, COLLECTION, PROFILE)
+    val topLevel = setOf(HOME, SCAN, COLLECTION, LISTS, PROFILE)
 
     fun cardDetail(cardId: String) = "card/${Uri.encode(cardId)}"
     fun collectionItemEdit(itemId: String) = "collection-item/${Uri.encode(itemId)}"
+    fun listDetail(listId: String) = "lists/${Uri.encode(listId)}"
 }
 
 @Composable
 fun AppNav(
     cardRepository: CardRepository,
     collectionRepository: CollectionRepository,
+    cardListRepository: CardListRepository,
     collectionBackup: CollectionBackup? = null,
     authController: AuthController,
     syncLinkRepository: SyncLinkRepository,
@@ -163,6 +174,19 @@ fun AppNav(
                         ),
                     )
                     NavigationBarItem(
+                        selected = currentRoute == Routes.LISTS,
+                        onClick = { navController.navigateToTopLevel(Routes.LISTS) },
+                        icon = { Icon(Icons.Outlined.Bookmarks, contentDescription = null) },
+                        label = { Text(stringResource(R.string.nav_lists)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        ),
+                    )
+                    NavigationBarItem(
                         selected = currentRoute == Routes.PROFILE,
                         onClick = { navController.navigateToTopLevel(Routes.PROFILE) },
                         icon = { Icon(Icons.Outlined.Person, contentDescription = null) },
@@ -213,6 +237,15 @@ fun AppNav(
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
                     onCardSelected = { cardId -> navController.navigate(Routes.cardDetail(cardId)) },
                     onCollectionItemSelected = { itemId -> navController.navigate(Routes.collectionItemEdit(itemId)) },
+                )
+            }
+            composable(Routes.LISTS) {
+                val viewModel: ListsViewModel = viewModel(
+                    factory = viewModelFactory { initializer { ListsViewModel(cardListRepository) } },
+                )
+                ListsScreen(
+                    viewModel = viewModel,
+                    onListSelected = { listId -> navController.navigate(Routes.listDetail(listId)) },
                 )
             }
             composable(Routes.PROFILE) {
@@ -295,7 +328,24 @@ fun AppNav(
                     cardId = entry.arguments?.getString(Routes.CARD_ID).orEmpty(),
                     cardRepository = cardRepository,
                     collectionRepository = collectionRepository,
+                    cardListRepository = cardListRepository,
                     onSaved = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = Routes.LIST_DETAIL,
+                arguments = listOf(navArgument(Routes.LIST_ID) { type = NavType.StringType }),
+            ) { entry ->
+                val listId = entry.arguments?.getString(Routes.LIST_ID).orEmpty()
+                val viewModel: ListDetailViewModel = viewModel(
+                    key = "list-detail-$listId",
+                    factory = viewModelFactory {
+                        initializer { ListDetailViewModel(listId, cardListRepository, cardRepository) }
+                    },
+                )
+                ListDetailScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(
@@ -325,6 +375,7 @@ private fun CardDetailRoute(
     cardId: String,
     cardRepository: CardRepository,
     collectionRepository: CollectionRepository,
+    cardListRepository: CardListRepository,
     onSaved: () -> Unit,
 ) {
     var card by remember(cardId) { mutableStateOf<Card?>(null) }
@@ -345,7 +396,7 @@ private fun CardDetailRoute(
             val viewModel: CardDetailViewModel = viewModel(
                 key = "card-detail-$cardId",
                 factory = viewModelFactory {
-                    initializer { CardDetailViewModel(resolved, collectionRepository, cardRepository) }
+                    initializer { CardDetailViewModel(resolved, collectionRepository, cardRepository, cardListRepository) }
                 },
             )
             CardDetailScreen(viewModel = viewModel, onBack = onSaved, onSaved = onSaved)
