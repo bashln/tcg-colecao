@@ -54,6 +54,20 @@ class TcgdexCardSourceTest {
     }
 
     @Test
+    fun batch_search_sends_all_normalized_local_ids_in_one_request() = runTest {
+        val requested = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            requested += request.url.parameters["localId"].orEmpty()
+            respond("[]", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val source = KtorTcgdexCardSource(HttpClient(engine))
+
+        source.searchByNumbers(setOf("021", "9"))
+
+        assertEquals(listOf("021,21,9,009"), requested)
+    }
+
+    @Test
     fun set_catalog_filters_prefix_collisions_and_duplicate_cards() = runTest {
         val body = """[
             {"id":"swsh3-136","localId":"136","name":"Furret","set":{"id":"swsh3"}},

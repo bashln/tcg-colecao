@@ -8,14 +8,15 @@ import androidx.room.RoomDatabase.Callback
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class, SyncConflictEntity::class, BackupStateEntity::class, BackupGenerationEntity::class, BackupImportMarkerEntity::class],
-    version = 9,
+    entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class, SyncConflictEntity::class, BackupStateEntity::class, BackupGenerationEntity::class, BackupImportMarkerEntity::class, CardListEntity::class, CardListMemberEntity::class],
+    version = 10,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
 abstract class TcgDatabase : RoomDatabase() {
     abstract fun cardDao(): CardDao
     abstract fun collectionDao(): CollectionDao
+    abstract fun cardListDao(): CardListDao
 
     companion object {
         val BACKUP_TRIGGERS = object : Callback() {
@@ -210,6 +211,18 @@ abstract class TcgDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE `sync_conflict_records`")
                 db.execSQL("ALTER TABLE `sync_conflict_records_new` RENAME TO `sync_conflict_records`")
                 db.execSQL("CREATE INDEX `index_sync_conflict_records_identity` ON `sync_conflict_records` (`identity`)")
+            }
+        }
+
+        /** Card lists were built on version 8 in an unmerged branch; main reached 9 without them. */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `card_lists` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `kind` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `card_list_members` (
+                    `listId` TEXT NOT NULL, `cardId` TEXT NOT NULL, `addedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`listId`, `cardId`),
+                    FOREIGN KEY(`listId`) REFERENCES `card_lists`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_card_list_members_cardId` ON `card_list_members` (`cardId`)")
             }
         }
     }
