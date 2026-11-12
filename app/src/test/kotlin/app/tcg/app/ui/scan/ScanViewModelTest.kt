@@ -296,6 +296,25 @@ class ScanViewModelTest {
     }
 
     @Test
+    fun a_scan_keeps_what_it_read_and_offered_for_diagnosis() = runTest {
+        val card = card("c1", "Pikachu", "027", 80)
+        val vm = ScanViewModel(FakeCardRepository(listOf(card)))
+
+        vm.onTextRecognized(
+            listOf(
+                OcrLine("Pikachu", 0f, 54f, 330f),
+                OcrLine("027/128", 100f, 22f, 380f),
+            ),
+        )
+
+        val diagnostics = requireNotNull(vm.state.value.diagnostics)
+        assertEquals("Pikachu", diagnostics.parsedName)
+        assertEquals("027", diagnostics.collectorNumber)
+        assertEquals(listOf("Pikachu", "027/128"), diagnostics.ocrLines)
+        assertEquals(listOf("c1"), diagnostics.candidates.map { it.id })
+    }
+
+    @Test
     fun quick_add_card_adds_to_collection_and_increments_batch_count() = runTest {
         val card = card("c1", "Meowth ex", "062", 120)
         val collection = FakeCollectionRepository()

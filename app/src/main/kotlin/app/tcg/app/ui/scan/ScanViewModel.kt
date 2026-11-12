@@ -11,6 +11,7 @@ import app.tcg.core.domain.model.ParsedCardText
 import app.tcg.core.domain.model.Scored
 import app.tcg.core.scan.CandidateRanker
 import app.tcg.core.scan.OcrParser
+import app.tcg.core.scan.ScanDiagnostics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +40,7 @@ data class ScanUiState(
     val batchCount: Int = 0,
     val lastAddedCard: Card? = null,
     val multiCardResults: List<MultiCardResult> = emptyList(),
+    val diagnostics: ScanDiagnostics? = null,
 )
 
 class ScanViewModel(
@@ -71,7 +73,7 @@ class ScanViewModel(
     }
 
     suspend fun onTextRecognized(lines: List<OcrLine>) {
-        search(OcrParser.parse(lines))
+        search(OcrParser.parse(lines), lines)
     }
 
     suspend fun onMultiCardTextRecognized(quadrants: Map<Int, List<OcrLine>>) {
@@ -178,6 +180,7 @@ class ScanViewModel(
             it.copy(
                 batchCount = it.batchCount + quantity,
                 lastAddedCard = card,
+                diagnostics = it.diagnostics?.copy(chosenCardId = card.id),
                 candidates = emptyList(),
                 loading = false,
                 error = null,
@@ -213,7 +216,7 @@ class ScanViewModel(
         }
     }
 
-    private suspend fun search(parsed: ParsedCardText) {
+    private suspend fun search(parsed: ParsedCardText, lines: List<OcrLine> = emptyList()) {
         val requestGeneration = ++searchGeneration
         _state.update { it.copy(loading = true, error = null) }
         val collectorNumber = parsed.collectorNumber
@@ -242,6 +245,7 @@ class ScanViewModel(
                 loading = false,
                 error = null,
                 manualSearch = ranked.isEmpty(),
+                diagnostics = ScanDiagnostics.from(parsed, lines, ranked),
             )
         }
     }

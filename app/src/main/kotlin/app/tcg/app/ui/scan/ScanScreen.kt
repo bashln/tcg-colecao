@@ -1,6 +1,7 @@
 package app.tcg.app.ui.scan
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -50,6 +51,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -170,6 +172,16 @@ fun ScanScreen(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
             )
         },
+        onShareDiagnostics = state.diagnostics?.let { diagnostics ->
+            {
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_SUBJECT, "Diagnóstico de scan")
+                    putExtra(Intent.EXTRA_TEXT, diagnostics.toJson())
+                }
+                context.startActivity(Intent.createChooser(intent, null))
+            }
+        },
         onCardSelected = { card ->
             capturedBitmap = null
             viewModel.resetForNextScan()
@@ -255,6 +267,7 @@ fun ScanContent(
     onQuickAddCard: (Card) -> Unit = {},
     onQuickAddAllMultiCards: () -> Unit = {},
     onResetForNext: () -> Unit = {},
+    onShareDiagnostics: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     cameraPreview: @Composable () -> Unit = {},
 ) {
@@ -485,6 +498,7 @@ fun ScanContent(
                 onSearch = onManualSearch,
                 notFound = state.manualSearch,
                 onDismiss = dismiss,
+                onShareDiagnostics = onShareDiagnostics,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
             else -> Unit
@@ -763,6 +777,7 @@ private fun ManualSearchPanel(
     onSearch: () -> Unit,
     notFound: Boolean,
     onDismiss: (() -> Unit)?,
+    onShareDiagnostics: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val container = if (notFound) {
@@ -834,6 +849,11 @@ private fun ManualSearchPanel(
                 )
                 Button(onClick = onSearch, enabled = query.isNotBlank()) {
                     Text(stringResource(R.string.scan_search_action))
+                }
+            }
+            if (notFound && onShareDiagnostics != null) {
+                TextButton(onClick = onShareDiagnostics) {
+                    Text(stringResource(R.string.scan_share_diagnostics))
                 }
             }
         }
