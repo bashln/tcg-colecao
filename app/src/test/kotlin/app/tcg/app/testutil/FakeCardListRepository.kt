@@ -46,21 +46,30 @@ class FakeCardListRepository(initial: List<CardListSummary> = emptyList()) : Car
     override suspend fun addCards(cards: List<Card>, listIds: Set<String>): ListAddition {
         failIfConfigured()
         added += cards to listIds
+        val incoming = cards.distinctBy(Card::id)
+        var newMemberships = 0
+        val updated = details.value.mapValues { (id, detail) ->
+            if (id !in listIds) {
+                detail
+            } else {
+                val existing = detail.cards.map(Card::id).toSet()
+                val fresh = incoming.filterNot { it.id in existing }
+                newMemberships += fresh.size
+                detail.copy(cards = detail.cards + fresh)
+            }
+        }
+        details.value = updated
         lists.update { summaries ->
             summaries.map { summary ->
                 if (summary.list.id in listIds) {
-                    summary.copy(cardCount = summary.cardCount + cards.size)
+                    val detail = updated[summary.list.id]
+                    summary.copy(cardCount = detail?.cards?.size ?: summary.cardCount)
                 } else {
                     summary
                 }
             }
         }
-        details.update { current ->
-            current.mapValues { (id, detail) ->
-                if (id in listIds) detail.copy(cards = (detail.cards + cards).distinctBy(Card::id)) else detail
-            }
-        }
-        return ListAddition(cards.size * listIds.size, 0)
+        return ListAddition(newMemberships, incoming.size * listIds.size - newMemberships)
     }
 
     override suspend fun removeCard(listId: String, cardId: String) {

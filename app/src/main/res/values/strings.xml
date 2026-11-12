@@ -412,7 +412,11 @@
     <string name="lists_batch_matched">%1$d cartas encontradas.</string>
     <string name="lists_batch_unmatched">Não encontrados: %1$s</string>
     <string name="lists_batch_add">Adicionar %1$d cartas</string>
-    <string name="lists_added">%1$d cartas adicionadas.</string>
+    <string name="lists_already_in_list">Essas cartas já estavam na lista.</string>
+    <plural name="lists_added_count">
+        <item quantity="one">%1$d carta adicionada.</item>
+        <item quantity="other">%1$d cartas adicionadas.</item>
+    </plural>
     <string name="lists_removed">Carta removida da lista.</string>
     <string name="lists_remove_card">Remover da lista</string>
     <string name="lists_add_to_list">Adicionar à lista</string>

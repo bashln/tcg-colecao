@@ -67,6 +67,32 @@ class ListDetailViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(listOf(card) to setOf("list-1")), repository.added)
+        assertEquals(
+            ListDetailMessage.CardsAdded(1),
+            (viewModel.state.value as ListDetailUiState.Ready).message,
+        )
+    }
+
+    @Test
+    fun adding_the_same_cards_twice_reports_zero_new_memberships() = runTest {
+        val card = printedCard(id = "swsh3-21", number = "21", setTotal = 84)
+        val repository = listRepository()
+        val viewModel = detailViewModel(SearchCardRepository(listOf(card)), repository)
+        advanceUntilIdle()
+        viewModel.updateBatchInput("021/084")
+        viewModel.runBatchSearch()
+        advanceUntilIdle()
+        viewModel.addBatchMatches()
+        advanceUntilIdle()
+        viewModel.dismissMessage()
+
+        viewModel.addBatchMatches()
+        advanceUntilIdle()
+
+        assertEquals(
+            ListDetailMessage.CardsAdded(0),
+            (viewModel.state.value as ListDetailUiState.Ready).message,
+        )
     }
 
     @Test

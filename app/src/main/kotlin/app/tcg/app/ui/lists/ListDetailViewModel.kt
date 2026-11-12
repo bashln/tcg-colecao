@@ -27,7 +27,12 @@ sealed interface BatchState {
     data class Failed(val reason: BatchError) : BatchState
 }
 
-enum class ListDetailMessage { CARDS_ADDED, CARD_REMOVED, ADD_FAILED }
+/** Carries the number the repository actually stored, so a re-add does not claim new cards. */
+sealed interface ListDetailMessage {
+    data class CardsAdded(val added: Int) : ListDetailMessage
+    data object CardRemoved : ListDetailMessage
+    data object Failed : ListDetailMessage
+}
 
 sealed interface ListDetailUiState {
     data object Loading : ListDetailUiState
@@ -111,8 +116,8 @@ class ListDetailViewModel(
         val matched = (current.batch as? BatchState.Ready)?.matched.orEmpty()
         if (current.busy || matched.isEmpty()) return
         submit {
-            lists.addCards(matched, setOf(listId))
-            ListDetailMessage.CARDS_ADDED
+            val addition = lists.addCards(matched, setOf(listId))
+            ListDetailMessage.CardsAdded(addition.addedMemberships)
         }
     }
 
@@ -120,7 +125,7 @@ class ListDetailViewModel(
         if (draft.value.busy) return
         submit {
             lists.removeCard(listId, cardId)
-            ListDetailMessage.CARD_REMOVED
+            ListDetailMessage.CardRemoved
         }
     }
 
@@ -134,7 +139,7 @@ class ListDetailViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                ListDetailMessage.ADD_FAILED
+                ListDetailMessage.Failed
             }
             draft.update { it.copy(busy = false, message = outcome) }
         }

@@ -93,6 +93,7 @@ fun CardDetailScreen(
     val saveErrorMessage = stringResource(R.string.detail_save_error)
     val savedLigaPriceMessage = stringResource(R.string.detail_edit_ligapokemon_price_saved)
     val addedToListMessage = stringResource(R.string.lists_added_to_list)
+    val listErrorMessage = stringResource(R.string.lists_error_generic)
     val card = state.card
     var showLigaFetch by remember { mutableStateOf(false) }
     val saveLigaPrice: (Double) -> Unit = { priceInBrl ->
@@ -228,8 +229,8 @@ fun CardDetailScreen(
                 onConfirm = { listIds ->
                     showAddToList = false
                     scope.launch {
-                        viewModel.addToLists(listIds)
-                        snackbarHostState.showSnackbar(addedToListMessage)
+                        val added = viewModel.addToLists(listIds)
+                        snackbarHostState.showSnackbar(if (added) addedToListMessage else listErrorMessage)
                     }
                 },
             )

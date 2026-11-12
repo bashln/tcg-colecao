@@ -50,15 +50,20 @@ class CardDetailViewModel(
         ?.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList<CardListSummary>())
         ?: MutableStateFlow<List<CardListSummary>>(emptyList()).asStateFlow()
 
-    suspend fun addToLists(listIds: Set<String>) {
-        val repository = cardListRepository ?: return
-        if (listIds.isEmpty()) return
-        try {
+    /**
+     * Returns false when the membership could not be written, so the caller does not claim success.
+     * The card itself is unaffected: lists are an add-on to the collection.
+     */
+    suspend fun addToLists(listIds: Set<String>): Boolean {
+        val repository = cardListRepository ?: return false
+        if (listIds.isEmpty()) return false
+        return try {
             repository.addCards(listOf(_state.value.card), listIds)
+            true
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            // Best effort: the card is already in the collection, so a list failure only loses this membership.
+            false
         }
     }
 

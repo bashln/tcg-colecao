@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -69,17 +70,20 @@ fun ListDetailScreen(
     var addingByNumber by remember { mutableStateOf(false) }
     val ready = state as? ListDetailUiState.Ready
     val message = ready?.message
-    val addedCount = ((ready?.batch as? BatchState.Ready)?.matched).orEmpty().size
     val messageText = when (message) {
-        ListDetailMessage.CARDS_ADDED -> stringResource(R.string.lists_added, addedCount)
-        ListDetailMessage.CARD_REMOVED -> stringResource(R.string.lists_removed)
-        ListDetailMessage.ADD_FAILED -> stringResource(R.string.lists_error_generic)
+        is ListDetailMessage.CardsAdded -> if (message.added == 0) {
+            stringResource(R.string.lists_already_in_list)
+        } else {
+            pluralStringResource(R.plurals.lists_added_count, message.added, message.added)
+        }
+        ListDetailMessage.CardRemoved -> stringResource(R.string.lists_removed)
+        ListDetailMessage.Failed -> stringResource(R.string.lists_error_generic)
         null -> null
     }
 
     LaunchedEffect(message) {
         if (message == null || messageText == null) return@LaunchedEffect
-        if (message == ListDetailMessage.CARDS_ADDED) {
+        if (message is ListDetailMessage.CardsAdded) {
             addingByNumber = false
             viewModel.updateBatchInput("")
         }
