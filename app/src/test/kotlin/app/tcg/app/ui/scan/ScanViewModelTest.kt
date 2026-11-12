@@ -296,6 +296,70 @@ class ScanViewModelTest {
     }
 
     @Test
+    fun a_scan_keeps_what_it_read_and_offered_for_diagnosis() = runTest {
+        val card = card("c1", "Pikachu", "027", 80)
+        val vm = ScanViewModel(FakeCardRepository(listOf(card)))
+
+        vm.onTextRecognized(
+            listOf(
+                OcrLine("Pikachu", 0f, 54f, 330f),
+                OcrLine("027/128", 100f, 22f, 380f),
+            ),
+        )
+
+        val diagnostics = requireNotNull(vm.state.value.diagnostics)
+        assertEquals("Pikachu", diagnostics.parsedName)
+        assertEquals("027", diagnostics.collectorNumber)
+        assertEquals(listOf("Pikachu", "027/128"), diagnostics.ocrLines)
+        assertEquals(listOf("c1"), diagnostics.candidates.map { it.id })
+    }
+
+    @Test
+    fun manual_retry_keeps_the_lines_the_camera_read() = runTest {
+        val vm = ScanViewModel(FakeCardRepository(emptyList()))
+        vm.onTextRecognized(listOf(OcrLine("Charizard", 0f, 54f, 330f), OcrLine("004/102", 100f, 22f, 380f)))
+
+        vm.onManualSearch("Charizard")
+
+        val diagnostics = requireNotNull(vm.state.value.diagnostics)
+        assertEquals(listOf("Charizard", "004/102"), diagnostics.ocrLines)
+    }
+
+    @Test
+    fun a_new_scan_does_not_reuse_the_previous_cards_lines() = runTest {
+        val vm = ScanViewModel(FakeCardRepository(emptyList()))
+        vm.onTextRecognized(listOf(OcrLine("Charizard", 0f, 54f, 330f)))
+
+        vm.resetForNextScan()
+        vm.onManualSearch("Pikachu")
+
+        assertEquals(emptyList<String>(), vm.state.value.diagnostics?.ocrLines)
+    }
+
+    @Test
+    fun switching_grid_mode_drops_the_previous_cards_lines() = runTest {
+        val vm = ScanViewModel(FakeCardRepository(emptyList()))
+        vm.onTextRecognized(listOf(OcrLine("Charizard", 0f, 54f, 330f)))
+
+        vm.setGridMode(ScanGridMode.GRID_2X2)
+        vm.onManualSearch("Pikachu")
+
+        assertEquals(emptyList<String>(), vm.state.value.diagnostics?.ocrLines)
+    }
+
+    @Test
+    fun a_failed_search_does_not_leave_the_previous_scan_record() = runTest {
+        val vm = ScanViewModel(FakeCardRepository(listOf(card("c1", "Furret", "136", 110))))
+        vm.onTextRecognized(listOf(OcrLine("Furret", 0f, 40f), OcrLine("136/189", 100f, 40f)))
+        assertNotNull(vm.state.value.diagnostics)
+
+        vm.onCaptureError("offline")
+
+        assertNull(vm.state.value.diagnostics)
+        assertTrue(vm.state.value.manualSearch)
+    }
+
+    @Test
     fun quick_add_card_adds_to_collection_and_increments_batch_count() = runTest {
         val card = card("c1", "Meowth ex", "062", 120)
         val collection = FakeCollectionRepository()

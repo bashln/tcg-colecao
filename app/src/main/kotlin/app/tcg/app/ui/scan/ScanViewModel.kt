@@ -11,6 +11,7 @@ import app.tcg.core.domain.model.ParsedCardText
 import app.tcg.core.domain.model.Scored
 import app.tcg.core.scan.CandidateRanker
 import app.tcg.core.scan.OcrParser
+import app.tcg.core.scan.ScanDiagnostics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +40,7 @@ data class ScanUiState(
     val batchCount: Int = 0,
     val lastAddedCard: Card? = null,
     val multiCardResults: List<MultiCardResult> = emptyList(),
+    val diagnostics: ScanDiagnostics? = null,
 )
 
 class ScanViewModel(
@@ -50,11 +52,15 @@ class ScanViewModel(
     val state: StateFlow<ScanUiState> = _state.asStateFlow()
     private var searchGeneration = 0L
 
+    /** Kept so a manual retry still reports what the camera read, not just the typed query. */
+    private var lastOcrLines: List<OcrLine> = emptyList()
+
     fun toggleBatchMode() {
         _state.update { it.copy(isBatchMode = !it.isBatchMode) }
     }
 
     fun setGridMode(mode: ScanGridMode) {
+        lastOcrLines = emptyList()
         _state.update {
             it.copy(
                 gridMode = mode,
@@ -71,7 +77,8 @@ class ScanViewModel(
     }
 
     suspend fun onTextRecognized(lines: List<OcrLine>) {
-        search(OcrParser.parse(lines))
+        lastOcrLines = lines
+        search(OcrParser.parse(lines), lines)
     }
 
     suspend fun onMultiCardTextRecognized(quadrants: Map<Int, List<OcrLine>>) {
@@ -108,6 +115,7 @@ class ScanViewModel(
                     loading = false,
                     error = "Não foi possível buscar as cartas do bloco. Verifique sua conexão.",
                     manualSearch = true,
+                    diagnostics = null,
                 )
             }
             return
@@ -126,11 +134,15 @@ class ScanViewModel(
 
     suspend fun onManualSearch(name: String) {
         _state.update { it.copy(candidates = emptyList(), multiCardResults = emptyList()) }
-        search(ParsedCardText(name = name, collectorNumber = null, promoCode = null, hp = null, rawText = name))
+        search(
+            parsed = ParsedCardText(name = name, collectorNumber = null, promoCode = null, hp = null, rawText = name),
+            lines = lastOcrLines,
+        )
     }
 
     fun prepareForCapture() {
         searchGeneration++
+        lastOcrLines = emptyList()
         _state.update {
             ScanUiState(
                 isBatchMode = it.isBatchMode,
@@ -143,6 +155,7 @@ class ScanViewModel(
 
     fun resetForNextScan() {
         searchGeneration++
+        lastOcrLines = emptyList()
         _state.update {
             it.copy(
                 candidates = emptyList(),
@@ -156,7 +169,7 @@ class ScanViewModel(
 
     fun onCaptureError(message: String) {
         searchGeneration++
-        _state.update { it.copy(loading = false, error = message, manualSearch = true) }
+        _state.update { it.copy(loading = false, error = message, manualSearch = true, diagnostics = null) }
     }
 
     suspend fun quickAddCard(
@@ -213,7 +226,7 @@ class ScanViewModel(
         }
     }
 
-    private suspend fun search(parsed: ParsedCardText) {
+    private suspend fun search(parsed: ParsedCardText, lines: List<OcrLine> = emptyList()) {
         val requestGeneration = ++searchGeneration
         _state.update { it.copy(loading = true, error = null) }
         val collectorNumber = parsed.collectorNumber
@@ -231,6 +244,7 @@ class ScanViewModel(
                     loading = false,
                     error = "Não foi possível buscar agora. Verifique sua conexão e tente de novo.",
                     manualSearch = true,
+                    diagnostics = null,
                 )
             }
             return
@@ -242,6 +256,7 @@ class ScanViewModel(
                 loading = false,
                 error = null,
                 manualSearch = ranked.isEmpty(),
+                diagnostics = ScanDiagnostics.from(parsed, lines, ranked),
             )
         }
     }
