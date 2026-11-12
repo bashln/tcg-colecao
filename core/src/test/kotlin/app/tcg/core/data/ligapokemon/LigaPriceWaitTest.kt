@@ -1,6 +1,7 @@
 package app.tcg.core.data.ligapokemon
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -16,7 +17,7 @@ class LigaPriceWaitTest {
         val quote = awaitLigaPrice(read = { "R\$ 0,49" })
 
         assertEquals("R\$ 0,49", quote)
-        assertEquals(0, currentTime)
+        assertEquals(0L, currentTime)
     }
 
     @Test
@@ -30,7 +31,7 @@ class LigaPriceWaitTest {
 
         assertEquals("R\$ 0,49", quote)
         assertEquals(4, reads)
-        assertEquals(4_500, currentTime)
+        assertEquals(4_500L, currentTime)
     }
 
     @Test
@@ -65,8 +66,25 @@ class LigaPriceWaitTest {
         ) { null }
 
         assertNull(quote)
-        assertEquals(6_000, currentTime)
+        assertEquals(6_000L, currentTime)
         assertTrue(phases.last() == LigaPricePhase.TIMED_OUT)
+    }
+
+    @Test
+    fun a_read_that_never_answers_does_not_stall_the_wait_forever() = runTest {
+        var reads = 0
+
+        val quote = awaitLigaPrice(
+            timeoutMs = 4_000L,
+            retryDelayMs = 1_000L,
+            readTimeoutMs = 500L,
+        ) {
+            reads += 1
+            awaitCancellation()
+        }
+
+        assertNull(quote)
+        assertTrue(reads in 2..8, "expected a bounded number of reads, got $reads")
     }
 
     @Test

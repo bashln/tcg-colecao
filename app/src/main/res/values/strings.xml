@@ -59,7 +59,7 @@
     <string name="detail_liga_web_open">🇧🇷 Buscar preço</string>
     <string name="detail_liga_web_title">Preço na LigaPokémon</string>
     <string name="detail_liga_web_loading">Lendo o preço na LigaPokémon…</string>
-    <string name="detail_liga_web_verifying">O site está verificando o navegador. Isso pode levar até um minuto.</string>
+    <string name="detail_liga_web_verifying">O site está verificando o navegador. Isso pode levar mais de um minuto.</string>
     <string name="detail_liga_web_normal">Normal: R$ %1$s</string>
     <string name="detail_liga_web_foil">Foil: R$ %1$s</string>
     <string name="detail_liga_web_apply">Usar R$ %1$s</string>

@@ -368,6 +368,8 @@ private fun AddByNumberDialog(
                                 ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                         RejectedTokens(batch.rejected)
@@ -401,5 +403,7 @@ private fun RejectedTokens(rejected: List<String>) {
         text = stringResource(R.string.lists_batch_rejected, rejected.joinToString(", ")),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.error,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
     )
 }

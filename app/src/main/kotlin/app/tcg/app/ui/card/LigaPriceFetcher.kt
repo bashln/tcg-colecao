@@ -1,6 +1,7 @@
 package app.tcg.app.ui.card
 
 import android.annotation.SuppressLint
+import android.os.SystemClock
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebView
@@ -39,12 +40,14 @@ import androidx.compose.ui.window.DialogProperties
 import app.tcg.app.R
 import app.tcg.core.data.ligapokemon.LigaPokemonUrl
 import app.tcg.core.data.ligapokemon.LigaPricePhase
+import app.tcg.core.data.ligapokemon.LigaPriceWait
 import app.tcg.core.data.ligapokemon.LigaQuote
 import app.tcg.core.data.ligapokemon.LigaQuoteParser
 import app.tcg.core.data.ligapokemon.awaitLigaPrice
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.CardVariant
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.Json
@@ -72,6 +75,7 @@ fun LigaPriceDialog(
     val uriHandler = LocalUriHandler.current
     val url = remember(card) { LigaPokemonUrl.buildUrl(card) }
     val alive = remember { AtomicBoolean(true) }
+    val deadlineAt = remember(url) { AtomicLong(0L) }
     var pageLoads by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf<LigaState>(LigaState.Loading) }
     val webView = remember(url) {
@@ -104,8 +108,15 @@ fun LigaPriceDialog(
     // window; the reload after the challenge is what puts cards_editions on the page.
     LaunchedEffect(pageLoads) {
         if (pageLoads == 0 || state is LigaState.Ready) return@LaunchedEffect
+        val now = SystemClock.elapsedRealtime()
+        if (deadlineAt.get() == 0L) deadlineAt.set(now + LigaPriceWait.TIMEOUT_MS)
+        val remaining = deadlineAt.get() - now
+        if (remaining <= 0L) {
+            state = LigaState.Failed
+            return@LaunchedEffect
+        }
         state = LigaState.Loading
-        val quote = awaitLigaPrice(onPhase = { phase ->
+        val quote = awaitLigaPrice(timeoutMs = remaining, onPhase = { phase ->
             if (phase == LigaPricePhase.VERIFYING) state = LigaState.Verifying
         }) {
             readQuote(webView, card.collectorNumber, alive)

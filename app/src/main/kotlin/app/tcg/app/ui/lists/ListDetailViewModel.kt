@@ -95,7 +95,7 @@ class ListDetailViewModel(
         if (current.batch == BatchState.Searching) return
         val parsed = parsePrintedCardNumbers(current.batchInput)
         if (parsed.references.isEmpty()) {
-            val batch = if (parsed.rejected.isEmpty()) {
+            val batch = if (current.batchInput.isBlank()) {
                 BatchState.Idle
             } else {
                 BatchState.Failed(BatchError.INVALID_FORMAT, parsed.rejected)

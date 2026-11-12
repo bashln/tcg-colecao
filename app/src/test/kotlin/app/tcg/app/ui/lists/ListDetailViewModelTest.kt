@@ -70,6 +70,19 @@ class ListDetailViewModelTest {
     }
 
     @Test
+    fun input_of_only_separators_reports_the_format_instead_of_doing_nothing() = runTest {
+        val viewModel = detailViewModel(SearchCardRepository(emptyList()))
+        advanceUntilIdle()
+
+        viewModel.updateBatchInput(" , ")
+        viewModel.runBatchSearch()
+        advanceUntilIdle()
+
+        val batch = (viewModel.state.value as ListDetailUiState.Ready).batch
+        assertEquals(BatchState.Failed(BatchError.INVALID_FORMAT), batch)
+    }
+
+    @Test
     fun add_sends_only_the_matched_cards_to_this_list() = runTest {
         val card = printedCard(id = "swsh3-21", number = "21", setTotal = 84)
         val repository = listRepository()
