@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -102,7 +104,8 @@ fun HomeScreen(
             else -> HomeContent(
                 stats = state.stats,
                 priceHistory = viewModel.priceHistory.collectAsStateWithLifecycle().value,
-                priceSource = viewModel.priceSource.collectAsStateWithLifecycle().value,
+                collectionSource = viewModel.collectionSource.collectAsStateWithLifecycle().value,
+                historySource = viewModel.historySource.collectAsStateWithLifecycle().value,
                 onPriceSourceSelected = viewModel::selectPriceSource,
                 onPriceHistoryRetry = viewModel::retryPriceHistory,
                 onCollectionItemSelected = onCollectionItemSelected,
@@ -115,7 +118,8 @@ fun HomeScreen(
 private fun HomeContent(
     stats: CollectionStats,
     priceHistory: PriceHistoryUiState,
-    priceSource: PriceSource,
+    collectionSource: PriceSource,
+    historySource: PriceSource,
     onPriceSourceSelected: (PriceSource) -> Unit,
     onPriceHistoryRetry: () -> Unit,
     onCollectionItemSelected: (String) -> Unit,
@@ -136,10 +140,10 @@ private fun HomeContent(
         item { CollectionKeyNumbers(stats) }
         item { SectionHeader(stringResource(R.string.home_most_valuable)) }
         items(stats.mostValuable, key = { it.item.id }) { entry ->
-            MostValuableRow(entry = entry, priceSource = priceSource, onClick = { onCollectionItemSelected(entry.item.id) })
+            MostValuableRow(entry = entry, priceSource = collectionSource, onClick = { onCollectionItemSelected(entry.item.id) })
         }
         item {
-            PriceHistoryCard(priceHistory, priceSource, onPriceSourceSelected, onPriceHistoryRetry)
+            PriceHistoryCard(priceHistory, historySource, onPriceSourceSelected, onPriceHistoryRetry)
         }
     }
 }
@@ -203,6 +207,7 @@ private fun MostValuableRow(entry: CollectionEntry, priceSource: PriceSource, on
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PriceHistoryCard(
     state: PriceHistoryUiState,
@@ -232,21 +237,24 @@ private fun PriceHistoryCard(
                     modifier = Modifier.weight(1f),
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 FilterChip(
                     selected = source == PriceSource.LIGAPOKEMON,
                     onClick = { onSourceSelected(PriceSource.LIGAPOKEMON) },
-                    label = { Text("🇧🇷 " + stringResource(R.string.common_price_ligapokemon)) },
+                    label = { Text("🇧🇷 " + stringResource(R.string.common_price_ligapokemon), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
                 FilterChip(
                     selected = source == PriceSource.TCGPLAYER,
                     onClick = { onSourceSelected(PriceSource.TCGPLAYER) },
-                    label = { Text(stringResource(R.string.common_price_tcgplayer)) },
+                    label = { Text(stringResource(R.string.common_price_tcgplayer), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
                 FilterChip(
                     selected = source == PriceSource.CARDMARKET,
                     onClick = { onSourceSelected(PriceSource.CARDMARKET) },
-                    label = { Text(stringResource(R.string.common_price_cardmarket)) },
+                    label = { Text(stringResource(R.string.common_price_cardmarket), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
             }
             Text(
