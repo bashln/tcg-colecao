@@ -176,6 +176,14 @@
         <item quantity="one">%1$d carta faltante nas expansões verificadas</item>
         <item quantity="other">%1$d cartas faltantes nas expansões verificadas</item>
     </plurals>
+    <plurals name="collection_selection_count">
+        <item quantity="one">%1$d selecionada</item>
+        <item quantity="other">%1$d selecionadas</item>
+    </plurals>
+    <string name="collection_selection_added">Cartas adicionadas às listas.</string>
+    <string name="collection_selection_already">Essas cartas já estavam nas listas.</string>
+    <string name="collection_selection_cancel">Cancelar seleção</string>
+    <string name="cd_collection_select">Selecionar carta</string>
 
     <string name="common_no_price">Sem preço</string>
     <string name="common_price_tcgplayer">TCGplayer</string>
