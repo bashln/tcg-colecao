@@ -9,6 +9,41 @@ import kotlin.test.assertTrue
 class OcrParserTest {
     private fun lines(vararg t: String) = t.mapIndexed { i, s -> OcrLine(s, i * 100f, 40f) }
 
+    private fun line(text: String, top: Float, left: Float, height: Float = 22f) =
+        OcrLine(text, top, height, left, 300f)
+
+    // Read off the two 30th-anniversary Pikachu photos. The yellow stamp prints a second
+    // "NN/TT" pair right of the collector number, and OCR can return it as its own line.
+    @Test fun promo_stamp_number_does_not_override_the_collector_number() {
+        val photo = listOf(
+            line("BÁSICO", 180f, 220f),
+            line("Pikachu", 175f, 330f, 54f),
+            line("PS 80", 180f, 900f, 40f),
+            line("Soneca", 880f, 420f, 40f),
+            line("05/30", 1270f, 620f),
+            line("027/128", 1270f, 380f),
+        )
+
+        val parsed = OcrParser.parse(photo)
+
+        assertEquals("027", parsed.collectorNumber)
+        assertEquals(128, parsed.setTotal)
+    }
+
+    @Test fun promo_stamp_number_is_ignored_when_it_reads_first() {
+        val photo = listOf(
+            line("Pikachu", 180f, 340f, 54f),
+            line("Armazenar", 860f, 400f, 40f),
+            line("26/30", 1265f, 640f),
+            line("048/128", 1265f, 360f),
+        )
+
+        val parsed = OcrParser.parse(photo)
+
+        assertEquals("048", parsed.collectorNumber)
+        assertEquals(128, parsed.setTotal)
+    }
+
     @Test fun extracts_collector_number_with_slash() {
         val r = OcrParser.parse(lines("Furret", "HP 110", "136/189"))
         assertEquals("136", r.collectorNumber)
