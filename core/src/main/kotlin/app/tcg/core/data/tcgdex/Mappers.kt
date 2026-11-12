@@ -22,13 +22,28 @@ internal fun TcgdexCardDto.toCard(): Card = Card(
     hp = hp,
     types = types.orEmpty(),
     attacks = attacks.orEmpty().map { it.toAttack() },
-    imageUrl = image?.let { it + IMAGE_SUFFIX },
+    imageUrl = image?.takeIf { it.isNotBlank() }?.let { it + IMAGE_SUFFIX } ?: tcgplayerProductImage(),
     variants = variantsDetailed.orEmpty().mapNotNull { variantFromType(it.type) }.toSet(),
     prices = prices(),
     // The printed denominator ("NNN/TTT") is TCGdex's `official` count; `total` also counts
     // unnumbered secret rares and is never what the card shows.
     setTotal = set?.cardCount?.official,
 )
+
+/**
+ * TCGdex omits `image` for a few printings (the whole `mep` promo set, for one), but its
+ * pricing block still carries the TCGplayer product id and that CDN serves the same artwork.
+ */
+private fun TcgdexCardDto.tcgplayerProductImage(): String? {
+    val productId = variantsDetailed.orEmpty().firstNotNullOfOrNull { variant ->
+        variant.pricing?.tcgplayer?.let { tcgplayer ->
+            tcgplayer.holofoil?.productId
+                ?: tcgplayer.normal?.productId
+                ?: tcgplayer.reverseHolofoil?.productId
+        }
+    }
+    return productId?.let { "https://tcgplayer-cdn.tcgplayer.com/product/${it}_400w.jpg" }
+}
 
 private fun TcgdexCardDto.prices(): List<CardPrice> =
     variantsDetailed.orEmpty().flatMap { variant ->
