@@ -1,10 +1,13 @@
 package app.tcg.app.ui.card
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import app.tcg.app.ui.components.PricePaidDraft
+import app.tcg.core.data.repository.CardListRepository
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.domain.model.Card
+import app.tcg.core.domain.model.CardListSummary
 import app.tcg.core.domain.model.CardPrice
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Condition
@@ -12,9 +15,12 @@ import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
 import app.tcg.core.domain.model.PriceSource
 import app.tcg.core.domain.valuation.Valuation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 
 data class CardDetailUiState(
@@ -33,10 +39,28 @@ class CardDetailViewModel(
     card: Card,
     private val collection: CollectionRepository,
     private val cardRepository: CardRepository? = null,
+    private val cardListRepository: CardListRepository? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(stateFor(card, defaultVariant(card)))
     val state: StateFlow<CardDetailUiState> = _state.asStateFlow()
+
+    /** Empty while no card-list repository was supplied, so older callers keep working. */
+    val lists: StateFlow<List<CardListSummary>> = cardListRepository?.observeLists()
+        ?.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList<CardListSummary>())
+        ?: MutableStateFlow<List<CardListSummary>>(emptyList()).asStateFlow()
+
+    suspend fun addToLists(listIds: Set<String>) {
+        val repository = cardListRepository ?: return
+        if (listIds.isEmpty()) return
+        try {
+            repository.addCards(listOf(_state.value.card), listIds)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Best effort: the card is already in the collection, so a list failure only loses this membership.
+        }
+    }
 
     fun selectVariant(variant: CardVariant) {
         _state.update {

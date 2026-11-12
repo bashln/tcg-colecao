@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.BookmarkAdd
+import androidx.compose.material.icons.outlined.Bookmarks
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,6 +34,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -62,6 +64,7 @@ import app.tcg.app.ui.components.SectionHeader
 import app.tcg.app.ui.components.conditionLabel
 import app.tcg.app.ui.components.joinNonBlank
 import app.tcg.app.ui.components.variantLabel
+import app.tcg.app.ui.lists.AddToListDialog
 import app.tcg.core.domain.model.Attack
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.CardVariant
@@ -80,13 +83,16 @@ fun CardDetailScreen(
     onSaved: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val lists by viewModel.lists.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var saving by remember { mutableStateOf(false) }
+    var showAddToList by remember { mutableStateOf(false) }
     val savedMessage = stringResource(R.string.detail_saved)
     val keptPurchaseAmountMessage = stringResource(R.string.detail_saved_purchase_amount_kept)
     val saveErrorMessage = stringResource(R.string.detail_save_error)
     val savedLigaPriceMessage = stringResource(R.string.detail_edit_ligapokemon_price_saved)
+    val addedToListMessage = stringResource(R.string.lists_added_to_list)
     val card = state.card
     var showLigaFetch by remember { mutableStateOf(false) }
     val saveLigaPrice: (Double) -> Unit = { priceInBrl ->
@@ -199,10 +205,33 @@ fun CardDetailScreen(
                         }
                     }
                 }
+                item {
+                    OutlinedButton(
+                        onClick = { showAddToList = true },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) {
+                        Icon(Icons.Outlined.Bookmarks, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.lists_add_to_list))
+                    }
+                }
             }
             SnackbarHost(
                 hostState = snackbarHostState,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+            )
+        }
+        if (showAddToList) {
+            AddToListDialog(
+                lists = lists,
+                onDismiss = { showAddToList = false },
+                onConfirm = { listIds ->
+                    showAddToList = false
+                    scope.launch {
+                        viewModel.addToLists(listIds)
+                        snackbarHostState.showSnackbar(addedToListMessage)
+                    }
+                },
             )
         }
         if (showLigaFetch) {

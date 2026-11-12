@@ -34,11 +34,16 @@ import app.tcg.app.update.InstalledAppInfo
 import app.tcg.app.update.ReleaseFetch
 import app.tcg.app.update.UpdateCoordinator
 import app.tcg.app.update.UpdateInstaller
+import app.tcg.core.data.repository.CardListRepository
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.data.repository.PriceRefreshReport
 import app.tcg.core.data.repository.SetCatalogResult
 import app.tcg.core.domain.model.Card
+import app.tcg.core.domain.model.CardList
+import app.tcg.core.domain.model.CardListDetail
+import app.tcg.core.domain.model.CardListKind
+import app.tcg.core.domain.model.CardListSummary
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.CollectionEntry
 import app.tcg.core.domain.model.CollectionItem
@@ -46,9 +51,11 @@ import app.tcg.core.domain.model.CollectionItemChanges
 import app.tcg.core.domain.model.CollectionItemDetails
 import app.tcg.core.domain.model.CollectionUpdate
 import app.tcg.core.domain.model.Condition
+import app.tcg.core.domain.model.ListAddition
 import app.tcg.core.domain.model.Money
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -109,6 +116,7 @@ class CollectionItemEditNavigationTest {
                 AppNav(
                     cardRepository = FakeCardRepository(),
                     collectionRepository = repository,
+                    cardListRepository = EmptyCardListRepository,
                     authController = auth,
                     syncLinkRepository = SyncLinkRepository(requireNotNull(database).collectionDao(), "test-device"),
                     syncLinkCoordinator = object : SyncLinkCoordinator {
@@ -209,6 +217,16 @@ class CollectionItemEditNavigationTest {
         override suspend fun getCard(id: String): Card? = null
         override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
         override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
+    }
+
+    private object EmptyCardListRepository : CardListRepository {
+        override fun observeLists(): Flow<List<CardListSummary>> = flowOf(emptyList<CardListSummary>())
+        override fun observeList(listId: String): Flow<CardListDetail?> = flowOf(null)
+        override suspend fun create(name: String, kind: CardListKind): CardList = error("unused")
+        override suspend fun addCards(cards: List<Card>, listIds: Set<String>): ListAddition = error("unused")
+        override suspend fun removeCard(listId: String, cardId: String) = Unit
+        override suspend fun rename(listId: String, name: String) = Unit
+        override suspend fun delete(listId: String) = Unit
     }
 
     private fun entry(item: CollectionItem) = CollectionEntry(
