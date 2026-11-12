@@ -18,9 +18,9 @@ object OcrParser {
         "BÁSICO", "BASICO", "ESTÁGIO 1", "ESTAGIO 1", "ESTÁGIO 2", "ESTAGIO 2",
         "ESTÁGIO1", "ESTAGIO1", "ESTÁGIO2", "ESTAGIO2", "E5TÁGIO1", "STÁGIO", "GASICO", "ASICO", "BASILD",
     )
-    private val STAGE_PREFIX = Regex("""(?i)^(B[ÁA]SIC[O0]?|[BEG80]?ASIC[OAD0-9]?|E?[5S]T[ÁA]GIO[L12DIO0-9]?|STAGE\s*[12]?)[):.\-_]?\s*""")
+    private val STAGE_PREFIX = Regex("""(?iu)^(B[ÁA]SIC[O0]?|[BEG80]?ASIC[OAD0-9]?|E?[5S]T[ÁA]GIO[L12DIO0-9]?|STAGE\s*[12]?)[):.\-_]?\s*""")
     private val REGULATION_MARK_PREFIX = Regex("""^[A-Z]\s+(?=[A-Za-z]{2})""")
-    private val MERGED_STAGE_LABEL = Regex("""(?i)^(?:CASS|GAS|ASS|AS|B[ÁA]SIC[O0]?|[BEG80]?ASIC[OAD0-9]?)(?:\s+|(?=[A-Z][a-z]))""")
+    private val MERGED_STAGE_LABEL = Regex("""(?iu)^(?:CASS|GAS|ASS|AS|B[ÁA]SIC[O0]?|[BEG80]?ASIC[OAD0-9]?)(?:\s+|(?=[A-Z][a-z]))""")
     private val TRAILING_HP = Regex("""\s*\d{2,3}$""")
     private val SUFFIX_SPACE = Regex("""([a-z])(V|ex)\b""")
 
@@ -63,7 +63,9 @@ object OcrParser {
                 // When "1" fuses with slash (e.g. "o0/196" instead of "001/196"), recover as "001"
                 val numStr = if (raw.all { it == '0' }) "001" else raw
                 val total = match.groupValues[2].replace('o', '0', ignoreCase = true).toIntOrNull()
-                line.left to PrintedNumber(normalizeCollectorNumber(numStr), total)
+                // A missing OCR box (width 0) carries no position, so it must not win by default.
+                val position = if (line.width > 0f) line.left else Float.MAX_VALUE
+                position to PrintedNumber(normalizeCollectorNumber(numStr), total)
             }
         }.minByOrNull { it.first }?.second
 

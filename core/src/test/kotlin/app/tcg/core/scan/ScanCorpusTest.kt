@@ -77,6 +77,25 @@ class ScanCorpusTest {
         assertEquals("Pikachu", OcrParser.parse(photo).name)
     }
 
+    @Test fun a_line_without_an_ocr_box_does_not_win_by_default() {
+        val photo = listOf(
+            line("Pikachu", 175f, 330f, 54f),
+            OcrLine("05/30", 1270f, 22f, 0f, 0f),
+            line("027/128", 1270f, 380f),
+        )
+
+        assertEquals("027", OcrParser.parse(photo).collectorNumber)
+    }
+
+    @Test fun title_case_stage_label_is_also_stripped() {
+        val photo = listOf(
+            line("Básico Pikachu", 175f, 220f, 54f),
+            line("027/128", 1270f, 380f),
+        )
+
+        assertEquals("Pikachu", OcrParser.parse(photo).name)
+    }
+
     @Test fun pikachu_048_ignores_its_stamp() {
         val parsed = OcrParser.parse(pika048Split)
 
