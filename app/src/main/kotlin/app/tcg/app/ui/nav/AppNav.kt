@@ -230,7 +230,7 @@ fun AppNav(
             }
             composable(Routes.COLLECTION) {
                 val viewModel: CollectionViewModel = viewModel(
-                    factory = viewModelFactory { initializer { CollectionViewModel(collectionRepository, cardRepository, appPreferences) } },
+                    factory = viewModelFactory { initializer { CollectionViewModel(collectionRepository, cardRepository, appPreferences, cardListRepository) } },
                 )
                 CollectionScreen(
                     viewModel = viewModel,

@@ -3,10 +3,12 @@ package app.tcg.app.ui.collection
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.tcg.app.data.preferences.AppPreferences
+import app.tcg.core.data.repository.CardListRepository
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.data.repository.SetCatalogResult
 import app.tcg.core.domain.model.Card
+import app.tcg.core.domain.model.CardListSummary
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.CollectionEntry
 import app.tcg.core.domain.model.Condition
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.collect
@@ -59,6 +62,13 @@ sealed interface SelectedSetState {
     data class Unavailable(val setId: String) : SelectedSetState
 }
 
+sealed interface CollectionSelection {
+    data object None : CollectionSelection
+    data class Active(val itemIds: Set<String>) : CollectionSelection
+}
+
+enum class CollectionMessage { CARDS_ADDED, ADD_FAILED }
+
 data class CollectionUiState(
     val entries: List<CollectionEntry> = emptyList(),
     val query: String = "",
@@ -81,12 +91,16 @@ data class CollectionUiState(
     val globalMissing: GlobalMissingState = GlobalMissingState.NoStartedSets,
     val distinctOwnedCards: Int = 0,
     val savedCopies: Int = 0,
+    val selection: CollectionSelection = CollectionSelection.None,
+    val lists: List<CardListSummary> = emptyList(),
+    val message: CollectionMessage? = null,
 )
 
 class CollectionViewModel(
     private val repository: CollectionRepository,
     private val cardRepository: CardRepository,
     private val preferences: AppPreferences? = null,
+    private val cardListRepository: CardListRepository? = null,
 ) : ViewModel() {
 
     private val filters = MutableStateFlow(CollectionCardFilters())
@@ -94,6 +108,14 @@ class CollectionViewModel(
     private val cardsLens = MutableStateFlow(CardsLens.OWNED)
     private val selectedSet = MutableStateFlow<SelectedSetState>(SelectedSetState.Closed)
     private val ownershipFilter = MutableStateFlow(OwnershipFilter.ALL)
+    private val selection = MutableStateFlow<CollectionSelection>(CollectionSelection.None)
+    private val addState = MutableStateFlow(AddState())
+    private val lists: StateFlow<List<CardListSummary>> =
+        (cardListRepository?.observeLists() ?: flowOf(emptyList())).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList(),
+        )
     private val catalogLoads = MutableStateFlow<Map<String, CatalogLoad>>(emptyMap())
     private val catalogJobs = mutableMapOf<String, Job>()
     private val catalogSemaphore = Semaphore(2)
@@ -122,8 +144,20 @@ class CollectionViewModel(
         val ownershipFilter: OwnershipFilter,
     )
 
+    private data class AddState(val busy: Boolean = false, val message: CollectionMessage? = null)
+
+    private data class SelectionState(
+        val selection: CollectionSelection,
+        val lists: List<CardListSummary>,
+        val message: CollectionMessage?,
+    )
+
     private val filterState = combine(filters, section, selectedSet, ownershipFilter) { f, s, set, o ->
         CollectionFiltersState(f, s, set, o)
+    }
+
+    private val selectionState = combine(selection, lists, addState) { selected, listSummaries, add ->
+        SelectionState(selected, listSummaries, add.message)
     }
 
     val state: StateFlow<CollectionUiState> =
@@ -132,6 +166,13 @@ class CollectionViewModel(
         }.combine(cardsLens) { current, lens -> current.copy(cardsLens = lens) }
             .combine(globalMissing) { current, missing -> current.copy(globalMissing = missing) }
             .combine(hasCollectionSnapshot) { current, loaded -> current.copy(loading = !loaded) }
+            .combine(selectionState) { current, snapshot ->
+                current.copy(
+                    selection = snapshot.selection,
+                    lists = snapshot.lists,
+                    message = snapshot.message,
+                )
+            }
             .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
@@ -152,6 +193,47 @@ class CollectionViewModel(
 
     fun onClearCardFilters() {
         filters.update { it.copy(variant = null, condition = null) }
+    }
+
+    fun startSelection(itemId: String? = null) {
+        selection.value = CollectionSelection.Active(listOfNotNull(itemId).toSet())
+    }
+
+    fun toggleSelection(itemId: String) {
+        selection.update { current ->
+            val ids = (current as? CollectionSelection.Active)?.itemIds.orEmpty()
+            CollectionSelection.Active(if (itemId in ids) ids - itemId else ids + itemId)
+        }
+    }
+
+    fun clearSelection() {
+        selection.value = CollectionSelection.None
+    }
+
+    fun addSelectionToLists(listIds: Set<String>) {
+        val listRepository = cardListRepository ?: return
+        val itemIds = (selection.value as? CollectionSelection.Active)?.itemIds.orEmpty()
+        if (itemIds.isEmpty() || addState.value.busy) return
+        val cards = entries.value.filter { it.item.id in itemIds }.map { it.card }
+        if (cards.isEmpty()) return
+
+        addState.value = AddState(busy = true)
+        viewModelScope.launch {
+            val message = try {
+                listRepository.addCards(cards, listIds)
+                CollectionMessage.CARDS_ADDED
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                CollectionMessage.ADD_FAILED
+            }
+            addState.value = AddState(message = message)
+            if (message == CollectionMessage.CARDS_ADDED) clearSelection()
+        }
+    }
+
+    fun dismissMessage() {
+        addState.update { it.copy(message = null) }
     }
 
     fun onSection(section: CollectionSection) {

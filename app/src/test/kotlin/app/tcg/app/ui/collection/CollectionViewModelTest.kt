@@ -17,6 +17,7 @@ import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
 import app.tcg.core.domain.model.PriceSource
 import app.tcg.core.domain.model.SetCatalog
+import app.tcg.app.testutil.FakeCardListRepository
 import app.tcg.app.testutil.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
@@ -435,6 +436,143 @@ class CollectionViewModelTest {
         repository.entries.value = listOf(first)
         advanceUntilIdle()
         assertEquals(1, (vm.state.value.globalMissing as GlobalMissingState.Complete).verified.size)
+    }
+
+    @Test fun long_press_selection_starts_with_the_pressed_card() = runTest {
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(listOf(entryNamed("Furret"), entryNamed("Charizard"))),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+        )
+        advanceUntilIdle()
+
+        vm.startSelection("item-Furret")
+        advanceUntilIdle()
+
+        assertEquals(CollectionSelection.Active(setOf("item-Furret")), vm.state.value.selection)
+    }
+
+    @Test fun toggling_selects_and_deselects_without_leaving_the_mode() = runTest {
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(listOf(entryNamed("Furret"), entryNamed("Charizard"))),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+        )
+        advanceUntilIdle()
+
+        vm.startSelection()
+        vm.toggleSelection("item-Furret")
+        advanceUntilIdle()
+        assertEquals(CollectionSelection.Active(setOf("item-Furret")), vm.state.value.selection)
+
+        vm.toggleSelection("item-Charizard")
+        advanceUntilIdle()
+        assertEquals(
+            CollectionSelection.Active(setOf("item-Furret", "item-Charizard")),
+            vm.state.value.selection,
+        )
+
+        vm.toggleSelection("item-Furret")
+        vm.toggleSelection("item-Charizard")
+        advanceUntilIdle()
+        assertEquals(CollectionSelection.Active(emptySet()), vm.state.value.selection)
+    }
+
+    @Test fun selection_survives_a_query_change() = runTest {
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(listOf(entryNamed("Furret"), entryNamed("Charizard"))),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+        )
+        advanceUntilIdle()
+        vm.startSelection()
+        vm.toggleSelection("item-Furret")
+        vm.toggleSelection("item-Charizard")
+        advanceUntilIdle()
+
+        vm.onQuery("fur")
+        advanceUntilIdle()
+
+        assertEquals(listOf("item-Furret"), vm.state.value.entries.map { it.item.id })
+        assertEquals(
+            CollectionSelection.Active(setOf("item-Furret", "item-Charizard")),
+            vm.state.value.selection,
+        )
+    }
+
+    @Test fun adding_the_selection_sends_every_selected_card_to_the_chosen_lists() = runTest {
+        val listRepository = FakeCardListRepository()
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(listOf(entryNamed("Furret"), entryNamed("Charizard"))),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+            cardListRepository = listRepository,
+        )
+        advanceUntilIdle()
+        vm.startSelection()
+        vm.toggleSelection("item-Furret")
+        vm.toggleSelection("item-Charizard")
+        vm.onQuery("fur")
+        advanceUntilIdle()
+
+        vm.addSelectionToLists(setOf("list-1", "list-2"))
+        advanceUntilIdle()
+
+        val (cards, listIds) = listRepository.added.single()
+        assertEquals(setOf("Furret", "Charizard"), cards.map { it.name }.toSet())
+        assertEquals(setOf("list-1", "list-2"), listIds)
+        assertEquals(CollectionSelection.None, vm.state.value.selection)
+        assertEquals(CollectionMessage.CARDS_ADDED, vm.state.value.message)
+
+        vm.dismissMessage()
+        advanceUntilIdle()
+        assertEquals(null, vm.state.value.message)
+    }
+
+    @Test fun a_failed_add_keeps_the_selection_and_reports_the_failure() = runTest {
+        val listRepository = FakeCardListRepository().apply { failure = IllegalStateException("offline") }
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(listOf(entryNamed("Furret"))),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+            cardListRepository = listRepository,
+        )
+        advanceUntilIdle()
+        vm.startSelection("item-Furret")
+        advanceUntilIdle()
+
+        vm.addSelectionToLists(setOf("list-1"))
+        advanceUntilIdle()
+
+        assertEquals(CollectionSelection.Active(setOf("item-Furret")), vm.state.value.selection)
+        assertEquals(CollectionMessage.ADD_FAILED, vm.state.value.message)
+    }
+
+    @Test fun adding_nothing_or_without_a_repository_does_nothing() = runTest {
+        val listRepository = FakeCardListRepository()
+        val vm = CollectionViewModel(
+            FakeCollectionRepository(listOf(entryNamed("Furret"))),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+            cardListRepository = listRepository,
+        )
+        advanceUntilIdle()
+        vm.startSelection()
+        advanceUntilIdle()
+
+        vm.addSelectionToLists(setOf("list-1"))
+        advanceUntilIdle()
+
+        assertTrue(listRepository.added.isEmpty())
+        assertEquals(null, vm.state.value.message)
+
+        val withoutLists = CollectionViewModel(
+            FakeCollectionRepository(listOf(entryNamed("Furret"))),
+            FakeCardRepository(SetCatalogResult.Unavailable),
+        )
+        advanceUntilIdle()
+        withoutLists.startSelection("item-Furret")
+        advanceUntilIdle()
+
+        withoutLists.addSelectionToLists(setOf("list-1"))
+        advanceUntilIdle()
+
+        assertEquals(CollectionSelection.Active(setOf("item-Furret")), withoutLists.state.value.selection)
+        assertEquals(null, withoutLists.state.value.message)
     }
 
     private class BlockingCardRepository(setIds: List<String>) : CardRepository {

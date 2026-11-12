@@ -13,10 +13,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.items as columnItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -40,11 +44,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,8 +78,11 @@ import app.tcg.app.ui.components.LoadingState
 import app.tcg.app.ui.components.TotalValueHero
 import app.tcg.app.ui.components.conditionLabel
 import app.tcg.app.ui.components.variantLabel
+import app.tcg.app.ui.lists.AddToListDialog
 import app.tcg.core.domain.model.CardVariant
+import app.tcg.core.domain.model.CollectionEntry
 import app.tcg.core.domain.model.Condition
+import app.tcg.core.domain.model.PriceSource
 import coil.compose.AsyncImage
 
 @Composable
@@ -88,6 +99,9 @@ fun CollectionScreen(
     BackHandler(enabled = selectedSet != SelectedSetState.Closed) {
         viewModel.onCloseSet()
     }
+    BackHandler(enabled = state.selection != CollectionSelection.None) {
+        viewModel.clearSelection()
+    }
 
     if (state.section == CollectionSection.CARDS && state.cardsLens == CardsLens.OWNED) {
         OwnedCardsCollection(
@@ -102,6 +116,11 @@ fun CollectionScreen(
             onConditionFilter = viewModel::onConditionFilter,
             onClearFilters = viewModel::onClearCardFilters,
             onCollectionItemSelected = onCollectionItemSelected,
+            onStartSelection = viewModel::startSelection,
+            onToggleSelection = viewModel::toggleSelection,
+            onClearSelection = viewModel::clearSelection,
+            onAddToList = viewModel::addSelectionToLists,
+            onDismissMessage = viewModel::dismissMessage,
         )
     } else {
         Column(modifier = modifier.fillMaxSize()) {
@@ -252,73 +271,204 @@ private fun OwnedCardsCollection(
     onConditionFilter: (Condition?) -> Unit,
     onClearFilters: () -> Unit,
     onCollectionItemSelected: (String) -> Unit,
+    onStartSelection: (String?) -> Unit,
+    onToggleSelection: (String) -> Unit,
+    onClearSelection: () -> Unit,
+    onAddToList: (Set<String>) -> Unit,
+    onDismissMessage: () -> Unit,
 ) {
     val filtersActive = state.variantFilter != null || state.conditionFilter != null
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 156.dp),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = modifier.fillMaxSize(),
-    ) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            CollectionHeader(state, onSection, onCardsLens, onQuery)
-        }
-        if (state.savedCopies > 0) {
+    val selectedIds = (state.selection as? CollectionSelection.Active)?.itemIds.orEmpty()
+    val selecting = state.selection != CollectionSelection.None
+    val snackbarHostState = remember { SnackbarHostState() }
+    var showAddToList by remember { mutableStateOf(false) }
+    var addedCount by remember { mutableStateOf(0) }
+    val addedText = pluralStringResource(R.plurals.lists_added_count, addedCount, addedCount)
+    val failureText = stringResource(R.string.lists_error_generic)
+
+    LaunchedEffect(state.message) {
+        val message = state.message ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            if (message == CollectionMessage.CARDS_ADDED) addedText else failureText,
+        )
+        onDismissMessage()
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 156.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 4.dp,
+                bottom = if (selecting) 88.dp else 16.dp,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                CardFilterControls(state, onVariantFilter, onConditionFilter, onClearFilters)
+                CollectionHeader(state, onSection, onCardsLens, onQuery)
+            }
+            if (state.savedCopies > 0) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    CardFilterControls(state, onVariantFilter, onConditionFilter, onClearFilters)
+                }
+            }
+            when {
+                state.loading && state.entries.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
+                    GridCentered { LoadingState(stringResource(R.string.collection_loading)) }
+                }
+                state.entries.isEmpty() && state.query.isBlank() && !filtersActive -> item(span = { GridItemSpan(maxLineSpan) }) {
+                    GridCentered {
+                        EmptyState(
+                            icon = Icons.Outlined.CollectionsBookmark,
+                            title = stringResource(R.string.collection_empty_title),
+                            body = stringResource(R.string.collection_empty_body),
+                            action = {
+                                Button(onClick = onScanClick) {
+                                    Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(stringResource(R.string.collection_empty_action))
+                                }
+                            },
+                        )
+                    }
+                }
+                state.entries.isEmpty() && filtersActive -> item(span = { GridItemSpan(maxLineSpan) }) {
+                    GridCentered {
+                        EmptyState(
+                            icon = Icons.Outlined.SearchOff,
+                            title = stringResource(R.string.collection_no_results_title),
+                            body = stringResource(R.string.collection_filter_no_results),
+                            action = { TextButton(onClick = onClearFilters) { Text(stringResource(R.string.collection_filter_clear)) } },
+                        )
+                    }
+                }
+                state.entries.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
+                    GridCentered {
+                        EmptyState(
+                            icon = Icons.Outlined.SearchOff,
+                            title = stringResource(R.string.collection_no_results_title),
+                            body = stringResource(R.string.collection_no_results, state.query),
+                            action = { TextButton(onClick = onClearSearch) { Text(stringResource(R.string.collection_clear_search)) } },
+                        )
+                    }
+                }
+                else -> items(state.entries, key = { it.item.id }) { entry ->
+                    SelectableCollectionItemCard(
+                        entry = entry,
+                        priceSource = state.priceSource,
+                        selectionActive = selecting,
+                        isSelected = entry.item.id in selectedIds,
+                        onOpen = { onCollectionItemSelected(entry.item.id) },
+                        onToggle = { onToggleSelection(entry.item.id) },
+                        onStartSelection = { onStartSelection(entry.item.id) },
+                    )
+                }
             }
         }
-        when {
-            state.loading && state.entries.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
-                GridCentered { LoadingState(stringResource(R.string.collection_loading)) }
-            }
-            state.entries.isEmpty() && state.query.isBlank() && !filtersActive -> item(span = { GridItemSpan(maxLineSpan) }) {
-                GridCentered {
-                    EmptyState(
-                        icon = Icons.Outlined.CollectionsBookmark,
-                        title = stringResource(R.string.collection_empty_title),
-                        body = stringResource(R.string.collection_empty_body),
-                        action = {
-                            Button(onClick = onScanClick) {
-                                Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.collection_empty_action))
-                            }
-                        },
-                    )
-                }
-            }
-            state.entries.isEmpty() && filtersActive -> item(span = { GridItemSpan(maxLineSpan) }) {
-                GridCentered {
-                    EmptyState(
-                        icon = Icons.Outlined.SearchOff,
-                        title = stringResource(R.string.collection_no_results_title),
-                        body = stringResource(R.string.collection_filter_no_results),
-                        action = { TextButton(onClick = onClearFilters) { Text(stringResource(R.string.collection_filter_clear)) } },
-                    )
-                }
-            }
-            state.entries.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
-                GridCentered {
-                    EmptyState(
-                        icon = Icons.Outlined.SearchOff,
-                        title = stringResource(R.string.collection_no_results_title),
-                        body = stringResource(R.string.collection_no_results, state.query),
-                        action = { TextButton(onClick = onClearSearch) { Text(stringResource(R.string.collection_clear_search)) } },
-                    )
-                }
-            }
-            else -> items(state.entries, key = { it.item.id }) { entry ->
-                CollectionItemCard(
-                    entry = entry,
-                    priceSource = state.priceSource,
-                    modifier = Modifier.clickable(
-                        onClickLabel = stringResource(R.string.cd_open_card),
-                        role = Role.Button,
-                        onClick = { onCollectionItemSelected(entry.item.id) },
-                    ),
+        if (selecting) {
+            SelectionBar(
+                count = selectedIds.size,
+                onCancel = onClearSelection,
+                onAdd = { showAddToList = true },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 16.dp, vertical = if (selecting) 96.dp else 16.dp),
+        )
+    }
+
+    if (showAddToList) {
+        AddToListDialog(
+            lists = state.lists,
+            onDismiss = { showAddToList = false },
+            onConfirm = { listIds ->
+                showAddToList = false
+                addedCount = selectedIds.size
+                onAddToList(listIds)
+            },
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SelectableCollectionItemCard(
+    entry: CollectionEntry,
+    priceSource: PriceSource,
+    selectionActive: Boolean,
+    isSelected: Boolean,
+    onOpen: () -> Unit,
+    onToggle: () -> Unit,
+    onStartSelection: () -> Unit,
+) {
+    Box {
+        CollectionItemCard(
+            entry = entry,
+            priceSource = priceSource,
+            modifier = Modifier
+                .combinedClickable(
+                    onClickLabel = stringResource(R.string.cd_open_card),
+                    onLongClickLabel = stringResource(R.string.cd_collection_select),
+                    onLongClick = onStartSelection,
+                    onClick = { if (selectionActive) onToggle() else onOpen() },
+                    role = Role.Button,
                 )
+                .semantics { selected = isSelected },
+        )
+        if (isSelected) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Check,
+                    contentDescription = null,
+                    modifier = Modifier.padding(4.dp).size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectionBar(
+    count: Int,
+    onCancel: () -> Unit,
+    onAdd: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shadowElevation = 8.dp,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            IconButton(onClick = onCancel) {
+                Icon(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = stringResource(R.string.collection_selection_cancel),
+                )
+            }
+            Text(
+                text = pluralStringResource(R.plurals.collection_selection_count, count, count),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            Button(onClick = onAdd, enabled = count > 0) {
+                Text(stringResource(R.string.lists_add_to_list))
             }
         }
     }
