@@ -1,5 +1,6 @@
 package app.tcg.core.data.tcgdex
 
+import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.PriceSource
@@ -16,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TcgdexCardSourceTest {
@@ -190,6 +192,114 @@ class TcgdexCardSourceTest {
         assertTrue(card.prices.any { it.source == PriceSource.TCGPLAYER && it.variant == CardVariant.NORMAL && it.market == 3.91 })
         assertTrue(card.prices.any { it.source == PriceSource.CARDMARKET && it.variant == CardVariant.HOLOFOIL })
     }
+
+    @Test
+    fun holo_variant_reads_cardmarket_holo_fields() = runTest {
+        val card = source("card_holo_variant_cardmarket.json").getCard("swsh9-008")!!
+
+        val holo = card.cardmarketPrice(CardVariant.HOLOFOIL)
+        assertEquals(0.32, holo.market)
+        assertEquals(0.04, holo.low)
+        assertEquals(0.39, holo.trend)
+        assertEquals(0.63, holo.avg1)
+        assertEquals(0.36, holo.avg7)
+        assertEquals(0.32, holo.avg30)
+    }
+
+    @Test
+    fun holo_variant_falls_back_to_the_base_field_when_the_holo_field_is_null() = runTest {
+        val card = source("card_holo_fallback_cardmarket.json").getCard("base1-4")!!
+
+        val holo = card.cardmarketPrices(CardVariant.HOLOFOIL).first()
+        assertEquals(453.87, holo.market)
+        assertEquals(99.0, holo.low)
+        assertEquals(123.63, holo.trend)
+        assertEquals(207.4, holo.avg1)
+        assertEquals(129.55, holo.avg7)
+        assertEquals(202.71, holo.avg30)
+    }
+
+    @Test
+    fun holo_variant_falls_back_to_the_base_field_when_the_holo_field_is_zero() = runTest {
+        val card = source("card_holo_fallback_cardmarket.json").getCard("base1-4")!!
+
+        val shadowless = card.cardmarketPrices(CardVariant.HOLOFOIL)[1]
+        assertEquals(2887.65, shadowless.market)
+        assertEquals(3489.25, shadowless.trend)
+        assertEquals(1410.0, shadowless.avg1)
+        assertEquals(2698.24, shadowless.avg7)
+        assertEquals(2445.05, shadowless.avg30)
+    }
+
+    @Test
+    fun normal_variant_ignores_the_cardmarket_holo_fields() = runTest {
+        val card = source("card_holo_cardmarket.json").getCard("swsh3-3")!!
+
+        val normal = card.cardmarketPrice(CardVariant.NORMAL)
+        assertEquals(0.06, normal.market)
+        assertEquals(0.02, normal.low)
+        assertEquals(0.07, normal.trend)
+        assertEquals(0.05, normal.avg1)
+        assertEquals(0.05, normal.avg7)
+        assertEquals(0.06, normal.avg30)
+    }
+
+    @Test
+    fun reverse_holofoil_variant_ignores_the_cardmarket_holo_fields() = runTest {
+        val card = source("card_holo_cardmarket.json").getCard("swsh3-3")!!
+
+        val reverse = card.cardmarketPrice(CardVariant.REVERSE_HOLOFOIL)
+        assertEquals(0.06, reverse.market)
+        assertEquals(0.07, reverse.trend)
+    }
+
+    @Test
+    fun zero_or_negative_cardmarket_prices_become_null() = runTest {
+        val body = """{"id":"x-1","variants_detailed":[{"type":"holo","pricing":{"cardmarket":{
+            "avg":0,"avg-holo":-2,"low":0,"trend":-1,"avg1":0,"avg7":-0.5,"avg30":0}}}]}"""
+        val engine = MockEngine {
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val source = KtorTcgdexCardSource(
+            HttpClient(engine) {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            },
+        )
+
+        val price = source.getCard("x-1")!!.cardmarketPrice(CardVariant.HOLOFOIL)
+
+        assertNull(price.market)
+        assertNull(price.low)
+        assertNull(price.trend)
+        assertNull(price.avg1)
+        assertNull(price.avg7)
+        assertNull(price.avg30)
+    }
+
+    @Test
+    fun zero_tcgplayer_market_price_becomes_null() = runTest {
+        val body = """{"id":"x-2","variants_detailed":[{"type":"normal","pricing":{"tcgplayer":{
+            "normal":{"productId":1,"marketPrice":0,"lowPrice":-1}}}}]}"""
+        val engine = MockEngine {
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val source = KtorTcgdexCardSource(
+            HttpClient(engine) {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            },
+        )
+
+        val price = source.getCard("x-2")!!.prices.single { it.source == PriceSource.TCGPLAYER }
+
+        assertNull(price.market)
+        assertNull(price.low)
+    }
+
+    private fun Card.cardmarketPrices(variant: CardVariant) =
+        prices.filter { it.source == PriceSource.CARDMARKET && it.variant == variant }
+
+    private fun Card.cardmarketPrice(variant: CardVariant) =
+        cardmarketPrices(variant).single()
 
     private fun readFixture(name: String): String =
         checkNotNull(javaClass.classLoader.getResource("fixtures/$name")) {

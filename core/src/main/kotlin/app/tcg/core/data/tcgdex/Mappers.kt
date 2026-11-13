@@ -76,25 +76,35 @@ private fun TcgdexCardmarketDto.toCardPrice(variant: CardVariant) = CardPrice(
     source = PriceSource.CARDMARKET,
     variant = variant,
     currency = Currency.EUR,
-    market = avg,
-    low = low,
+    market = price(avg, avgHolo, variant),
+    low = price(low, lowHolo, variant),
     mid = null,
     high = null,
-    trend = trend,
-    avg1 = avg1,
-    avg7 = avg7,
-    avg30 = avg30,
+    trend = price(trend, trendHolo, variant),
+    avg1 = price(avg1, avg1Holo, variant),
+    avg7 = price(avg7, avg7Holo, variant),
+    avg30 = price(avg30, avg30Holo, variant),
     updatedAt = updated,
 )
+
+/**
+ * Cardmarket publishes a base block and a parallel `-holo` block for the holo printing.
+ * Only the holo variant may read the `-holo` field, with the base field as fallback; the
+ * reverse-holo printing has no Cardmarket field of its own, so reading `-holo` would inflate it.
+ */
+private fun price(base: Double?, holo: Double?, variant: CardVariant): Double? =
+    if (variant == CardVariant.HOLOFOIL) validPrice(holo) ?: validPrice(base) else validPrice(base)
+
+private fun validPrice(value: Double?): Double? = value?.takeIf { it.isFinite() && it > 0 }
 
 private fun TcgdexTcgplayerPriceDto.toCardPrice(variant: CardVariant, updatedAt: String?) = CardPrice(
     source = PriceSource.TCGPLAYER,
     variant = variant,
     currency = Currency.USD,
-    market = marketPrice,
-    low = lowPrice,
-    mid = midPrice,
-    high = highPrice,
+    market = validPrice(marketPrice),
+    low = validPrice(lowPrice),
+    mid = validPrice(midPrice),
+    high = validPrice(highPrice),
     trend = null,
     avg1 = null,
     avg7 = null,
