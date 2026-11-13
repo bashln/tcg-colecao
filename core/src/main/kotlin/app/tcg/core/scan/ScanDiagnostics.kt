@@ -1,9 +1,7 @@
 package app.tcg.core.scan
 
-import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.OcrLine
 import app.tcg.core.domain.model.ParsedCardText
-import app.tcg.core.domain.model.Scored
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -27,7 +25,7 @@ data class ScanDiagnostics(
         fun from(
             parsed: ParsedCardText,
             lines: List<OcrLine>,
-            ranked: List<Scored<Card>>,
+            ranked: List<RankedCandidate>,
         ) = ScanDiagnostics(
             parsedName = parsed.name,
             collectorNumber = parsed.collectorNumber,
@@ -52,11 +50,11 @@ data class ScannedCandidate(
 
 private val json = Json { prettyPrint = true }
 
-private fun Scored<Card>.toSnapshot() = ScannedCandidate(
-    id = value.id,
-    name = value.name,
-    collectorNumber = value.collectorNumber,
-    setTotal = value.setTotal,
-    hp = value.hp,
+private fun RankedCandidate.toSnapshot() = ScannedCandidate(
+    id = card.id,
+    name = card.name,
+    collectorNumber = card.collectorNumber,
+    setTotal = card.setTotal,
+    hp = card.hp,
     score = score,
 )

@@ -3,7 +3,6 @@ package app.tcg.core.scan
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.OcrLine
 import app.tcg.core.domain.model.ParsedCardText
-import app.tcg.core.domain.model.Scored
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -16,8 +15,8 @@ class ScanDiagnosticsTest {
         val parsed = ParsedCardText("Pikachu", "027", null, 80, "raw", setTotal = 128)
         val lines = listOf(OcrLine("Pikachu", 175f, 54f), OcrLine("027/128", 1270f, 22f))
         val ranked = listOf(
-            Scored(card("30th-027", "Pikachu", "027", 128, 80), 15),
-            Scored(card("sv03.5-006", "Charizard ex", "006", 165, 330), 0),
+            RankedCandidate(card("30th-027", "Pikachu", "027", 128, 80), 15, setOf(ScanSignal.EXACT_NAME)),
+            RankedCandidate(card("sv03.5-006", "Charizard ex", "006", 165, 330), 0, emptySet()),
         )
 
         val diagnostics = ScanDiagnostics.from(parsed, lines, ranked)
