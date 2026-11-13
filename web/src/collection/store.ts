@@ -1,5 +1,5 @@
 import {
-  CONDITIONS, CURRENCIES, VARIANTS, configurationKey, newItemId, nextRevision, parseCardId, parseItemId,
+  CONDITIONS, CURRENCIES, VARIANTS, configurationKey, mergeQuotes, newItemId, nextRevision, parseCardId, parseItemId,
 } from '../domain/model.ts'
 import type { CardSummary, CollectionEntry, CollectionItem, Currency, ItemId, ParsedDraft } from '../domain/model.ts'
 import { importSignature, parseCollectionBackup, parseImportMarkers } from './backup.ts'
@@ -1220,10 +1220,16 @@ export async function addToCollection(card: CardSummary, draft: Extract<ParsedDr
           outcome = { kind: 'conflict', reason: 'duplicate' }
           return
         }
-        transaction.objectStore('cards').put(card)
-        items.put(item)
-        recordCollectionWrite(transaction, item, existing === undefined ? null : existing)
-        outcome = { kind: 'saved', item }
+        const cards = transaction.objectStore('cards')
+        const storedCardRequest = cards.get(card.id)
+        storedCardRequest.onsuccess = () => {
+          const storedCard: unknown = storedCardRequest.result
+          cards.put(isCard(storedCard) ? { ...card, prices: mergeQuotes(storedCard.prices, card.prices) } : card)
+          items.put(item)
+          recordCollectionWrite(transaction, item, existing === undefined ? null : existing)
+          outcome = { kind: 'saved', item }
+        }
+        storedCardRequest.onerror = () => transaction.abort()
       }
     })
     if (result.kind === 'saved') announceChange()
