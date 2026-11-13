@@ -132,6 +132,8 @@ fun ScanScreen(
         val bitmap = uri?.let { loadBitmap(context, it) }
         if (bitmap != null) {
             viewModel.prepareForCapture()
+            val uncroppedWidth = bitmap.width
+            val uncroppedHeight = bitmap.height
             val cardBitmap = bitmap.cropToCard()
             if (cardBitmap !== bitmap) bitmap.recycle()
             capturedBitmap = null
@@ -140,7 +142,10 @@ fun ScanScreen(
                 recognizer = recognizer,
                 bitmap = cardBitmap,
                 rotationDegrees = 0,
-                onTextRecognized = { lines -> scope.launch { viewModel.onTextRecognized(lines) } },
+                onTextRecognized = { lines ->
+                    val filtered = linesInsideCardCropFrame(lines, uncroppedWidth, uncroppedHeight)
+                    scope.launch { viewModel.onTextRecognized(filtered) }
+                },
                 onError = viewModel::onCaptureError,
                 onComplete = { cardBitmap.recycle() },
             )
