@@ -474,7 +474,6 @@ private fun ErrorText(text: String, onDismiss: () -> Unit) {
 
 private fun AccountError.toReadableStringRes(): Int = when (this) {
     AccountError.INVALID_CREDENTIALS -> R.string.account_error_invalid_credentials
-    AccountError.EMAIL_ALREADY_REGISTERED -> R.string.account_error_email_registered
     AccountError.EMAIL_NOT_CONFIRMED -> R.string.account_error_email_not_confirmed
     AccountError.NETWORK -> R.string.account_error_network
     AccountError.LINK_BLOCKED -> R.string.account_error_link_blocked

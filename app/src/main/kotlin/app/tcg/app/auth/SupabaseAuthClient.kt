@@ -113,7 +113,9 @@ class SupabaseAuthClient(
         val code = body?.string("code")
         return when (code) {
             "invalid_credentials" -> AuthError.InvalidCredentials
-            "user_already_exists" -> AuthError.EmailAlreadyRegistered
+            // Signup must not confirm whether an email exists, so an existing account is
+            // reported exactly like any other failed signup.
+            "user_already_exists" -> AuthError.Unknown(null)
             "email_not_confirmed" -> AuthError.EmailNotConfirmed
             else -> when (status) {
                 HttpStatusCode.BadRequest, HttpStatusCode.Unauthorized -> AuthError.InvalidCredentials

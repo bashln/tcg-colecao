@@ -30,7 +30,6 @@ sealed interface AuthState {
 /** Coarse, non-revealing error taxonomy. Messages never disclose whether an email exists. */
 sealed interface AuthError {
     data object InvalidCredentials : AuthError
-    data object EmailAlreadyRegistered : AuthError
     data object EmailNotConfirmed : AuthError
     data object Network : AuthError
     data class Unknown(val message: String?) : AuthError

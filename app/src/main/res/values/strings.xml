@@ -275,7 +275,6 @@
     <string name="account_link_cancel">Cancelar</string>
     <string name="account_dismiss_error">Fechar</string>
     <string name="account_error_invalid_credentials">E-mail ou senha incorretos.</string>
-    <string name="account_error_email_registered">Já existe uma conta com este e-mail.</string>
     <string name="account_error_email_not_confirmed">Confirme o e-mail antes de entrar.</string>
     <string name="account_error_network">Sem conexão. Tente de novo.</string>
     <string name="account_error_unknown">Não foi possível continuar. Tente de novo.</string>
