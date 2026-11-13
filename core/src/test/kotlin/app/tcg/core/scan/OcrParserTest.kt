@@ -388,6 +388,26 @@ class OcrParserTest {
         assertEquals("217", OcrParser.parse(lines).collectorNumber)
     }
 
+    // Device case: Vulpix 019/132. The OCR read the name and the attack, and the parser returned
+    // the attack ("Estouro"). One of the two filters that can drop a name line is pinned here.
+    @Test fun a_letter_only_line_in_the_right_third_is_not_an_hp_value() {
+        val lines = listOf(
+            line("Vulpix", 30f, 420f, 31f),
+            line("Estouro", 505f, 120f, 36f),
+        )
+
+        assertEquals("Vulpix", OcrParser.parse(lines).name)
+    }
+
+    @Test fun a_bare_hp_label_above_the_name_is_not_the_name() {
+        val lines = listOf(
+            line("HP", 25f, 460f, 20f),
+            line("Vulpix", 35f, 110f, 31f),
+        )
+
+        assertEquals("Vulpix", OcrParser.parse(lines).name)
+    }
+
     @Test fun ignores_mid_card_attack_damage_for_footer_number() {
         val lines = listOf(
             OcrLine("Oddish", 35f, 30f),
