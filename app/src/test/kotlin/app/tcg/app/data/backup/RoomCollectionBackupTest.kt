@@ -23,11 +23,16 @@ import org.robolectric.RobolectricTestRunner
 class FakeRecoveryStore : RecoveryStore {
     var shouldFail = false
     var lastSavedEntries: List<WebEntry>? = null
+    var discards = 0
 
     override suspend fun writeAndVerifyRecovery(entries: List<WebEntry>): Boolean {
         if (shouldFail) return false
         lastSavedEntries = entries
         return true
+    }
+
+    override suspend fun discardRecovery() {
+        discards += 1
     }
 }
 
@@ -232,6 +237,28 @@ class RoomCollectionBackupTest {
         val itemAfter = dao.getById("local-1")!!
         assertEquals(10, itemAfter.quantity)
         assertEquals(0, dao.listImportMarkers().size)
+    }
+
+    @Test
+    fun confirmed_import_discards_the_recovery_copy() = runBlocking {
+        val preview = backup.previewImport(validBackupJson.toByteArray())
+        val ticket = (preview as ImportPreview.Ready).ticket
+
+        assertTrue(backup.confirmImport(ticket) is ImportResult.Success)
+
+        assertEquals(1, recoveryStore.discards)
+    }
+
+    @Test
+    fun refused_import_discards_the_recovery_copy() = runBlocking {
+        val preview = backup.previewImport(validBackupJson.toByteArray())
+        val ticket = (preview as ImportPreview.Ready).ticket
+        dao.setSyncBinding(SyncBindingEntity(slot = 0, identity = "user-1", deviceId = "dev-1"))
+
+        assertEquals(ImportResult.ChangedSincePreview, backup.confirmImport(ticket))
+
+        assertEquals(1, recoveryStore.discards)
+        assertEquals(0, dao.listItems().size)
     }
 
     @Test

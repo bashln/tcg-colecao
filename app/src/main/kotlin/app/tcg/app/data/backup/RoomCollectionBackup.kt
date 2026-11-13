@@ -145,7 +145,12 @@ class RoomCollectionBackup(
             return ImportResult.StorageError("Falha ao gravar cópia de recuperação")
         }
 
-        val outcome = dao.applyImport(ticket)
+        val outcome = try {
+            dao.applyImport(ticket)
+        } finally {
+            // The copy holds the collection in the clear; it must not outlive the import.
+            recoveryStore.discardRecovery()
+        }
         if (outcome is ImportResult.Success) {
             backupManager.runBackup()
         }

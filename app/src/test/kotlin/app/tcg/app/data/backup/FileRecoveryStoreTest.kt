@@ -56,4 +56,16 @@ class FileRecoveryStoreTest {
         )
         directory.deleteRecursively()
     }
+
+    @Test
+    fun `discarding removes every recovery copy`() = runTest {
+        val directory = tempDir()
+        val store = FileRecoveryStore(directory)
+        assertTrue(store.writeAndVerifyRecovery(listOf(entry("item-0001"))))
+
+        store.discardRecovery()
+
+        assertEquals(emptyList<File>(), copies(directory))
+        directory.deleteRecursively()
+    }
 }
