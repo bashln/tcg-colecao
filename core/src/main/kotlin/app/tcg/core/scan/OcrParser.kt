@@ -8,7 +8,9 @@ object OcrParser {
     private val SLASH_NUMBER = Regex("""(?i)(?:^|[^\d/])([0-9oO]{1,3})\s*[/|]\s*([0-9oO]{1,4})""")
     private val CONCAT_COLLECTOR_NUMBER = Regex("""(?i)\b([0-9]{2,3})([0-9]{3})\b""")
     private val ISOLATED_NUMBER = Regex("""(?i)(?:^|[\sA-Z])([0-9]{1,3})(?:[\s*★◆●▲]|\b|$)""")
-    private val DAMAGE_OR_MODIFIER = Regex("""[+xX-]\s*\d+|\d+\s*[+xX-]""")
+    // ML Kit writes the printed "×" as "%", so an attack's "40×" arrives as "40%" and must read
+    // as damage, never as the card's collector number.
+    private val DAMAGE_OR_MODIFIER = Regex("""[+xX×%-]\s*\d+|\d+\s*[+xX×%-]""")
     private val YEAR = Regex("""\b(19\d{2}|20\d{2})\b""")
     private val PROMO = Regex("""\b([A-Z]{2,4})(\d{2,3})\b""")
     private val HP_EXTRACTION = Regex("""(?i)\b(?:HP|PS|PV|PL|P\$)\s*(\d+)""")
@@ -22,7 +24,10 @@ object OcrParser {
     private val STAGE_PREFIX = Regex("""(?iu)^(B[ÁA]SIC[O0]?|[BEG80]?ASIC[OAD0-9]?|E?[5S]T[ÁA]GIO[L12DIO0-9]?|STAGE\s*[12]?)[):.\-_]?\s*""")
     private val STAGE_LABEL_KEYS = STAGE_WORDS.map { labelKey(it) }.toSet()
     private val REGULATION_MARK_PREFIX = Regex("""^[A-Z]\s+(?=[A-Za-z]{2})""")
-    private val MERGED_STAGE_LABEL = Regex("""(?iu)^(?:CASS|GAS|ASS|AS|B[ÁA]SIC[O0]?|[BEG80]?ASIC[OAD0-9]?)(?:\s+|(?=[A-Z][a-z]))""")
+    private val MERGED_STAGE_LABEL = Regex("""(?iu)^(?:CASS|GAS|ASS|B[ÁA]SIC[O0]?|[BEG80]?ASIC[OAD0-9]?|E?[5S]T[ÁA]GIO[L12DIO0-9]?|AS|STAGE\s*[12]?)""")
+    // One stray capital glued to a capitalised name ("ASkarmory") is debris off the stage label
+    // pill, not part of the name. Card names never open with a capital touching another capital.
+    private val LEADING_DEBRIS = Regex("""^[A-Z](?=[A-Z][a-z])""")
     private val TRAILING_HP = Regex("""\s*\d{2,3}$""")
     private val SUFFIX_SPACE = Regex("""([a-z])(V|ex)\b""")
 
@@ -173,10 +178,24 @@ object OcrParser {
 
     private fun cleanNameCandidate(text: String): String {
         var s = STAGE_PREFIX.replace(text.trim(), "").trim()
-        s = MERGED_STAGE_LABEL.replace(s, "").trim()
+        s = stripMergedStageLabel(s).trim()
         s = REGULATION_MARK_PREFIX.replace(s, "").trim()
         s = TRAILING_HP.replace(s, "").trim()
+        s = LEADING_DEBRIS.replace(s, "").trim()
         return s
+    }
+
+    /**
+     * A merged label is stripped only where the name restarts on its own capital, as in
+     * "GASMeowth" and "ASICOVikavolt". OCR also produces the reverse, a label fragment parked in
+     * front of a lowercase name ("ASkarmory" on a PT Skarmory), and stripping there eats the
+     * first letter of the real name. The lookahead cannot carry the label's case-insensitive
+     * flag, because then it matches lowercase too.
+     */
+    private fun stripMergedStageLabel(text: String): String {
+        val rest = MERGED_STAGE_LABEL.find(text)?.let { text.substring(it.range.last + 1) } ?: return text
+        if (rest.isEmpty() || rest.first().isWhitespace()) return rest
+        return if (rest.first().isUpperCase()) rest else text
     }
 
     private fun normalizeCardName(name: String, allLines: List<OcrLine>): String {

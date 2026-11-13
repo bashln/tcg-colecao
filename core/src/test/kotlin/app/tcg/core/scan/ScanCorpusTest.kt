@@ -105,4 +105,35 @@ class ScanCorpusTest {
         assertEquals(70, parsed.hp)
         assertNull(parsed.promoCode)
     }
+
+    // Straight from the device diagnostics of a PT Skarmory (me05-060, printed PBL 060/084)
+    // photographed on a binder page: three cards in frame, so the target card's own "060/084"
+    // line never made it into the OCR text. Boxes are reconstructed from the photo, since the
+    // diagnostics keep the text only.
+    private val skarmoryBinderPage = listOf(
+        line("Drilbur", 170f, 250f, 30f),
+        line("Chamar a Famiia", 380f, 250f),
+        line("Fincar Garras", 440f, 250f),
+        line("ASkarmory", 330f, 360f, 58f),
+        line("-120", 330f, 950f, 40f),
+        line("Mandibuzz", 640f, 250f, 44f),
+        line("Atirador de Ossos", 720f, 250f),
+        line("(MSkarmoy", 660f, 360f, 40f),
+        line("30", 730f, 950f, 40f),
+        line("Vendaval Avassalader", 960f, 250f, 44f),
+        line("Cortador de Açe", 1080f, 360f, 40f),
+        line("Cortader de Ao", 1190f, 250f, 40f),
+        line("120", 170f, 900f, 40f),
+        line("120", 640f, 900f, 40f),
+        line("120", 960f, 900f, 40f),
+        line("40%", 1250f, 950f, 40f),
+    )
+
+    @Test fun binder_page_read_keeps_the_skarmory_name_and_invents_no_number() {
+        val parsed = OcrParser.parse(skarmoryBinderPage)
+
+        assertNull(parsed.collectorNumber)
+        assertNull(parsed.setTotal)
+        assertEquals("Skarmory", parsed.name)
+    }
 }
