@@ -26,11 +26,11 @@ jobs:
           set -euo pipefail
           umask 077
           printf 'JORNADA_API_KEY=%s\n' "$JORNADA_API_KEY" > "$RUNNER_TEMP/jornada.env"
-          supabase secrets set --env-file "$RUNNER_TEMP/jornada.env" --project-ref "$SUPABASE_PROJECT_REF"
+          supabase secrets set --env-file "$RUNNER_TEMP/jornada.env" --remote="$SUPABASE_PROJECT_REF" --yes
           rm -f "$RUNNER_TEMP/jornada.env"
 
       - name: Publicar a funcao
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-        run: supabase functions deploy jornada-prices --project-ref "$SUPABASE_PROJECT_REF"
+        run: supabase functions deploy jornada-prices --remote="$SUPABASE_PROJECT_REF" --yes
