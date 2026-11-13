@@ -45,13 +45,13 @@ Não enviamos: sua coleção sem conta, suas fotos, sua localização, seus cont
 
 A câmera e a galeria servem para ler a carta. No Android, o texto é reconhecido pelo ML Kit no próprio aparelho. Na versão web, o reconhecimento roda no navegador com a biblioteca de OCR local. A foto não é enviada ao TCGdex nem a qualquer outro servidor. Apenas o texto reconhecido segue para a busca.
 
-O app não mantém a foto depois da leitura, a menos que você escolha salvar a imagem em um backup pela sua própria conta.
+O app não mantém a foto depois da leitura. O backup exportado guarda os dados da coleção, não as fotos.
 
 ## Conta e sincronização
 
 Sem conta, o app não tem cadastro e não identifica você. Com conta:
 
-- O e-mail é usado para entrar e para recuperar o acesso.
+- O e-mail identifica a conta e recebe a confirmação de cadastro. Hoje não há redefinição de senha dentro do app; quem perder a senha precisa pedir ajuda pelo canal de contato.
 - A senha é armazenada pelo Supabase com hash. O app não guarda a senha.
 - A coleção sincronizada inclui os itens e o preço pago de cada um.
 - O acesso aos dados na nuvem é restrito ao dono da conta por políticas de segurança no banco.

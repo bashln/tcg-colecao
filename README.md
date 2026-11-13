@@ -2,7 +2,7 @@
 
 App gratuito e de código aberto para cuidar da sua coleção de cartas Pokémon. Fotografe uma carta, confirme qual é, e acompanhe quantidade, condição, variante e preço. A coleção fica no seu aparelho e funciona sem conta e sem internet.
 
-Alternativa ao Collectr, sem anúncio, sem limite de leitura e sem assinatura. Para iOS, a versão web cobre a coleção no navegador.
+Alternativa ao Collectr, sem anúncio, sem limite de leitura e sem assinatura. No iPhone não existe app nativo. A versão web cobre a coleção no navegador.
 
 ## O que dá para fazer
 
@@ -11,7 +11,7 @@ Alternativa ao Collectr, sem anúncio, sem limite de leitura e sem assinatura. P
 - **Faltam** mostra as cartas que ainda não estão na coleção, quando o catálogo da expansão está completo.
 - **Listas** separam subcoleções, por exemplo as cartas que você quer trocar.
 - **Perfil** exporta um backup JSON e restaura em outro aparelho.
-- **Conta opcional** sincroniza a mesma coleção entre o Android e o navegador. Sem conta, nada é enviado.
+- **Conta opcional** sincroniza a mesma coleção entre o Android e o navegador. Sem conta, a coleção não é enviada a nenhum servidor.
 
 ## Instalar no Android
 
@@ -38,7 +38,7 @@ npm run dev
 
 ## Privacidade
 
-A coleção fica no aparelho. Nenhum dado é enviado sem ação sua, e não há rastreamento, anúncio ou relatório de erro automático. Leia [a política de privacidade](docs/privacy.md) para ver o que cada serviço externo recebe.
+A coleção fica no aparelho. A coleção não é enviada a nenhum servidor sem conta, e não há rastreamento, anúncio ou relatório de erro automático. Leia [a política de privacidade](docs/privacy.md) para ver o que cada serviço externo recebe.
 
 ## Desenvolvimento
 
