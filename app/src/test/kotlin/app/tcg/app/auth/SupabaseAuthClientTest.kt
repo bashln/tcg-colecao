@@ -113,7 +113,7 @@ class SupabaseAuthClientTest {
     }
 
     @Test
-    fun `sign up maps already-registered email to a typed error`() = runTest {
+    fun `sign up does not reveal that an email is already registered`() = runTest {
         val engine = MockEngine {
             respond(
                 content = """{"code":"user_already_exists","msg":"User already registered"}""",
@@ -123,9 +123,9 @@ class SupabaseAuthClientTest {
         }
         try {
             auth(engine).signUp("b@example.com", "pw")
-            fail("expected already registered")
+            fail("expected a generic failure")
         } catch (error: AuthRemoteException) {
-            assertEquals(AuthError.EmailAlreadyRegistered, error.error)
+            assertEquals(AuthError.Unknown(null), error.error)
         }
     }
 
