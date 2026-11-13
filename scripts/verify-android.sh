@@ -22,7 +22,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 package_name="app.tcg.app"
 activity_name=".MainActivity"
-apk="$root/app/build/outputs/apk/debug/app-debug.apk"
+apk="${VERIFY_APK:-$root/app/build/outputs/apk/debug/app-debug.apk}"
 run_dir="${VERIFY_RUN_DIR:-$root/.audit/verify/$(date -u +%Y%m%dT%H%M%SZ)}"
 
 die() {
@@ -154,7 +154,7 @@ cmd_doctor() {
 
 cmd_install() {
     require_device_consent
-    [[ -f "$apk" ]] || die 4 "APK ausente em $apk. Rode ./gradlew :app:assembleDebug"
+    [[ -f "$apk" ]] || die 4 "APK ausente em $apk. Rode ./gradlew :app:assembleDebug ou defina VERIFY_APK"
     adb install -r "$apk" >/dev/null
     echo "verify-android: instalado com -r (dados locais preservados)"
 }

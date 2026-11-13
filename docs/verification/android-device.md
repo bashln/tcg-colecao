@@ -33,7 +33,7 @@ O `doctor` confere quatro coisas e falha com um código próprio:
 ./scripts/verify-android.sh wait "Início"
 ```
 
-`install` usa `adb install -r`, que preserva os dados locais. O driver nunca desinstala: desinstalar apagaria a coleção do aparelho.
+`install` usa `adb install -r`, que preserva os dados locais. O driver nunca desinstala: desinstalar apagaria a coleção do aparelho. Por padrão ele instala o APK de debug. Para verificar o APK publicado, aponte `VERIFY_APK` para o arquivo baixado da release.
 
 ## Dirigir por texto
 
@@ -62,14 +62,30 @@ Cada jornada termina com uma captura de tela no diretório de evidência.
 
 Fica em `.audit/verify/<run>/`, com capturas `.png` e dumps `.xml`. O diretório não entra no git. Guarde o caminho no relatório do trabalho: uma captura sozinha não prova o fluxo inteiro, então registre também a saída dos comandos e o estado observado antes e depois.
 
-## O que ainda não está provado
+## Resultado da verificação em aparelho
 
-O driver e o `doctor` são verificados por `scripts/verify-android.test.sh`, que roda sem aparelho e cobre 16 casos, incluindo ausência de aparelho, aparelho não autorizado, dois aparelhos, falta de consentimento e leitura de nós por texto e por `content-desc`.
+Executada em 13 de novembro de 2026 em um Galaxy A32 (SM-A325M) com Android 13, pela Meshnet, contra o APK publicado v0.7.0. A assinatura do APK baixado bateu com a impressão digital fixada, e `adb install -r` atualizou 0.6.0 para 0.7.0 sem apagar as 2 cartas da coleção.
 
-As jornadas acima não foram executadas por este repositório em um aparelho real. Nenhum aparelho estava conectado quando o driver foi escrito. Trate cada jornada como roteiro a validar, não como resultado.
+- **Abertura.** Tela inicial com valor da coleção e o aviso de que o total é parcial.
+- **Coleção.** A aba abre com `Buscar na coleção`.
+- **Perfil.** Seção `Cópia local e backup` visível, com `Escolher pasta de backup` e `Importar cópia`.
+- **Scan.** Com a câmera liberada, a tela mostra `Enquadre a carta` e as ações de galeria e captura.
+- **Câmera negada.** A tela mostra `Permita o acesso à câmera para escanear` e mantém `Escolher da galeria` e `Buscar por nome`. A busca manual abre com o campo `Nome da carta`.
+- **Falha de leitura.** A tela mostra `Não foi possível confirmar a carta pela foto`, com busca manual e diagnóstico, sem travar.
+- **Atualização.** `Procurar atualização` responde `Você já está na versão mais recente (0.7.0)`.
+
+O que esta execução não cobriu:
+
+- **Sem rede.** Ativar o modo avião derruba a própria conexão ADB, que passa pela Meshnet. O estado offline continua provado apenas por teste de JVM.
+- **Exportar e importar backup.** Abre o seletor de arquivos do sistema e exige escolher pasta e, se houver criptografia, digitar a senha. Fica como passo manual.
 
 ## Limites
 
 - Negar permissão, desligar a rede e desbloquear a tela mexem no aparelho. Não faça isso em um aparelho com a coleção de outra pessoa.
 - O `uiautomator` depende dos rótulos em português de `app/src/main/res/values/strings.xml`. Mudar um rótulo quebra a jornada, não o app.
 - A suíte instrumentada continua sendo a prova de comportamento de Compose. O driver prova o caminho que uma pessoa faz.
+- Pela Meshnet, a VPN comum do mesmo app precisa estar desligada. Com a VPN ativa, o aparelho respondia ping e recusava TCP nas portas de depuração e de pareamento. Com a VPN desligada e a Meshnet ligada, `adb connect` funcionou no mesmo minuto.
+
+## Driver
+
+`scripts/verify-android.test.sh` prova o driver sem aparelho em 16 casos, incluindo ausência de aparelho, aparelho não autorizado, dois aparelhos, falta de consentimento e leitura de nós por texto e por `content-desc`. Rode antes de confiar no driver depois de mudá-lo.
