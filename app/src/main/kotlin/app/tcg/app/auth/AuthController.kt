@@ -44,11 +44,18 @@ class AuthController(
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            // Only an explicit credential rejection may drop the session. A network or
+            // unknown failure keeps it and reports the offline state instead.
+            val rejected = (error as? AuthRemoteException)?.error?.rejectedCredential == true
             sessionLock.withLock {
                 if (sessionVersion == version) {
-                    store.clear()
-                    _state.value = AuthState.SignedOut
+                    if (rejected) {
+                        store.clear()
+                        _state.value = AuthState.SignedOut
+                    } else {
+                        _state.value = AuthState.SignedIn(stored, offline = true)
+                    }
                 }
             }
         }

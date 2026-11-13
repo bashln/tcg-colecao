@@ -19,7 +19,12 @@ data class AuthSession(
 sealed interface AuthState {
     data object SignedOut : AuthState
     data class AwaitingVerification(val email: String) : AuthState
-    data class SignedIn(val session: AuthSession) : AuthState
+
+    /**
+     * [offline] is set when a stored session could not be refreshed because the server was
+     * unreachable. The session stays valid locally; only a rejection clears it.
+     */
+    data class SignedIn(val session: AuthSession, val offline: Boolean = false) : AuthState
 }
 
 /** Coarse, non-revealing error taxonomy. Messages never disclose whether an email exists. */
@@ -31,13 +36,19 @@ sealed interface AuthError {
     data class Unknown(val message: String?) : AuthError
 }
 
+/**
+ * True only when the server explicitly refused the credential. A network or unknown failure
+ * says nothing about the session, so it must never clear it.
+ */
+val AuthError.rejectedCredential: Boolean
+    get() = this == AuthError.InvalidCredentials || this == AuthError.EmailNotConfirmed
+
 sealed interface AuthResult {
     data class Success(val state: AuthState) : AuthResult
     data class Failure(val error: AuthError) : AuthResult
 }
 
-/** Outcome of a remote sign-up: either a live session or a pending email verification. */
-sealed interface RemoteAuth {
+/** Outcome of a remote sign-up: either a live session or a pending email verification. */sealed interface RemoteAuth {
     data class Session(val session: AuthSession) : RemoteAuth
     data class VerificationRequired(val email: String) : RemoteAuth
 }

@@ -170,7 +170,7 @@ class AuthControllerTest {
     }
 
     @Test
-    fun `network failure during startup keeps the stored session`() = runTest {
+    fun `network failure during startup keeps the stored session and reports offline`() = runTest {
         val stored = session(expiresAt = 500L)
         store.session = stored
         nowEpochSeconds = 1_000L
@@ -179,7 +179,7 @@ class AuthControllerTest {
         controller.start()
         assertEquals(stored, store.session)
         assertEquals(0, store.clears)
-        assertEquals(AuthState.SignedIn(stored), controller.state.value)
+        assertEquals(AuthState.SignedIn(stored, offline = true), controller.state.value)
     }
 
     @Test
