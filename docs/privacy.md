@@ -10,7 +10,7 @@ Este documento descreve como o aplicativo TCG Coleção, para Android, e a vers�
 - A foto da carta não sai do aparelho. A leitura do texto acontece no próprio dispositivo.
 - Não há anúncio, rastreamento, perfilamento nem relatório automático de erro.
 - A conta é opcional e serve para sincronizar a mesma coleção entre Android e navegador.
-- Você pode exportar a coleção em JSON e CSV a qualquer momento, com ou sem conta.
+- Você pode exportar a coleção em JSON a qualquer momento, com ou sem conta.
 
 ## Quem responde pelos dados
 
@@ -22,8 +22,12 @@ O projeto é mantido por um desenvolvedor individual, sem empresa. O canal de co
 - O histórico de preços e as cotações mais recentes que o app já buscou.
 - Preferências de tema e de uso.
 - Com conta, o token da sessão. Ele é cifrado com uma chave que fica no Android Keystore e não é legível fora do aparelho desbloqueado.
+- A senha do backup, quando você ativa a criptografia. Ela é cifrada com a mesma chave do Keystore e nunca sai do aparelho.
+- A cópia temporária da última importação, apagada quando a importação termina.
 
 Na versão web, esses dados ficam no IndexedDB do navegador. Limpar os dados do site apaga a coleção local.
+
+O app desliga o backup automático do Google. A única cópia fora do aparelho é a que você exporta em Perfil, e ela vai para onde você escolher.
 
 ## O que sai do aparelho
 
@@ -33,9 +37,10 @@ O app só faz pedidos de rede para as finalidades abaixo.
 | --- | --- | --- |
 | TCGdex (`api.tcgdex.net`) | Texto lido na carta ou termo que você digita, e identificadores de carta | Identificar a carta, buscar o catálogo e obter preços de referência |
 | Supabase, só com conta | E-mail, senha e os itens da coleção | Criar a conta e sincronizar a coleção entre Android e navegador |
-| Liga Pokémon (`ligapokemon.com.br`) | Identificador e número da carta | Ler a cotação pública em reais |
+| Liga Pokémon (`ligapokemon.com.br`) | Nome, identificador e número da carta | Ler a cotação pública em reais |
 | CDN da TCGplayer (`tcgplayer-cdn.tcgplayer.com`) | Pedido da imagem da carta | Mostrar a arte da carta |
 | GitHub (`api.github.com`) | Pedido HTTPS padrão da checagem de versão | Avisar quando existe uma versão nova |
+| jsDelivr (`cdn.jsdelivr.net`), só na versão web | Pedido do arquivo de idioma do OCR no primeiro uso | Ler o texto da foto no navegador |
 
 Esses pedidos carregam o endereço IP do seu aparelho, como qualquer acesso à internet. Os serviços registram esse dado conforme as políticas deles.
 
@@ -75,7 +80,7 @@ A Lei Geral de Proteção de Dados (Lei 13.709/2018) garante a você, entre outr
 
 - confirmação de tratamento e acesso aos dados;
 - correção de dados incompletos ou desatualizados;
-- portabilidade, atendida pela exportação em JSON e CSV;
+- portabilidade, atendida pela exportação em JSON;
 - eliminação dos dados tratados com consentimento;
 - informação sobre compartilhamento;
 - revogação do consentimento, que no app corresponde a sair da conta e apagar os dados locais.

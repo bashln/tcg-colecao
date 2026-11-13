@@ -257,6 +257,8 @@ fun AppNav(
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
                     onAccountClick = { navController.navigate(Routes.ACCOUNT) },
                     onUpdatesClick = { navController.navigate(Routes.UPDATE) },
+                    syncAvailable = BuildConfig.SUPABASE_URL.isNotBlank() &&
+                        BuildConfig.SUPABASE_PUBLISHABLE_KEY.isNotBlank(),
                 )
             }
             composable(Routes.ACCOUNT) {

@@ -79,9 +79,12 @@ Cadastre em Settings, Secrets and variables, Actions.
 | `ANDROID_KEYSTORE_PASSWORD` | a senha do keystore |
 | `ANDROID_KEY_ALIAS` | `tcg` |
 | `ANDROID_KEY_PASSWORD` | a senha da chave |
+| `TCG_SUPABASE_URL` | URL do projeto Supabase |
+| `TCG_SUPABASE_PUBLISHABLE_KEY` | chave publicável do Supabase |
 
 Sem esses secrets o workflow falha na etapa "Exigir keystore de release" e nada é
-publicado. O workflow verifica o SHA-256 do certificado com
+publicado. Sem os dois secrets do Supabase ele falha em "Exigir configuracao do Supabase",
+porque um APK sem eles abre a tela de conta e nunca entra. O workflow verifica o SHA-256 do certificado com
 `scripts/verify-release-signature.sh`. O fingerprint fixado foi confirmado nos
 APKs públicos `v0.1.1` e `v0.2.0`:
 `d31a9c98580212663993b2ee7ea757e05fa284ccd2b54ad3b38e6b92a4c3f88f`.

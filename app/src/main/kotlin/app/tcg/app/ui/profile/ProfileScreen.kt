@@ -73,6 +73,7 @@ fun ProfileScreen(
     onScanClick: () -> Unit = {},
     onAccountClick: () -> Unit = {},
     onUpdatesClick: () -> Unit = {},
+    syncAvailable: Boolean = true,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -250,13 +251,15 @@ fun ProfileScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedButton(
-                    onClick = onAccountClick,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Outlined.Person, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.account_title))
+                if (syncAvailable) {
+                    OutlinedButton(
+                        onClick = onAccountClick,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Outlined.Person, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.account_title))
+                    }
                 }
                 OutlinedButton(
                     onClick = onUpdatesClick,

@@ -75,8 +75,22 @@ jobs:
           version_code="$(./scripts/validate-release.sh "$RELEASE_TAG" "tcg-colecao-${RELEASE_TAG}.apk" "${existing[@]}")"
           echo "release-guard: versionCode=${version_code} aceito"
 
+      # Sem estas duas variaveis o APK sai com a tela de conta que nunca entra, porque o cliente
+      # Supabase e montado vazio. A falha acontece antes de compilar e nada e publicado.
+      - name: Exigir configuracao do Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.TCG_SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TCG_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::error::Defina os secrets TCG_SUPABASE_URL e TCG_SUPABASE_PUBLISHABLE_KEY. Sem eles o APK distribuido nao entra em conta nenhuma."
+            exit 1
+          fi
+
       - name: Compilar APK de release
         env:
+          TCG_SUPABASE_URL: ${{ secrets.TCG_SUPABASE_URL }}
+          TCG_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TCG_SUPABASE_PUBLISHABLE_KEY }}
           TCG_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
           TCG_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           TCG_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
