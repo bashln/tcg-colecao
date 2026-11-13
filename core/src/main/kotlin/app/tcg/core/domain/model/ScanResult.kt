@@ -13,4 +13,3 @@ data class ParsedCardText(
     val hp: Int?, val rawText: String, val setTotal: Int? = null,
 )
 
-data class Scored<T>(val value: T, val score: Int)

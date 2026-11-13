@@ -2,35 +2,33 @@ package app.tcg.core.scan
 
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.ParsedCardText
-import app.tcg.core.domain.model.Scored
 
 object CandidateRanker {
-    fun rank(parsed: ParsedCardText, candidates: List<Card>): List<Scored<Card>> =
-        candidates.map { Scored(it, score(parsed, it)) }.sortedByDescending { it.score }
+    fun rank(parsed: ParsedCardText, candidates: List<Card>): List<RankedCandidate> =
+        candidates.map { rank(parsed, it) }.sortedByDescending { it.score }
 
-    // Signal strength, strongest first: exact name (+7), printed set total (+6), collector
-    // number (+4), HP (+2), partial name (+1). An exact name has to outrank a matched number and
-    // HP together, because a printed number is the most error-prone read on the card.
-    private fun score(parsed: ParsedCardText, card: Card): Int {
-        var score = 0
+    private fun rank(parsed: ParsedCardText, card: Card): RankedCandidate {
+        val signals = mutableSetOf<ScanSignal>()
         if (parsed.collectorNumber != null && sameCollectorNumber(parsed.collectorNumber, card.collectorNumber)) {
-            score += 4
+            signals += ScanSignal.COLLECTOR_NUMBER
         }
         if (parsed.hp != null && parsed.hp == card.hp) {
-            score += 2
+            signals += ScanSignal.HP
         }
-        // Larger than the +4 number match so a matching printed set total outranks a
-        // same-number card from another set when the name alone cannot separate them.
+        // A matching printed set total outranks a same-number card from another set when the
+        // name alone cannot separate them.
         if (parsed.setTotal != null && parsed.setTotal == card.setTotal) {
-            score += 6
+            signals += ScanSignal.SET_TOTAL
         }
-        val name = parsed.name ?: return score
-        if (name.equals(card.name, ignoreCase = true)) {
-            score += 7
-        } else if (nameMatches(name, card.name)) {
-            score += 1
+        val name = parsed.name
+        if (name != null) {
+            if (name.equals(card.name, ignoreCase = true)) {
+                signals += ScanSignal.EXACT_NAME
+            } else if (nameMatches(name, card.name)) {
+                signals += ScanSignal.PARTIAL_NAME
+            }
         }
-        return score
+        return RankedCandidate(card, signals)
     }
 
     /**

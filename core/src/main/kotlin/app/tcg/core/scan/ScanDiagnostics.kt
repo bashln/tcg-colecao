@@ -1,9 +1,7 @@
 package app.tcg.core.scan
 
-import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.OcrLine
 import app.tcg.core.domain.model.ParsedCardText
-import app.tcg.core.domain.model.Scored
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -20,6 +18,9 @@ data class ScanDiagnostics(
     val promoCode: String?,
     val ocrLines: List<String>,
     val candidates: List<ScannedCandidate>,
+    val decision: ScanDecisionCode? = null,
+    val topSignals: List<String> = emptyList(),
+    val origin: ScanOrigin = ScanOrigin.CAMERA,
 ) {
     fun toJson(): String = json.encodeToString(serializer(), this)
 
@@ -27,7 +28,9 @@ data class ScanDiagnostics(
         fun from(
             parsed: ParsedCardText,
             lines: List<OcrLine>,
-            ranked: List<Scored<Card>>,
+            ranked: List<RankedCandidate>,
+            decision: ScanDecision = ScanDecision.from(ranked),
+            origin: ScanOrigin = ScanOrigin.CAMERA,
         ) = ScanDiagnostics(
             parsedName = parsed.name,
             collectorNumber = parsed.collectorNumber,
@@ -36,9 +39,24 @@ data class ScanDiagnostics(
             promoCode = parsed.promoCode,
             ocrLines = lines.map { it.text },
             candidates = ranked.map { it.toSnapshot() },
+            decision = decision.code,
+            topSignals = ranked.firstOrNull()?.signals?.sortedByDescending { it.weight }?.map { it.name }.orEmpty(),
+            origin = origin,
         )
     }
 }
+
+@Serializable
+enum class ScanDecisionCode { CONFIRMED, TOO_WEAK }
+
+@Serializable
+enum class ScanOrigin { CAMERA, MANUAL }
+
+private val ScanDecision.code: ScanDecisionCode
+    get() = when (this) {
+        is ScanDecision.Confirmed -> ScanDecisionCode.CONFIRMED
+        ScanDecision.TooWeak -> ScanDecisionCode.TOO_WEAK
+    }
 
 @Serializable
 data class ScannedCandidate(
@@ -52,11 +70,11 @@ data class ScannedCandidate(
 
 private val json = Json { prettyPrint = true }
 
-private fun Scored<Card>.toSnapshot() = ScannedCandidate(
-    id = value.id,
-    name = value.name,
-    collectorNumber = value.collectorNumber,
-    setTotal = value.setTotal,
-    hp = value.hp,
+private fun RankedCandidate.toSnapshot() = ScannedCandidate(
+    id = card.id,
+    name = card.name,
+    collectorNumber = card.collectorNumber,
+    setTotal = card.setTotal,
+    hp = card.hp,
     score = score,
 )

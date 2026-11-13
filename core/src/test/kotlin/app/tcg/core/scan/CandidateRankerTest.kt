@@ -18,21 +18,21 @@ class CandidateRankerTest {
             card("bw1-42", "Zebstrika", "42", null),
             card("me05-021", "Finizen", "021", 80, setTotal = 84)))
 
-        assertEquals("me05-021", result.first().value.id)
+        assertEquals("me05-021", result.first().card.id)
     }
 
     @Test fun ranks_exact_number_and_name_match_first() {
         val parsed = ParsedCardText("Furret", "136", null, 110, "")
         val result = CandidateRanker.rank(parsed, listOf(
             card("a", "Sentret", "136", 60), card("b", "Furret", "136", 110)))
-        assertEquals("b", result.first().value.id)
+        assertEquals("b", result.first().card.id)
     }
 
     @Test fun hp_breaks_tie_on_same_name_and_number() {
         val parsed = ParsedCardText("Charizard", "6", null, 170, "")
         val result = CandidateRanker.rank(parsed, listOf(
             card("x", "Charizard", "6", 120), card("y", "Charizard", "6", 170)))
-        assertEquals("y", result.first().value.id)
+        assertEquals("y", result.first().card.id)
     }
 
     @Test fun name_similarity_still_scores_when_number_missing() {
@@ -58,7 +58,7 @@ class CandidateRankerTest {
         val result = CandidateRanker.rank(parsed, listOf(
             card("other", "Charmander", "001", 70),
             card("target", "Bulbasaur", "1", 70)))
-        assertEquals("target", result.first().value.id)
+        assertEquals("target", result.first().card.id)
     }
 
     @Test fun matching_set_total_breaks_same_name_and_number_tie() {
@@ -66,7 +66,7 @@ class CandidateRankerTest {
         val result = CandidateRanker.rank(parsed, listOf(
             card("other", "Bulbasaur", "001", null, setTotal = 207),
             card("target", "Bulbasaur", "001", null, setTotal = 165)))
-        assertEquals("target", result.first().value.id)
+        assertEquals("target", result.first().card.id)
     }
 
     @Test fun absent_set_total_leaves_ranking_unchanged() {
@@ -75,5 +75,22 @@ class CandidateRankerTest {
             card("a", "Bulbasaur", "001", null, setTotal = 207),
             card("b", "Bulbasaur", "001", null, setTotal = 165)))
         assertEquals(result[0].score, result[1].score)
+    }
+
+    @Test fun rank_records_every_signal_that_matched() {
+        val parsed = ParsedCardText("Pikachu", "027", null, 80, "", setTotal = 128)
+        val result = CandidateRanker.rank(parsed, listOf(card("p", "Pikachu", "027", 80, setTotal = 128)))
+
+        assertEquals(
+            setOf(ScanSignal.EXACT_NAME, ScanSignal.COLLECTOR_NUMBER, ScanSignal.HP, ScanSignal.SET_TOTAL),
+            result.single().signals,
+        )
+    }
+
+    @Test fun partial_name_records_partial_signal_instead_of_exact() {
+        val parsed = ParsedCardText("Pikach", null, null, null, "")
+        val result = CandidateRanker.rank(parsed, listOf(card("p", "Pikachu", "027", 80)))
+
+        assertEquals(setOf(ScanSignal.PARTIAL_NAME), result.single().signals)
     }
 }
