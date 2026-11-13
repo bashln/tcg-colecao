@@ -1,0 +1,36 @@
+name: deploy-jornada
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Gravar o segredo da Jornada na funcao
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          JORNADA_API_KEY: ${{ secrets.JORNADA_API_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf 'JORNADA_API_KEY=%s\n' "$JORNADA_API_KEY" > "$RUNNER_TEMP/jornada.env"
+          supabase secrets set --env-file "$RUNNER_TEMP/jornada.env" --project-ref "$SUPABASE_PROJECT_REF"
+          rm -f "$RUNNER_TEMP/jornada.env"
+
+      - name: Publicar a funcao
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: supabase functions deploy jornada-prices --project-ref "$SUPABASE_PROJECT_REF"

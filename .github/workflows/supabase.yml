@@ -30,5 +30,9 @@ jobs:
       - name: Instalar dependencias do harness
         run: npm ci
 
+      - name: Rodar testes da funcao Jornada
+        working-directory: .
+        run: node --test supabase/functions/jornada-prices/core.test.mjs
+
       - name: Rodar harness de PostgreSQL
         run: npm test
