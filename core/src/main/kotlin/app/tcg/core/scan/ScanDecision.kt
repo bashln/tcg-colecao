@@ -19,11 +19,17 @@ sealed interface ScanDecision {
     data object TooWeak : ScanDecision
 
     companion object {
+        /** The printed "NN/TTT" pair: the number plus the set size it was printed against. */
+        private val PRINTED_PAIR = setOf(ScanSignal.COLLECTOR_NUMBER, ScanSignal.SET_TOTAL)
+
         /**
          * An exact name identifies the card, even when set total and HP outrank it in the list,
          * so a unique exact name moves to the top. A lone collector number identifies the card
          * only when no other candidate carries it, since every set numbers its own cards from 1.
-         * Set total and HP only order the list, so on their own they never confirm.
+         * Because of that, the number alone rarely separates anything in the real catalog, so the
+         * printed total is what identifies the card: when exactly one candidate matches both
+         * halves of "NN/TTT", that pair names the card. A pair shared by two sets is still weak.
+         * Set total and HP on their own only order the list, so they never confirm.
          */
         fun from(ranked: List<RankedCandidate>): ScanDecision {
             if (ranked.isEmpty()) return TooWeak
@@ -34,8 +40,10 @@ sealed interface ScanDecision {
             if (exactNames.size > 1) return Confirmed(ranked)
             val top = ranked.first()
             val numberMatches = ranked.count { ScanSignal.COLLECTOR_NUMBER in it.signals }
-            if (ScanSignal.COLLECTOR_NUMBER in top.signals && numberMatches == 1) {
-                return Confirmed(ranked)
+            if (ScanSignal.COLLECTOR_NUMBER in top.signals) {
+                if (numberMatches == 1) return Confirmed(ranked)
+                val pairMatches = ranked.count { it.signals.containsAll(PRINTED_PAIR) }
+                if (ScanSignal.SET_TOTAL in top.signals && pairMatches == 1) return Confirmed(ranked)
             }
             return TooWeak
         }
