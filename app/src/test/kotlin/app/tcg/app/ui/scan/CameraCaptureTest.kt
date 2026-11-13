@@ -67,4 +67,43 @@ class CameraCaptureTest {
         assertEquals(Rect(0, 0, 2, 3), rect)
         assertTrue(rect.left >= 0 && rect.top >= 0 && rect.right <= 3 && rect.bottom <= 3)
     }
+
+    @Test
+    fun lines_inside_card_crop_frame_filters_out_neighbor_cards_in_binder_row() {
+        val uncroppedWidth = 600
+        val uncroppedHeight = 1000
+        // Guide frame is 432x604.8 centered in 600x1000.
+        // Crop rect is (0, 80, 600, 920).
+        // In crop space: left = 84, right = 516, top = 117.6, bottom = 722.4.
+
+        val leftNeighbor = app.tcg.core.domain.model.OcrLine(
+            text = "Drilbur",
+            top = 200f,
+            height = 30f,
+            left = 10f,
+            width = 60f,
+        )
+        val targetCard = app.tcg.core.domain.model.OcrLine(
+            text = "Skarmory",
+            top = 200f,
+            height = 30f,
+            left = 200f,
+            width = 100f,
+        )
+        val rightNeighbor = app.tcg.core.domain.model.OcrLine(
+            text = "Mandibuzz",
+            top = 200f,
+            height = 30f,
+            left = 530f,
+            width = 60f,
+        )
+
+        val filtered = linesInsideCardCropFrame(
+            lines = listOf(leftNeighbor, targetCard, rightNeighbor),
+            uncroppedWidth = uncroppedWidth,
+            uncroppedHeight = uncroppedHeight,
+        )
+
+        assertEquals(listOf("Skarmory"), filtered.map { it.text })
+    }
 }

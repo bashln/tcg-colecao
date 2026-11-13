@@ -1,5 +1,6 @@
 package app.tcg.app.ui.lists
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -64,6 +65,7 @@ fun ListDetailScreen(
     viewModel: ListDetailViewModel,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
+    onCardSelected: (String) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -136,6 +138,7 @@ fun ListDetailScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 onRemove = viewModel::removeCard,
                 onAddByNumber = { addingByNumber = true },
+                onCardSelected = onCardSelected,
             )
         }
     }
@@ -161,6 +164,7 @@ private fun ListCards(
     modifier: Modifier,
     onRemove: (String) -> Unit,
     onAddByNumber: () -> Unit,
+    onCardSelected: (String) -> Unit,
 ) {
     if (detail.cards.isEmpty()) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
@@ -182,16 +186,24 @@ private fun ListCards(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(detail.cards, key = { it.id }) { card ->
-                CardListRow(card = card, onRemove = { onRemove(card.id) })
+                CardListRow(
+                    card = card,
+                    onOpen = { onCardSelected(card.id) },
+                    onRemove = { onRemove(card.id) },
+                )
             }
         }
     }
 }
 
 @Composable
-private fun CardListRow(card: Card, onRemove: () -> Unit) {
+private fun CardListRow(card: Card, onOpen: () -> Unit, onRemove: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClickLabel = stringResource(R.string.cd_open_card), onClick = onOpen)
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AsyncImage(
@@ -292,6 +304,7 @@ private fun AddByNumberDialog(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.error,
                         )
+                        RejectedTokens(batch.rejected)
                         Spacer(Modifier.weight(1f))
                     }
                     is BatchState.Ready -> {
@@ -301,10 +314,13 @@ private fun AddByNumberDialog(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Spacer(Modifier.weight(1f))
                         } else {
                             Text(
-                                text = stringResource(R.string.lists_batch_matched, batch.matched.size),
+                                text = pluralStringResource(
+                                    R.plurals.lists_batch_matched,
+                                    batch.matched.size,
+                                    batch.matched.size,
+                                ),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -352,8 +368,12 @@ private fun AddByNumberDialog(
                                 ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
+                        RejectedTokens(batch.rejected)
+                        if (batch.matched.isEmpty()) Spacer(Modifier.weight(1f))
                     }
                 }
                 if (batch is BatchState.Ready) {
@@ -362,10 +382,28 @@ private fun AddByNumberDialog(
                         enabled = batch.matched.isNotEmpty(),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(stringResource(R.string.lists_batch_add, batch.matched.size))
+                        Text(
+                            pluralStringResource(
+                                R.plurals.lists_batch_add,
+                                batch.matched.size,
+                                batch.matched.size,
+                            ),
+                        )
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun RejectedTokens(rejected: List<String>) {
+    if (rejected.isEmpty()) return
+    Text(
+        text = stringResource(R.string.lists_batch_rejected, rejected.joinToString(", ")),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.error,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
 }

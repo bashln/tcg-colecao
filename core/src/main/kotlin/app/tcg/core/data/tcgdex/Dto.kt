@@ -53,6 +53,12 @@ data class TcgdexCardmarketDto(
     val avg1: Double? = null,
     val avg7: Double? = null,
     val avg30: Double? = null,
+    @SerialName("avg-holo") val avgHolo: Double? = null,
+    @SerialName("low-holo") val lowHolo: Double? = null,
+    @SerialName("trend-holo") val trendHolo: Double? = null,
+    @SerialName("avg1-holo") val avg1Holo: Double? = null,
+    @SerialName("avg7-holo") val avg7Holo: Double? = null,
+    @SerialName("avg30-holo") val avg30Holo: Double? = null,
 )
 
 /** Same shape for the top-level `pricing` and each variant's `pricing`; the mapper reads variants. */

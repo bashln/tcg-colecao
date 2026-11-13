@@ -24,5 +24,6 @@ object Valuation {
         PriceSource.TCGPLAYER -> Currency.USD
         PriceSource.CARDMARKET -> Currency.EUR
         PriceSource.LIGAPOKEMON -> Currency.BRL
+        PriceSource.JORANDA -> Currency.BRL
     }
 }

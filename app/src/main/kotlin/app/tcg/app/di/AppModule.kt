@@ -49,6 +49,7 @@ import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.CollectionRepository
 import app.tcg.core.data.tcgdex.KtorTcgdexCardSource
 import app.tcg.core.data.tcgdex.TcgdexCardSource
+import app.tcg.core.data.jornada.JornadaPriceSource
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -89,7 +90,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TcgDatabase =
         Room.databaseBuilder(context, TcgDatabase::class.java, "tcg.db")
-            .addMigrations(TcgDatabase.MIGRATION_1_2, TcgDatabase.MIGRATION_2_3, TcgDatabase.MIGRATION_3_4, TcgDatabase.MIGRATION_4_5, TcgDatabase.MIGRATION_5_6, TcgDatabase.MIGRATION_6_7, TcgDatabase.MIGRATION_7_8, TcgDatabase.MIGRATION_8_9, TcgDatabase.MIGRATION_9_10)
+            .addMigrations(TcgDatabase.MIGRATION_1_2, TcgDatabase.MIGRATION_2_3, TcgDatabase.MIGRATION_3_4, TcgDatabase.MIGRATION_4_5, TcgDatabase.MIGRATION_5_6, TcgDatabase.MIGRATION_6_7, TcgDatabase.MIGRATION_7_8, TcgDatabase.MIGRATION_8_9, TcgDatabase.MIGRATION_9_10, TcgDatabase.MIGRATION_10_11)
             .addCallback(TcgDatabase.BACKUP_TRIGGERS)
             .build()
 
@@ -107,7 +108,15 @@ object AppModule {
     fun provideCardRepository(
         cardDao: CardDao,
         source: TcgdexCardSource,
-    ): CardRepository = RoomCardRepository(cardDao, source)
+        httpClient: HttpClient,
+    ): CardRepository {
+        val jornada = if (BuildConfig.SUPABASE_URL.isNotBlank() && BuildConfig.SUPABASE_PUBLISHABLE_KEY.isNotBlank()) {
+            JornadaPriceSource(httpClient, BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+        } else {
+            null
+        }
+        return RoomCardRepository(cardDao, source, jornada)
+    }
 
     @Provides
     @Singleton

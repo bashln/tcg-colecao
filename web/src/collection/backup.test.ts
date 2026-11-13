@@ -10,6 +10,40 @@ test('backup export and import share the same inclusive size limit', () => {
   assert.equal(isCollectionBackupSizeAllowed(-1), false)
 })
 
+test('backup import accepts a card from a set whose id contains a dot', () => {
+  const parsed = parseCollectionBackup({
+    format: 'tcg-colecao-web-1',
+    exportedAt: '2026-11-13T00:00:00.000Z',
+    entries: [
+      {
+        item: {
+          id: 'item-dot-0001',
+          cardId: 'sv08.5-001',
+          quantity: 1,
+          variant: 'NORMAL',
+          condition: 'NEAR_MINT',
+          pricePaid: null,
+          addedAt: 1700000000,
+          revision: 1,
+          configurationKey: 'sv08.5-001\u001fNORMAL\u001fNEAR_MINT',
+        },
+        card: {
+          id: 'sv08.5-001',
+          name: 'Exeggcute',
+          setId: 'sv08.5',
+          setName: 'Prismatic Evolutions',
+          collectorNumber: '001/131',
+          imageUrl: null,
+          variants: ['NORMAL'],
+          prices: [],
+          setTotal: 180,
+        },
+      },
+    ],
+  })
+  assert.equal(parsed.kind, 'valid')
+})
+
 test('backup import requires HTTPS for card image URLs', () => {
   const cardId = parseCardId('swsh3-136')!
   const baseEntry = {

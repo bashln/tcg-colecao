@@ -26,7 +26,7 @@ import kotlinx.serialization.json.put
 private const val FORMAT = "tcg-colecao-web-1"
 private const val MAX_BACKUP_BYTES = 50 * 1024 * 1024
 private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
-private val CARD_ID = Regex("[a-zA-Z0-9][a-zA-Z0-9_-]{1,80}")
+private val CARD_ID = Regex("[a-zA-Z0-9][a-zA-Z0-9._-]{1,80}")
 private val ITEM_ID = Regex("[a-zA-Z0-9-]{8,80}")
 private val JSON = Json { isLenient = false }
 
@@ -142,6 +142,7 @@ object WebBackupAdapter {
             card.id, card.name, card.setId, card.setName, card.collectorNumber,
             card.imageUrl, card.variants.toList(),
             prices.mapNotNull { price ->
+                if (price.source == PriceSource.JORANDA) return@mapNotNull null
                 price.market?.let { WebQuote(it, price.currency, price.source, price.variant, price.updatedAt) }
             },
             card.setTotal,
@@ -159,7 +160,7 @@ private fun parseItem(raw: JsonElement): WebItem {
     val id = value.getValue("id").string()
     val cardId = value.getValue("cardId").string()
     invalid(ITEM_ID.matches(id), "ID de posse inválido")
-    invalid(CARD_ID.matches(cardId), "ID de carta inválido")
+    invalid(CARD_ID.matches(cardId), "ID de carta inválido: ${cardId.take(60)}")
     val quantity = value.getValue("quantity").integer(1, 100_000).toInt()
     val variant = value.getValue("variant").enum<CardVariant>()
     val condition = value.getValue("condition").enum<Condition>()
@@ -173,7 +174,7 @@ private fun parseItem(raw: JsonElement): WebItem {
 private fun parseCard(raw: JsonElement): WebCard {
     val value = raw.objectWith("id", "name", "setId", "setName", "collectorNumber", "imageUrl", "variants", "prices", "setTotal")
     val id = value.getValue("id").string()
-    invalid(CARD_ID.matches(id), "ID de carta inválido")
+    invalid(CARD_ID.matches(id), "ID de carta inválido: ${id.take(60)}")
     val imageUrl = value.getValue("imageUrl").takeUnless { it == JsonNull }?.string()
     if (imageUrl != null) invalid(runCatching { URI(imageUrl).let { it.scheme == "https" && it.host != null } }.getOrDefault(false), "URL de imagem inválida")
     val variants = value.getValue("variants").array().map { it.enum<CardVariant>() }

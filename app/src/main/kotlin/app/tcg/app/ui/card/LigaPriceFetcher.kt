@@ -1,6 +1,7 @@
 package app.tcg.app.ui.card
 
 import android.annotation.SuppressLint
+import android.os.SystemClock
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebView
@@ -38,24 +39,26 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.tcg.app.R
 import app.tcg.core.data.ligapokemon.LigaPokemonUrl
+import app.tcg.core.data.ligapokemon.LigaPricePhase
+import app.tcg.core.data.ligapokemon.LigaPriceWait
 import app.tcg.core.data.ligapokemon.LigaQuote
 import app.tcg.core.data.ligapokemon.LigaQuoteParser
+import app.tcg.core.data.ligapokemon.awaitLigaPrice
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.CardVariant
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 
 private const val QUOTE_EXPRESSION =
     "(typeof cards_editions !== 'undefined' && cards_editions) ? JSON.stringify(cards_editions) : ''"
-private const val MAX_ATTEMPTS = 5
-private const val RETRY_DELAY_MS = 1500L
 
 private sealed interface LigaState {
     data object Loading : LigaState
+    data object Verifying : LigaState
     data class Ready(val quote: LigaQuote) : LigaState
     data object Failed : LigaState
 }
@@ -72,6 +75,7 @@ fun LigaPriceDialog(
     val uriHandler = LocalUriHandler.current
     val url = remember(card) { LigaPokemonUrl.buildUrl(card) }
     val alive = remember { AtomicBoolean(true) }
+    val deadlineAt = remember(url) { AtomicLong(0L) }
     var pageLoads by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf<LigaState>(LigaState.Loading) }
     val webView = remember(url) {
@@ -100,20 +104,24 @@ fun LigaPriceDialog(
         }
     }
 
-    // The Cloudflare challenge page finishes loading too, so each document gets its own retry
+    // The Cloudflare challenge page finishes loading too, so each document gets its own wait
     // window; the reload after the challenge is what puts cards_editions on the page.
     LaunchedEffect(pageLoads) {
         if (pageLoads == 0 || state is LigaState.Ready) return@LaunchedEffect
-        state = LigaState.Loading
-        repeat(MAX_ATTEMPTS) { attempt ->
-            val quote = readQuote(webView, card.collectorNumber, alive)
-            if (quote != null) {
-                state = LigaState.Ready(quote)
-                return@LaunchedEffect
-            }
-            if (attempt < MAX_ATTEMPTS - 1) delay(RETRY_DELAY_MS)
+        val now = SystemClock.elapsedRealtime()
+        if (deadlineAt.get() == 0L) deadlineAt.set(now + LigaPriceWait.TIMEOUT_MS)
+        val remaining = deadlineAt.get() - now
+        if (remaining <= 0L) {
+            state = LigaState.Failed
+            return@LaunchedEffect
         }
-        state = LigaState.Failed
+        state = LigaState.Loading
+        val quote = awaitLigaPrice(timeoutMs = remaining, onPhase = { phase ->
+            if (phase == LigaPricePhase.VERIFYING) state = LigaState.Verifying
+        }) {
+            readQuote(webView, card.collectorNumber, alive)
+        }
+        state = if (quote != null) LigaState.Ready(quote) else LigaState.Failed
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -132,21 +140,26 @@ fun LigaPriceDialog(
                         Text(stringResource(R.string.detail_liga_web_close))
                     }
                 }
-                if (state is LigaState.Loading) {
+                val progressText = when (state) {
+                    LigaState.Verifying -> R.string.detail_liga_web_verifying
+                    LigaState.Loading -> R.string.detail_liga_web_loading
+                    else -> null
+                }
+                if (progressText != null) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         Text(
-                            text = stringResource(R.string.detail_liga_web_loading),
+                            text = stringResource(progressText),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
                 }
                 AndroidView(factory = { webView }, modifier = Modifier.fillMaxWidth().weight(1f))
                 when (val current = state) {
-                    LigaState.Loading -> Unit
+                    LigaState.Loading, LigaState.Verifying -> Unit
                     is LigaState.Ready -> {
                         current.quote.normalMedium?.let { QuoteLine(R.string.detail_liga_web_normal, it) }
                         current.quote.foilMedium?.let { QuoteLine(R.string.detail_liga_web_foil, it) }

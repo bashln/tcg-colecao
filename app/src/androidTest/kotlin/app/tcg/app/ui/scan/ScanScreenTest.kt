@@ -14,7 +14,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.tcg.app.ui.theme.TcgTheme
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.CardVariant
-import app.tcg.core.domain.model.Scored
+import app.tcg.core.scan.RankedCandidate
+import app.tcg.core.scan.ScanSignal
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -63,7 +64,7 @@ class ScanScreenTest {
         rule.setContent {
             TcgTheme {
                 ScanContent(
-                    state = ScanUiState(candidates = listOf(Scored(furret(), 100))),
+                    state = ScanUiState(candidates = listOf(RankedCandidate(furret(), setOf(ScanSignal.EXACT_NAME)))),
                     capturedBitmap = Bitmap.createBitmap(20, 28, Bitmap.Config.ARGB_8888),
                     manualQuery = "",
                     onManualQueryChange = {},
@@ -119,7 +120,7 @@ class ScanScreenTest {
                     onManualQueryChange = { query.value = it },
                     onManualSearch = {
                         searched = query.value
-                        state.value = ScanUiState(candidates = listOf(Scored(furret(), 100)))
+                        state.value = ScanUiState(candidates = listOf(RankedCandidate(furret(), setOf(ScanSignal.EXACT_NAME))))
                     },
                     onCapture = {},
                     onGallery = {},

@@ -15,6 +15,7 @@ object OcrParser {
     private val PROMO = Regex("""\b([A-Z]{2,4})(\d{2,3})\b""")
     private val HP_EXTRACTION = Regex("""(?i)\b(?:HP|PS|PV|PL|P\$)\s*(\d+)""")
     private val HP_REGEX = Regex("""(?i)\b(HP|PS|PV|PL|P\$)\s*\d+""")
+    private val HP_LABEL = Regex("""(?i)^\s*(?:HP|PS|PV|PL|P\$)\s*$""")
     private val HP_SOLO_REGEX = Regex("""(?i)^\s*[\W_A-Z]{0,2}\s*\d{2,3}\s*[A-Z]?\s*$""")
     private val STAGE_WORDS = setOf(
         "BASIC", "STAGE 1", "STAGE 2", "TRAINER", "ENERGY",
@@ -233,7 +234,10 @@ object OcrParser {
     private fun isHpLine(line: OcrLine): Boolean {
         val trimmed = line.text.trim()
         if (HP_REGEX.containsMatchIn(trimmed) || HP_SOLO_REGEX.matches(trimmed)) return true
-        if (line.left > 350f && (trimmed.any { it.isDigit() } || trimmed.length <= 6)) return true
+        if (HP_LABEL.matches(trimmed)) return true
+        // An HP value carries digits. A letter-only line in the right third is a name fragment,
+        // so it stays a name candidate.
+        if (line.left > 350f && trimmed.any { it.isDigit() }) return true
         return false
     }
 

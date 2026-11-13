@@ -3,6 +3,7 @@ package app.tcg.app.ui.scan
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.PriceRefreshReport
 import app.tcg.core.data.repository.SetCatalogResult
+import app.tcg.core.scan.ScanDecisionCode
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.OcrLine
 import java.io.IOException
@@ -39,7 +40,7 @@ class ScanViewModelTest {
         val repo = FakeCardRepository(listOf(card("b", "Furret", "136", 110)))
         val vm = ScanViewModel(repo)
         vm.onTextRecognized(listOf(OcrLine("Furret", 0f, 40f), OcrLine("136/189", 100f, 40f)))
-        assertEquals("b", vm.state.value.candidates.first().value.id)
+        assertEquals("b", vm.state.value.candidates.first().card.id)
     }
 
     @Test
@@ -99,7 +100,7 @@ class ScanViewModelTest {
         val repo = FakeCardRepository(listOf(card("b", "Furret", "136", 110)))
         val vm = ScanViewModel(repo)
         vm.onManualSearch("Furret")
-        assertEquals("b", vm.state.value.candidates.first().value.id)
+        assertEquals("b", vm.state.value.candidates.first().card.id)
         assertFalse(vm.state.value.manualSearch)
     }
 
@@ -111,7 +112,7 @@ class ScanViewModelTest {
 
         vm.onManualSearch("Furret")
 
-        assertEquals(listOf("b"), vm.state.value.candidates.map { it.value.id })
+        assertEquals(listOf("b"), vm.state.value.candidates.map { it.card.id })
     }
 
     @Test
@@ -130,7 +131,7 @@ class ScanViewModelTest {
         oldSearch.complete(listOf(card("old", "Furret", "136", 110)))
         oldRequest.await()
 
-        assertEquals(listOf("new"), vm.state.value.candidates.map { it.value.id })
+        assertEquals(listOf("new"), vm.state.value.candidates.map { it.card.id })
         assertFalse(vm.state.value.loading)
     }
 
@@ -149,7 +150,7 @@ class ScanViewModelTest {
         val repo = SplitCardRepository(byName = listOf(target), byNumber = listOf(other, target))
         val vm = ScanViewModel(repo)
         vm.onTextRecognized(listOf(OcrLine("Bulbasaur", 0f, 40f), OcrLine("001/198", 100f, 40f)))
-        val ids = vm.state.value.candidates.map { it.value.id }
+        val ids = vm.state.value.candidates.map { it.card.id }
         assertEquals(1, ids.count { it == "sv03.5-001" })
         assertEquals("sv03.5-001", ids.first())
     }
@@ -173,17 +174,18 @@ class ScanViewModelTest {
         vm.onTextRecognized(listOf(OcrLine("Frogadier", 0f, 40f), OcrLine("001/198", 100f, 40f)))
         assertTrue(
             "a misread name must not discard the correct number result",
-            vm.state.value.candidates.any { it.value.id == "num-hit" },
+            vm.state.value.candidates.any { it.card.id == "num-hit" },
         )
     }
 
     @Test
-    fun name_and_number_falls_back_to_full_merge_when_nothing_name_matches() = runTest {
+    fun unmatched_name_with_two_same_number_cards_falls_back_to_manual_search() = runTest {
         val unrelated = listOf(card("a", "Charmander", "001", 60), card("b", "Bulbasaur", "001", 70))
         val repo = SplitCardRepository(byName = emptyList(), byNumber = unrelated)
         val vm = ScanViewModel(repo)
         vm.onTextRecognized(listOf(OcrLine("Frogadier", 0f, 40f), OcrLine("001/198", 100f, 40f)))
-        assertEquals(unrelated.map { it.id }.toSet(), vm.state.value.candidates.map { it.value.id }.toSet())
+        assertTrue(vm.state.value.candidates.isEmpty())
+        assertTrue(vm.state.value.manualSearch)
     }
 
     @Test
@@ -191,16 +193,17 @@ class ScanViewModelTest {
         val repo = SplitCardRepository(byName = listOf(card("z", "Zubat", "049", 40)), byNumber = emptyList())
         val vm = ScanViewModel(repo)
         vm.onManualSearch("Zubat")
-        assertEquals(listOf("Zubat"), vm.state.value.candidates.map { it.value.name })
+        assertEquals(listOf("Zubat"), vm.state.value.candidates.map { it.card.name })
     }
 
     @Test
-    fun number_only_keeps_all_number_results_even_without_name_match() = runTest {
+    fun two_same_number_cards_without_a_name_fall_back_to_manual_search() = runTest {
         val results = listOf(card("a", "Charmander", "049", 60), card("b", "Squirtle", "049", 60))
         val repo = SplitCardRepository(byName = emptyList(), byNumber = results)
         val vm = ScanViewModel(repo)
         vm.onTextRecognized(listOf(OcrLine("049/086", 100f, 40f)))
-        assertEquals(results.map { it.id }.toSet(), vm.state.value.candidates.map { it.value.id }.toSet())
+        assertTrue(vm.state.value.candidates.isEmpty())
+        assertTrue(vm.state.value.manualSearch)
     }
 
     @Test
@@ -293,6 +296,78 @@ class ScanViewModelTest {
         assertEquals(ScanGridMode.GRID_2X2, vm.state.value.gridMode)
         assertTrue(vm.state.value.candidates.isEmpty())
         assertTrue(vm.state.value.multiCardResults.isEmpty())
+    }
+
+    @Test
+    fun loose_number_with_three_candidates_falls_back_to_manual_search() = runTest {
+        val repo = FakeCardRepository(listOf(
+            card("a-42", "Zebstrika", "42", null),
+            card("b-042", "Finizen", "042", null),
+            card("c-42", "Pikachu", "42", null),
+        ))
+        val vm = ScanViewModel(repo)
+
+        vm.onTextRecognized(listOf(OcrLine("042/189", 100f, 40f)))
+
+        assertTrue(vm.state.value.candidates.isEmpty())
+        assertTrue(vm.state.value.manualSearch)
+        assertEquals(
+            "Não foi possível confirmar a carta pela foto. Digite o nome ou o número da carta.",
+            vm.state.value.error,
+        )
+        assertEquals(ScanDecisionCode.TOO_WEAK, vm.state.value.diagnostics?.decision)
+    }
+
+    @Test
+    fun manual_search_with_an_ambiguous_result_still_lists_candidates() = runTest {
+        val repo = FakeCardRepository(listOf(
+            card("a-42", "Zebstrika", "42", null),
+            card("b-042", "Finizen", "042", null),
+            card("c-42", "Pikachu", "42", null),
+        ))
+        val vm = ScanViewModel(repo)
+
+        vm.onManualSearch("42")
+
+        assertEquals(3, vm.state.value.candidates.size)
+        assertFalse(vm.state.value.manualSearch)
+        assertNull(vm.state.value.error)
+    }
+
+    @Test
+    fun exact_name_scan_keeps_candidates_and_leaves_manual_search_off() = runTest {
+        val vm = ScanViewModel(FakeCardRepository(listOf(card("b", "Furret", "136", 110))))
+
+        vm.onTextRecognized(listOf(OcrLine("Furret", 0f, 40f), OcrLine("136/189", 100f, 40f)))
+
+        assertEquals(listOf("b"), vm.state.value.candidates.map { it.card.id })
+        assertFalse(vm.state.value.manualSearch)
+        assertNull(vm.state.value.error)
+    }
+
+    @Test
+    fun a_weak_quadrant_is_left_out_of_multi_card_results() = runTest {
+        val strong = card("b", "Furret", "136", 110)
+        val weak = listOf(
+            card("a-42", "Zebstrika", "42", null),
+            card("b-042", "Finizen", "042", null),
+            card("c-42", "Pikachu", "42", null),
+        )
+        val collection = FakeCollectionRepository()
+        val vm = ScanViewModel(SplitCardRepository(byName = listOf(strong), byNumber = weak), collection)
+
+        vm.onMultiCardTextRecognized(
+            mapOf(
+                0 to listOf(OcrLine("Furret", 0f, 40f), OcrLine("136/189", 100f, 40f)),
+                1 to listOf(OcrLine("042/189", 100f, 40f)),
+            ),
+        )
+
+        assertEquals(listOf(0), vm.state.value.multiCardResults.map { it.quadrantIndex })
+        assertEquals("b", vm.state.value.multiCardResults.single().selectedCard?.id)
+
+        vm.quickAddAllMultiCards()
+        assertEquals(listOf("b"), collection.added.map { it.id })
     }
 
     @Test

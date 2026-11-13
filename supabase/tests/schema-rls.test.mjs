@@ -4,8 +4,10 @@ import { startCluster } from './helpers/platform.mjs';
 
 const USER_A = '00000000-0000-0000-0000-00000000000a';
 const USER_B = '00000000-0000-0000-0000-00000000000b';
+const USER_C = '00000000-0000-0000-0000-00000000000c';
 const COLLECTION_A = '10000000-0000-0000-0000-00000000000a';
 const COLLECTION_B = '10000000-0000-0000-0000-00000000000b';
+const COLLECTION_C = '10000000-0000-0000-0000-00000000000c';
 
 const SYNC_TABLES = [
   'collections',
@@ -129,6 +131,35 @@ describe('collection sync schema and RLS', () => {
       /permission denied/,
     );
     await anon.end();
+  });
+
+  test('card ids with a dot are accepted and other punctuation is rejected', async () => {
+    await cluster.admin.query(
+      `insert into public.collections (id, owner) values ($1::uuid, $2::uuid)`,
+      [COLLECTION_C, USER_C],
+    );
+    await cluster.admin.query(
+      `insert into public.collection_items
+         (collection_id, item_id, card_id, variant, condition, quantity, added_at)
+       values ($1::uuid, 'item-cccc-0001', 'sv08.5-001', 'NORMAL', 'NEAR_MINT', 1, 4000)`,
+      [COLLECTION_C],
+    );
+    const rows = await cluster.admin.query(
+      `select card_id from public.collection_items where collection_id = $1::uuid`,
+      [COLLECTION_C],
+    );
+    assert.equal(rows.rows[0].card_id, 'sv08.5-001');
+
+    await assert.rejects(
+      () =>
+        cluster.admin.query(
+          `insert into public.collection_items
+             (collection_id, item_id, card_id, variant, condition, quantity, added_at)
+           values ($1::uuid, 'item-cccc-0002', 'sv08/5-001', 'NORMAL', 'NEAR_MINT', 1, 4000)`,
+          [COLLECTION_C],
+        ),
+      /check constraint/,
+    );
   });
 
   test('active configuration uniqueness holds only for live items', async () => {

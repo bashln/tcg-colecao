@@ -115,6 +115,8 @@ fun CardPrice.toEntity(cardId: String) = CardPriceEntity(
     avg7 = avg7,
     avg30 = avg30,
     updatedAt = updatedAt,
+    condition = condition,
+    language = language,
 )
 
 fun CardPrice.toObservation(cardId: String, observedAt: Long): CardPriceObservationEntity? =
@@ -143,6 +145,8 @@ fun CardPriceEntity.toPrice() = CardPrice(
     avg7 = avg7,
     avg30 = avg30,
     updatedAt = updatedAt,
+    condition = condition,
+    language = language,
 )
 
 fun CollectionItemEntity.toItem() = CollectionItem(

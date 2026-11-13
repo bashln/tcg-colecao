@@ -132,6 +132,8 @@ fun ScanScreen(
         val bitmap = uri?.let { loadBitmap(context, it) }
         if (bitmap != null) {
             viewModel.prepareForCapture()
+            val uncroppedWidth = bitmap.width
+            val uncroppedHeight = bitmap.height
             val cardBitmap = bitmap.cropToCard()
             if (cardBitmap !== bitmap) bitmap.recycle()
             capturedBitmap = null
@@ -140,7 +142,10 @@ fun ScanScreen(
                 recognizer = recognizer,
                 bitmap = cardBitmap,
                 rotationDegrees = 0,
-                onTextRecognized = { lines -> scope.launch { viewModel.onTextRecognized(lines) } },
+                onTextRecognized = { lines ->
+                    val filtered = linesInsideCardCropFrame(lines, uncroppedWidth, uncroppedHeight)
+                    scope.launch { viewModel.onTextRecognized(filtered) }
+                },
                 onError = viewModel::onCaptureError,
                 onComplete = { cardBitmap.recycle() },
             )
@@ -434,9 +439,9 @@ fun ScanContent(
             // Mode 1: Fast Continuous Batch Mode - Instant Quick Add Card overlay
             state.isBatchMode && state.candidates.isNotEmpty() -> {
                 BatchQuickAddCard(
-                    card = state.candidates.first().value,
-                    onQuickAdd = { onQuickAddCard(state.candidates.first().value) },
-                    onDetails = { onCardSelected(state.candidates.first().value) },
+                    card = state.candidates.first().card,
+                    onQuickAdd = { onQuickAddCard(state.candidates.first().card) },
+                    onDetails = { onCardSelected(state.candidates.first().card) },
                     onSkip = onResetForNext,
                 )
             }
@@ -483,11 +488,11 @@ fun ScanContent(
                 ) {
                     if (capturedBitmap != null) {
                         item(key = "scan-comparison") {
-                            ScanComparison(capturedBitmap, state.candidates.first().value)
+                            ScanComparison(capturedBitmap, state.candidates.first().card)
                         }
                     }
-                    items(state.candidates, key = { it.value.id }) { scored ->
-                        CandidateCard(card = scored.value, onClick = { onCardSelected(scored.value) })
+                    items(state.candidates, key = { it.card.id }) { scored ->
+                        CandidateCard(card = scored.card, onClick = { onCardSelected(scored.card) })
                     }
                     if (onShareDiagnostics != null && state.diagnostics != null) {
                         item(key = "scan-diagnostics") {

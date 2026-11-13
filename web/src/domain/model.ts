@@ -84,7 +84,7 @@ export const conditionLabels: Record<Condition, string> = {
 }
 
 export function parseCardId(value: unknown): CardId | null {
-  return typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,80}$/.test(value)
+  return typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,80}$/.test(value)
     ? value as CardId
     : null
 }
@@ -161,6 +161,21 @@ export function missingFromCompleteCatalog(coverage: SetCoverage, owned: Collect
   if (coverage.kind !== 'complete') return null
   const ownedIds = new Set(owned.map((entry) => entry.item.cardId))
   return coverage.cards.filter((card) => !ownedIds.has(card.id))
+}
+
+export function mergeQuotes(stored: readonly MarketQuote[], incoming: readonly MarketQuote[]): MarketQuote[] {
+  const merged = new Map<string, MarketQuote>()
+  for (const quote of stored) merged.set(quoteKey(quote), quote)
+  for (const quote of incoming) {
+    const key = quoteKey(quote)
+    if (merged.has(key) && !(Number.isFinite(quote.amount) && quote.amount > 0)) continue
+    merged.set(key, quote)
+  }
+  return [...merged.values()]
+}
+
+function quoteKey(quote: MarketQuote): string {
+  return `${quote.source}\u001f${quote.variant}`
 }
 
 export function quoteFor(card: CardSummary, variant: CardVariant, currency: Currency): MarketQuote | null {

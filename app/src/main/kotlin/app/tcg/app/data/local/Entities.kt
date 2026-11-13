@@ -149,6 +149,8 @@ data class CardPriceEntity(
     val avg7: Double?,
     val avg30: Double?,
     val updatedAt: String?,
+    val condition: String? = null,
+    val language: String? = null,
 )
 
 @Entity(
