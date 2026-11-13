@@ -17,6 +17,12 @@ data class ScanDiagnostics(
     val hp: Int?,
     val promoCode: String?,
     val ocrLines: List<String>,
+    /**
+     * Box of each line in [ocrLines], same order. The parser reads text and geometry together
+     * (a short name far right is dropped as the HP value, a line much shorter than the tallest is
+     * out of the name's size class), so text alone cannot replay a device failure.
+     */
+    val ocrBoxes: List<OcrBox> = emptyList(),
     val candidates: List<ScannedCandidate>,
     val decision: ScanDecisionCode? = null,
     val topSignals: List<String> = emptyList(),
@@ -38,6 +44,7 @@ data class ScanDiagnostics(
             hp = parsed.hp,
             promoCode = parsed.promoCode,
             ocrLines = lines.map { it.text },
+            ocrBoxes = lines.map { OcrBox(it.left, it.top, it.width, it.height) },
             candidates = ranked.map { it.toSnapshot() },
             decision = decision.code,
             topSignals = ranked.firstOrNull()?.signals?.sortedByDescending { it.weight }?.map { it.name }.orEmpty(),
@@ -45,6 +52,9 @@ data class ScanDiagnostics(
         )
     }
 }
+
+@Serializable
+data class OcrBox(val left: Float, val top: Float, val width: Float, val height: Float)
 
 @Serializable
 enum class ScanDecisionCode { CONFIRMED, TOO_WEAK }

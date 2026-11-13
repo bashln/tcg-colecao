@@ -60,6 +60,37 @@ class ScanDiagnosticsTest {
         assertTrue(json.contains("\"COLLECTOR_NUMBER\""), json)
     }
 
+    @Test fun carries_the_box_of_every_ocr_line() {
+        val lines = listOf(OcrLine("Vulpix", 120f, 44f, left = 96f, width = 210f), OcrLine("019/132", 1300f, 22f))
+        val diagnostics = ScanDiagnostics.from(
+            ParsedCardText("Vulpix", "019", null, null, "", setTotal = 132),
+            lines,
+            emptyList(),
+        )
+
+        assertEquals(2, diagnostics.ocrBoxes.size)
+        assertEquals(OcrBox(left = 96f, top = 120f, width = 210f, height = 44f), diagnostics.ocrBoxes.first())
+        assertTrue(diagnostics.toJson().contains("\"ocrBoxes\""), diagnostics.toJson())
+    }
+
+    @Test fun decodes_a_diagnostics_written_before_the_ocr_boxes_existed() {
+        val old = """
+            {
+              "parsedName": "Finizen",
+              "collectorNumber": "042",
+              "setTotal": null,
+              "hp": null,
+              "promoCode": null,
+              "ocrLines": ["042/189"],
+              "candidates": []
+            }
+        """.trimIndent()
+
+        val decoded = kotlinx.serialization.json.Json.decodeFromString(ScanDiagnostics.serializer(), old)
+
+        assertEquals(emptyList(), decoded.ocrBoxes)
+    }
+
     @Test fun round_trips_through_json() {
         val diagnostics = ScanDiagnostics.from(
             parsed = ParsedCardText(null, null, null, null, ""),
