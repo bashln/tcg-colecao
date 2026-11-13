@@ -170,7 +170,20 @@ class AuthControllerTest {
     }
 
     @Test
-    fun `start clears the session when refresh fails`() = runTest {
+    fun `network failure during startup keeps the stored session`() = runTest {
+        val stored = session(expiresAt = 500L)
+        store.session = stored
+        nowEpochSeconds = 1_000L
+        remote.refreshError = AuthError.Network
+        val controller = controller()
+        controller.start()
+        assertEquals(stored, store.session)
+        assertEquals(0, store.clears)
+        assertEquals(AuthState.SignedIn(stored), controller.state.value)
+    }
+
+    @Test
+    fun `start clears the session when the refresh is rejected`() = runTest {
         store.session = session(expiresAt = 500L)
         nowEpochSeconds = 1_000L
         remote.refreshError = AuthError.InvalidCredentials
