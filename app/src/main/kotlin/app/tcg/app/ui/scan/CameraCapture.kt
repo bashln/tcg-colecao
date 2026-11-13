@@ -413,6 +413,32 @@ internal fun linesInsideCardFrame(
     }
 }
 
+internal fun linesInsideCardCropFrame(
+    lines: List<OcrLine>,
+    uncroppedWidth: Int,
+    uncroppedHeight: Int,
+): List<OcrLine> {
+    val frameWidth = minOf(
+        uncroppedWidth * CARD_FRAME_WIDTH_FRACTION,
+        uncroppedHeight * CARD_FRAME_HEIGHT_FRACTION * CARD_ASPECT,
+    )
+    val frameHeight = frameWidth / CARD_ASPECT
+    val frameLeft = (uncroppedWidth - frameWidth) / 2f
+    val frameTop = (uncroppedHeight - frameHeight) / 2f
+
+    val crop = cardCropRect(uncroppedWidth, uncroppedHeight)
+    val left = frameLeft - crop.left
+    val top = frameTop - crop.top
+    val right = left + frameWidth
+    val bottom = top + frameHeight
+
+    return lines.filter { line ->
+        val centerX = line.left + line.width / 2f
+        val centerY = line.top + line.height / 2f
+        centerX in left..right && centerY in top..bottom
+    }
+}
+
 private fun Bitmap.rotated(degrees: Int): Bitmap {
     if (degrees == 0) return this
     val matrix = Matrix().apply { postRotate(degrees.toFloat()) }
@@ -464,6 +490,8 @@ private fun capture(
                         onComplete = { rotatedBitmap.recycle() },
                     )
                 } else {
+                    val uncroppedWidth = rotatedBitmap.width
+                    val uncroppedHeight = rotatedBitmap.height
                     val cardBitmap = rotatedBitmap.cropToCard()
                     if (cardBitmap !== rotatedBitmap) rotatedBitmap.recycle()
                     onCapturedBitmap(cardBitmap.previewCopy())
@@ -471,7 +499,9 @@ private fun capture(
                         recognizer,
                         cardBitmap,
                         0,
-                        onTextRecognized,
+                        onTextRecognized = { lines ->
+                            onTextRecognized(linesInsideCardCropFrame(lines, uncroppedWidth, uncroppedHeight))
+                        },
                         onError,
                         onComplete = { cardBitmap.recycle() },
                     )
