@@ -23,12 +23,20 @@ val releasePackagingRequested = gradle.startParameter.taskNames.any { requested 
     }
 }
 
+val missingKeystoreMessage =
+    "release-build: keystore de release ausente. Defina TCG_KEYSTORE_PATH, " +
+        "TCG_KEYSTORE_PASSWORD, TCG_KEY_ALIAS e TCG_KEY_PASSWORD, ou use " +
+        "TCG_ALLOW_DEBUG_SIGNING=1 para um APK de teste assinado com debug."
+
 if (releasePackagingRequested && releaseKeystore == null && !allowDebugSigning) {
-    throw GradleException(
-        "release-build: keystore de release ausente. Defina TCG_KEYSTORE_PATH, " +
-            "TCG_KEYSTORE_PASSWORD, TCG_KEY_ALIAS e TCG_KEY_PASSWORD, ou use " +
-            "TCG_ALLOW_DEBUG_SIGNING=1 para um APK de teste assinado com debug.",
-    )
+    throw GradleException(missingKeystoreMessage)
+}
+
+// `build` e `assemble` também empacotam a variante release sem aparecer no nome da tarefa.
+tasks.matching { it.name == "packageRelease" || it.name == "packageReleaseBundle" }.configureEach {
+    doFirst {
+        if (releaseKeystore == null && !allowDebugSigning) throw GradleException(missingKeystoreMessage)
+    }
 }
 
 
