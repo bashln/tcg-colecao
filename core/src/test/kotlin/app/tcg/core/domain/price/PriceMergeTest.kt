@@ -88,6 +88,72 @@ class PriceMergeTest {
         assertEquals(9.0, merged.single { it.source == PriceSource.CARDMARKET }.market)
     }
 
+    @Test
+    fun a_valid_incoming_market_merges_field_by_field_and_keeps_the_fields_absent_from_the_payload() {
+        val merged = PriceMerge.merge(
+            listOf(
+                price(
+                    market = 10.0, low = 1.5, mid = 2.5, high = 3.5, trend = 4.5,
+                    avg1 = 5.5, avg7 = 6.5, avg30 = 7.5, updatedAt = "2026-11-09",
+                ),
+            ),
+            listOf(price(market = 12.5, low = 1.75)),
+        )
+
+        val single = merged.single()
+        assertEquals(12.5, single.market)
+        assertEquals(1.75, single.low)
+        assertEquals(2.5, single.mid)
+        assertEquals(3.5, single.high)
+        assertEquals(4.5, single.trend)
+        assertEquals(5.5, single.avg1)
+        assertEquals(6.5, single.avg7)
+        assertEquals(7.5, single.avg30)
+        assertEquals("2026-11-09", single.updatedAt)
+    }
+
+    @Test
+    fun a_valid_incoming_market_without_a_timestamp_keeps_the_existing_timestamp() {
+        val merged = PriceMerge.merge(
+            listOf(price(market = 10.0, updatedAt = "2026-11-09")),
+            listOf(price(market = 12.5, updatedAt = null)),
+        )
+
+        assertEquals("2026-11-09", merged.single().updatedAt)
+    }
+
+    @Test
+    fun an_existing_price_without_market_receives_the_valid_incoming_quote() {
+        val merged = PriceMerge.merge(
+            listOf(price(market = null, low = 0.5, updatedAt = "2026-11-09")),
+            listOf(price(market = 4.2)),
+        )
+
+        assertEquals(4.2, merged.single().market)
+        assertEquals(0.5, merged.single().low)
+        assertEquals("2026-11-09", merged.single().updatedAt)
+    }
+
+    @Test
+    fun an_existing_non_positive_market_becomes_null_when_the_payload_has_no_valid_market() {
+        val zero = PriceMerge.merge(listOf(price(market = 0.0)), listOf(price(market = null)))
+        val negative = PriceMerge.merge(listOf(price(market = -3.0)), listOf(price(market = 0.0)))
+
+        assertNull(zero.single().market)
+        assertNull(negative.single().market)
+    }
+
+    @Test
+    fun a_non_positive_incoming_market_keeps_the_valid_market_of_the_same_key() {
+        val merged = PriceMerge.merge(
+            listOf(price(market = 10.0), price(market = 3.0, variant = CardVariant.HOLOFOIL)),
+            listOf(price(market = 0.0), price(market = -1.0, variant = CardVariant.HOLOFOIL)),
+        )
+
+        assertEquals(10.0, merged.single { it.variant == CardVariant.NORMAL }.market)
+        assertEquals(3.0, merged.single { it.variant == CardVariant.HOLOFOIL }.market)
+    }
+
     private fun price(
         market: Double?,
         source: PriceSource = PriceSource.TCGPLAYER,
@@ -95,18 +161,24 @@ class PriceMergeTest {
         variant: CardVariant = CardVariant.NORMAL,
         updatedAt: String? = null,
         low: Double? = null,
+        mid: Double? = null,
+        high: Double? = null,
+        trend: Double? = null,
+        avg1: Double? = null,
+        avg7: Double? = null,
+        avg30: Double? = null,
     ) = CardPrice(
         source = source,
         variant = variant,
         currency = currency,
         market = market,
         low = low,
-        mid = null,
-        high = null,
-        trend = null,
-        avg1 = null,
-        avg7 = null,
-        avg30 = null,
+        mid = mid,
+        high = high,
+        trend = trend,
+        avg1 = avg1,
+        avg7 = avg7,
+        avg30 = avg30,
         updatedAt = updatedAt,
     )
 }

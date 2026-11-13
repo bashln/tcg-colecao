@@ -13,9 +13,9 @@ object PriceMerge {
         for (price in existing) {
             val candidate = incomingByKey[price.key()]
             merged[price.key()] = if (candidate != null && validMarketPrice(candidate.market) != null) {
-                candidate
+                price.mergedWith(candidate)
             } else {
-                price
+                price.copy(market = validMarketPrice(price.market))
             }
         }
         for (price in incoming) {
@@ -23,6 +23,19 @@ object PriceMerge {
         }
         return merged.values.toList()
     }
+
+    private fun CardPrice.mergedWith(candidate: CardPrice): CardPrice = candidate.copy(
+        low = candidate.low.orElse(low),
+        mid = candidate.mid.orElse(mid),
+        high = candidate.high.orElse(high),
+        trend = candidate.trend.orElse(trend),
+        avg1 = candidate.avg1.orElse(avg1),
+        avg7 = candidate.avg7.orElse(avg7),
+        avg30 = candidate.avg30.orElse(avg30),
+        updatedAt = candidate.updatedAt ?: updatedAt,
+    )
+
+    private fun Double?.orElse(fallback: Double?): Double? = validMarketPrice(this) ?: fallback
 
     private fun CardPrice.key(): Pair<PriceSource, CardVariant> = source to variant
 }

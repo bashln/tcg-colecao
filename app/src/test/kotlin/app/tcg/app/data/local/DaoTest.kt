@@ -17,6 +17,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import app.tcg.app.testutil.testCard
 import app.tcg.app.testutil.testPrice
+import app.tcg.core.domain.model.CardPrice
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.PriceSource
 import java.time.Instant
@@ -210,6 +211,67 @@ class DaoTest {
             prices.filter { it.source == PriceSource.LIGAPOKEMON },
         )
     }
+
+    @Test
+    fun market_refresh_does_not_rewrite_the_manual_ligapokemon_quote() = runTest {
+        val dao = db.cardDao()
+        val cardId = "mep-081"
+        dao.saveSinglePrice(ligapokemonQuote(4.99).toEntity(cardId), Instant.parse("2026-11-09T12:00:00Z").toEpochMilli())
+
+        dao.captureCardPrices(
+            testCard(cardId, prices = listOf(testPrice(0.80), ligapokemonQuote(0.0))),
+            Instant.parse("2026-11-10T12:00:00Z").toEpochMilli(),
+        )
+
+        assertEquals(
+            listOf(4.99),
+            dao.pricesFor(cardId).filter { it.source == PriceSource.LIGAPOKEMON }.map { it.market },
+        )
+    }
+
+    @Test
+    fun market_refresh_does_not_record_observations_for_the_manual_ligapokemon_quote() = runTest {
+        val dao = db.cardDao()
+        val cardId = "mep-081"
+        dao.saveSinglePrice(ligapokemonQuote(4.99).toEntity(cardId), Instant.parse("2026-11-09T12:00:00Z").toEpochMilli())
+
+        dao.captureCardPrices(
+            testCard(cardId, prices = listOf(testPrice(0.80), ligapokemonQuote(4.99))),
+            Instant.parse("2026-11-10T12:00:00Z").toEpochMilli(),
+        )
+
+        val observations = dao.priceObservationsFor(cardId, PriceSource.LIGAPOKEMON, CardVariant.HOLOFOIL, Currency.BRL)
+        assertEquals(listOf(4.99), observations.map { it.amount })
+        assertEquals(listOf(LocalDate.parse("2026-11-09")), observations.map { it.utcDay })
+    }
+
+    @Test
+    fun save_single_price_with_zero_market_stores_null_and_writes_no_observation() = runTest {
+        val dao = db.cardDao()
+        val cardId = "mep-081"
+
+        dao.saveSinglePrice(ligapokemonQuote(0.0).toEntity(cardId), Instant.parse("2026-11-09T12:00:00Z").toEpochMilli())
+
+        assertEquals(listOf(null), dao.pricesFor(cardId).map { it.market })
+        assertTrue(
+            dao.priceObservationsFor(cardId, PriceSource.LIGAPOKEMON, CardVariant.HOLOFOIL, Currency.BRL).isEmpty(),
+        )
+    }
+
+    private fun ligapokemonQuote(market: Double?) = CardPrice(
+        source = PriceSource.LIGAPOKEMON,
+        variant = CardVariant.HOLOFOIL,
+        currency = Currency.BRL,
+        market = market,
+        low = null,
+        mid = null,
+        high = null,
+        trend = null,
+        avg1 = null,
+        avg7 = null,
+        avg30 = null,
+        updatedAt = null,
+    )
 
     @Test
     fun migration_2_3_creates_daily_observation_table() {

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  collectionEstimate, configurationKey, missingFromCompleteCatalog, nextRevision, parseCardId, parseItemDraft, quoteFor,
+  collectionEstimate, configurationKey, mergeQuotes, missingFromCompleteCatalog, nextRevision, parseCardId, parseItemDraft, quoteFor,
 } from './model.ts'
-import type { CardSummary, CollectionEntry, SetCoverage } from './model.ts'
+import type { CardSummary, CollectionEntry, MarketQuote, SetCoverage } from './model.ts'
 
 const id = parseCardId('swsh3-136')
 if (id === null) throw new Error('Invalid test card ID')
@@ -63,4 +63,24 @@ test('incomplete set coverage cannot prove a card is missing', () => {
 test('revision advancement stops before creating an unsafe revision', () => {
   assert.equal(nextRevision(Number.MAX_SAFE_INTEGER - 1), Number.MAX_SAFE_INTEGER)
   assert.equal(nextRevision(Number.MAX_SAFE_INTEGER), null)
+})
+
+test('mergeQuotes keeps the stored quote when the incoming one comes empty and replaces it when priced', () => {
+  const stored: MarketQuote[] = [
+    { source: 'TCGPLAYER', variant: 'NORMAL', currency: 'USD', amount: 2.5, updatedAt: '2025-01-01' },
+    { source: 'CARDMARKET', variant: 'HOLOFOIL', currency: 'EUR', amount: 1.7, updatedAt: '2025-01-01' },
+  ]
+
+  assert.deepEqual(mergeQuotes(stored, []), stored)
+  assert.deepEqual(
+    mergeQuotes(stored, [{ source: 'TCGPLAYER', variant: 'NORMAL', currency: 'USD', amount: 0, updatedAt: null }]),
+    stored,
+  )
+  assert.deepEqual(
+    mergeQuotes(stored, [{ source: 'TCGPLAYER', variant: 'NORMAL', currency: 'USD', amount: 3.2, updatedAt: '2025-02-01' }]),
+    [
+      { source: 'TCGPLAYER', variant: 'NORMAL', currency: 'USD', amount: 3.2, updatedAt: '2025-02-01' },
+      { source: 'CARDMARKET', variant: 'HOLOFOIL', currency: 'EUR', amount: 1.7, updatedAt: '2025-01-01' },
+    ],
+  )
 })

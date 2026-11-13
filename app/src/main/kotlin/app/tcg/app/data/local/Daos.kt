@@ -56,24 +56,24 @@ abstract class CardDao {
 
     @Transaction
     open suspend fun saveSinglePrice(price: CardPriceEntity, observedAt: Long) {
-        upsertPrice(price)
-        price.market?.let { market ->
-            upsertPriceObservations(
-                listOf(
-                    CardPriceObservationEntity(
-                        cardId = price.cardId,
-                        source = price.source,
-                        variant = price.variant,
-                        currency = price.currency,
-                        amount = market,
-                        observedAt = observedAt,
-                        utcDay = java.time.Instant.ofEpochMilli(observedAt)
-                            .atZone(java.time.ZoneOffset.UTC)
-                            .toLocalDate(),
-                    ),
+        val market = validMarketPrice(price.market)
+        upsertPrice(price.copy(market = market))
+        if (market == null) return
+        upsertPriceObservations(
+            listOf(
+                CardPriceObservationEntity(
+                    cardId = price.cardId,
+                    source = price.source,
+                    variant = price.variant,
+                    currency = price.currency,
+                    amount = market,
+                    observedAt = observedAt,
+                    utcDay = java.time.Instant.ofEpochMilli(observedAt)
+                        .atZone(java.time.ZoneOffset.UTC)
+                        .toLocalDate(),
                 ),
-            )
-        }
+            ),
+        )
     }
 
     @Query("SELECT * FROM card_price_observations WHERE cardId = :cardId AND source = :source AND variant = :variant AND currency = :currency ORDER BY utcDay")
@@ -91,7 +91,7 @@ abstract class CardDao {
     @Transaction
     open suspend fun captureCardPrices(card: Card, observedAt: Long) {
         val observations = card.prices
-            .filter { validMarketPrice(it.market) != null }
+            .filter { it.source in MARKET_SOURCES && validMarketPrice(it.market) != null }
             .mapNotNull { it.toObservation(card.id, observedAt) }
         persistCard(card, observations)
     }
@@ -104,7 +104,8 @@ abstract class CardDao {
             .filter { it.source in MARKET_SOURCES }
             .map { it.toPrice() }
         deletePricesForSources(card.id, MARKET_SOURCES)
-        val prices = PriceMerge.merge(existing, card.prices).map { it.toEntity(card.id) }
+        val incoming = card.prices.filter { it.source in MARKET_SOURCES }
+        val prices = PriceMerge.merge(existing, incoming).map { it.toEntity(card.id) }
         if (prices.isNotEmpty()) upsertPrices(prices)
         if (observations.isNotEmpty()) upsertPriceObservations(observations)
     }
