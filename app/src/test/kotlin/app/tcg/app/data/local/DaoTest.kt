@@ -84,6 +84,67 @@ class DaoTest {
     }
 
     @Test
+    fun pricing_less_refresh_keeps_the_last_known_price() = runTest {
+        val dao = db.cardDao()
+        val cardId = "swsh3-136"
+        val firstAt = Instant.parse("2026-10-09T12:00:00Z").toEpochMilli()
+
+        dao.captureCardPrices(testCard(cardId, prices = listOf(testPrice(10.0).copy(updatedAt = "2026-10-09"))), firstAt)
+        dao.captureCardPrices(testCard(cardId), Instant.parse("2026-10-10T12:00:00Z").toEpochMilli())
+
+        val prices = dao.pricesFor(cardId)
+        assertEquals(listOf(10.0), prices.map { it.market })
+        assertEquals(listOf("2026-10-09"), prices.map { it.updatedAt })
+
+        val observations = dao.priceObservationsFor(cardId, PriceSource.TCGPLAYER, CardVariant.NORMAL, Currency.USD)
+        assertEquals(1, observations.size)
+        assertEquals(LocalDate.parse("2026-10-09"), observations.single().utcDay)
+    }
+
+    @Test
+    fun refreshed_valid_price_replaces_the_known_one_and_records_the_day() = runTest {
+        val dao = db.cardDao()
+        val cardId = "swsh3-136"
+
+        dao.captureCardPrices(
+            testCard(cardId, prices = listOf(testPrice(10.0))),
+            Instant.parse("2026-10-09T12:00:00Z").toEpochMilli(),
+        )
+        dao.captureCardPrices(
+            testCard(cardId, prices = listOf(testPrice(12.5))),
+            Instant.parse("2026-10-10T12:00:00Z").toEpochMilli(),
+        )
+
+        assertEquals(listOf(12.5), dao.pricesFor(cardId).map { it.market })
+
+        val observations = dao.priceObservationsFor(cardId, PriceSource.TCGPLAYER, CardVariant.NORMAL, Currency.USD)
+        assertEquals(2, observations.size)
+        assertEquals(12.5, observations.last().amount, 0.0)
+        assertEquals(LocalDate.parse("2026-10-10"), observations.last().utcDay)
+    }
+
+    @Test
+    fun zero_market_price_refresh_keeps_the_known_price_and_writes_no_observation() = runTest {
+        val dao = db.cardDao()
+        val cardId = "swsh3-136"
+
+        dao.captureCardPrices(
+            testCard(cardId, prices = listOf(testPrice(10.0))),
+            Instant.parse("2026-10-09T12:00:00Z").toEpochMilli(),
+        )
+        dao.captureCardPrices(
+            testCard(cardId, prices = listOf(testPrice(0.0))),
+            Instant.parse("2026-10-10T12:00:00Z").toEpochMilli(),
+        )
+
+        assertEquals(listOf(10.0), dao.pricesFor(cardId).map { it.market })
+
+        val observations = dao.priceObservationsFor(cardId, PriceSource.TCGPLAYER, CardVariant.NORMAL, Currency.USD)
+        assertEquals(1, observations.size)
+        assertEquals(10.0, observations.single().amount, 0.0)
+    }
+
+    @Test
     fun null_market_prices_do_not_create_observations() = runTest {
         val dao = db.cardDao()
         val cardId = "swsh3-136"

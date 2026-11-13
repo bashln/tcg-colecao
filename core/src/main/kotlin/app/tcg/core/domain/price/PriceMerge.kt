@@ -8,7 +8,7 @@ import app.tcg.core.domain.model.PriceSource
  * A market price only counts when it is a real, positive amount. Zero is how every feed
  * spells "sem preço", so it must never overwrite a price the app already knows.
  */
-internal fun validMarketPrice(value: Double?): Double? = value?.takeIf { it.isFinite() && it > 0 }
+fun validMarketPrice(value: Double?): Double? = value?.takeIf { it.isFinite() && it > 0 }
 
 object PriceMerge {
     /**

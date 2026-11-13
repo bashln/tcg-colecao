@@ -16,6 +16,8 @@ import app.tcg.core.domain.model.CollectionItemChanges
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.PriceSource
+import app.tcg.core.domain.price.PriceMerge
+import app.tcg.core.domain.price.validMarketPrice
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import java.time.LocalDate
@@ -88,7 +90,9 @@ abstract class CardDao {
 
     @Transaction
     open suspend fun captureCardPrices(card: Card, observedAt: Long) {
-        val observations = card.prices.mapNotNull { it.toObservation(card.id, observedAt) }
+        val observations = card.prices
+            .filter { validMarketPrice(it.market) != null }
+            .mapNotNull { it.toObservation(card.id, observedAt) }
         persistCard(card, observations)
     }
 
@@ -96,8 +100,11 @@ abstract class CardDao {
         upsert(card.toEntity())
         // A price refresh republishes only the market feeds it fetched. Quotes the user typed
         // in (LigaPokemon, in BRL) are not part of the feed and must survive the refresh.
+        val existing = pricesFor(card.id)
+            .filter { it.source in MARKET_SOURCES }
+            .map { it.toPrice() }
         deletePricesForSources(card.id, MARKET_SOURCES)
-        val prices = card.prices.map { it.toEntity(card.id) }
+        val prices = PriceMerge.merge(existing, card.prices).map { it.toEntity(card.id) }
         if (prices.isNotEmpty()) upsertPrices(prices)
         if (observations.isNotEmpty()) upsertPriceObservations(observations)
     }
