@@ -288,3 +288,27 @@ test('handleRequest stops calling the market after the first 429', async () => {
   assert.equal(deps.calls.prices, 1)
   assert.equal(result.body.quotes[other.cardId].status, 'stale')
 })
+
+test('handleRequest stops before the minute limit on a spent window', async () => {
+  const other = { ...CARD, cardId: 'sv08.5-002', name: 'Exeggutor' }
+  const deps = fakeDeps({
+    maps: [
+      { cardId: CARD.cardId, publicId: 1, code: 'sv08.5-001' },
+      { cardId: other.cardId, publicId: 2, code: 'sv08.5-002' },
+    ],
+    quotes: [
+      quoteFromPrices('2026-11-10T11:00:00.000Z'),
+      { ...quoteFromPrices('2026-11-10T11:00:00.000Z'), cardId: other.cardId },
+    ],
+    prices: () => ({
+      ok: true,
+      status: 200,
+      json: PRICES,
+      rate: { scope: 'market:minute', remaining: 0, resetAt: '2026-11-13T12:01:00.000Z' },
+    }),
+  })
+  const result = await handleRequest({ body: { cards: [CARD, other] }, deps, now: NOW })
+  assert.equal(deps.calls.prices, 1)
+  assert.equal(result.body.quotes[other.cardId].status, 'stale')
+  assert.equal(result.body.quota.retryAfterSeconds, 60)
+})
