@@ -98,6 +98,34 @@ class ScanDecisionTest {
         assertEquals("furret-136", confirmed.candidates.first().card.id)
     }
 
+    // Device case: Vulpix 019/132. The name read as the attack ("Estouro"), and nine other
+    // sets also print a card 19, so the number alone matches ten candidates. The printed pair
+    // 019/132 still identifies exactly one card.
+    @Test fun printed_pair_identifies_a_card_when_many_sets_share_the_number() {
+        val decision = decided(
+            ParsedCardText("Estouro", "019", null, null, "", setTotal = 132),
+            card("me01-019", "Vulpix", "019", null, setTotal = 132),
+            card("me01-119", "Determinação da Lílian", "119", null, setTotal = 132),
+            card("bw1-19", "Emboar", "19", null, setTotal = 114),
+            card("bw2-19", "Simisear", "19", null, setTotal = 98),
+            card("bw3-19", "Larvesta", "19", null, setTotal = 101),
+            card("bw7-19", "Charmeleon", "19", null, setTotal = 149),
+        )
+
+        val confirmed = assertIs<ScanDecision.Confirmed>(decision)
+        assertEquals("me01-019", confirmed.candidates.first().card.id)
+    }
+
+    @Test fun printed_pair_shared_by_two_sets_is_still_too_weak() {
+        val decision = decided(
+            ParsedCardText(null, "019", null, null, "", setTotal = 132),
+            card("me01-019", "Vulpix", "019", null, setTotal = 132),
+            card("other-019", "Vulpix", "019", null, setTotal = 132),
+        )
+
+        assertSame(ScanDecision.TooWeak, decision)
+    }
+
     @Test fun exact_name_alone_outranks_a_number_and_hp_pair() {
         val decision = decided(
             ParsedCardText("Furret", "136", null, 110, ""),
