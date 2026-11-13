@@ -25,6 +25,9 @@ jobs:
           ./scripts/validate-release.test.sh
           ./scripts/verify-release-signature.test.sh
 
+      - name: Testes do driver de verificação Android
+        run: ./scripts/verify-android.test.sh
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -53,6 +56,24 @@ jobs:
 
       - name: Compilar APK de debug
         run: ./gradlew :app:assembleDebug --no-daemon
+
+      # O APK de release não pode sair assinado com a chave de debug: ele nunca receberia
+      # atualização da release real. A falha é barata porque acontece na configuração.
+      - name: Release sem keystore precisa falhar
+        run: |
+          set +e
+          output="$(./gradlew :app:assembleRelease --no-daemon 2>&1)"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::assembleRelease passou sem keystore e assinaria o APK com debug."
+            exit 1
+          fi
+          if ! grep -q "release-build: keystore de release ausente" <<<"$output"; then
+            echo "::error::assembleRelease falhou, mas não pelo guard de assinatura."
+            echo "$output" | tail -20
+            exit 1
+          fi
 
       - name: Publicar APK debug para teste manual
         uses: actions/upload-artifact@v4

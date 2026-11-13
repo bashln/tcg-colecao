@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="" class="android.widget.FrameLayout" content-desc="" bounds="[0,0][1080,2400]">
+    <node index="0" text="TCG Coleção" resource-id="app.tcg.app:id/title" class="android.widget.TextView" content-desc="" bounds="[40,100][500,160]" />
+    <node index="1" text="" resource-id="app.tcg.app:id/scan" class="android.view.View" content-desc="Escanear carta" bounds="[300,1800][800,2000]" />
+    <node index="2" text="Perfil" resource-id="app.tcg.app:id/nav_profile" class="android.widget.Button" content-desc="Perfil" bounds="[0,2200][216,2400]" />
+  </node>
+</hierarchy>
