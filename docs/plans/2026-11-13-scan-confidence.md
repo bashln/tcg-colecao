@@ -114,6 +114,13 @@ com nome exato termina com candidatos e `manualSearch` falso.
 
 ## Riscos
 
-- **Confirmado.** Um scan com nome exato mas carta errada continua passando como `Confirmed`. Isso é o que o tie-breaker visual resolveria, e ele segue bloqueado.
-- **Confirmado.** `TooWeak` aumenta o número de buscas manuais em fotos ruins. É o comportamento desejado pelo audit, e a mensagem precisa dizer o que fazer.
-- **Hipótese não verificada.** Alguns sets podem ter duas cartas com o mesmo número e mesmo nome. A regra de número único trata como fraco, então o usuário escolhe.
+A revisão usa o diagnóstico de Vulpix 019/132 e o código da PR 39 como evidência. Cada item
+diz qual artefato o comprova.
+
+- **Corrigido na PR 39.** A regra de número único era inalcançável no catálogo real, porque toda coleção numera a partir de 1. O diagnóstico de Vulpix 019/132 trazia oito outras cartas com o número 19, então a decisão caía em `TooWeak` com a carta certa em primeiro. A confirmação agora usa o par impresso "NN/TTT". Quando um único candidato casa número e total, a decisão é `Confirmed`.
+- **Confirmado.** Um scan com nome exato mas carta errada continua passando como `Confirmed`, porque o nome exato tem precedência sobre qualquer outro sinal em `ScanDecision.from`. O tie-breaker visual resolveria, e ele segue bloqueado.
+- **Confirmado.** O nome pode sair errado mesmo com número e total corretos. Neste scan o OCR leu `Vulpix` e o parser escolheu `Estouro`, o nome do ataque. A causa segue desconhecida. Dois filtros podem ter descartado o nome. O `isHpLine` descarta uma linha de até 6 letras com `left > 350`, e o `pickName` descarta uma linha com menos de 60% da altura da maior.
+- **Corrigido na PR 39.** O contrato da Unidade 2 supunha que uma falha de aparelho vira fixture com o texto do OCR. Não virava, porque o parser também lê posição e altura. O diagnóstico agora grava a caixa de cada linha.
+- **Confirmado.** `TooWeak` aumenta o número de buscas manuais em fotos ruins. É o comportamento desejado pelo audit, e a mensagem precisa dizer o que fazer. O par impresso remove a classe de recusa em que número e total estavam legíveis.
+- **Hipótese não verificada.** Um total lido errado que coincida com o tamanho de outro set, junto de um número igual, confirmaria a carta errada. A lista de candidatos continua visível. Um scan de aparelho com o total impresso errado e outro candidato casando os dois sinais confirmaria o caso.
+- **Hipótese não verificada.** Dois sets podem ter o mesmo número e o mesmo total. A regra nova trata o par compartilhado como fraco, e `printed_pair_shared_by_two_sets_is_still_too_weak` nomeia o caso. Dois nomes exatos iguais continuam virando uma lista de duas cartas, que é o comportamento desejado.
