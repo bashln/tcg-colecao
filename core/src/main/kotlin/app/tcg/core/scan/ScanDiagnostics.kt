@@ -18,8 +18,9 @@ data class ScanDiagnostics(
     val promoCode: String?,
     val ocrLines: List<String>,
     val candidates: List<ScannedCandidate>,
-    val decision: String,
-    val topSignals: List<String>,
+    val decision: ScanDecisionCode? = null,
+    val topSignals: List<String> = emptyList(),
+    val origin: ScanOrigin = ScanOrigin.CAMERA,
 ) {
     fun toJson(): String = json.encodeToString(serializer(), this)
 
@@ -28,6 +29,8 @@ data class ScanDiagnostics(
             parsed: ParsedCardText,
             lines: List<OcrLine>,
             ranked: List<RankedCandidate>,
+            decision: ScanDecision = ScanDecision.from(ranked),
+            origin: ScanOrigin = ScanOrigin.CAMERA,
         ) = ScanDiagnostics(
             parsedName = parsed.name,
             collectorNumber = parsed.collectorNumber,
@@ -36,17 +39,23 @@ data class ScanDiagnostics(
             promoCode = parsed.promoCode,
             ocrLines = lines.map { it.text },
             candidates = ranked.map { it.toSnapshot() },
-            decision = ScanDecision.from(ranked).code,
-            topSignals = ranked.firstOrNull()?.signals?.sortedBy { it.ordinal }?.map { it.name }.orEmpty(),
+            decision = decision.code,
+            topSignals = ranked.firstOrNull()?.signals?.sortedByDescending { it.weight }?.map { it.name }.orEmpty(),
+            origin = origin,
         )
     }
 }
 
-/** Stable strings: a device failure becomes a fixture these values can be compared against. */
-private val ScanDecision.code: String
+@Serializable
+enum class ScanDecisionCode { CONFIRMED, TOO_WEAK }
+
+@Serializable
+enum class ScanOrigin { CAMERA, MANUAL }
+
+private val ScanDecision.code: ScanDecisionCode
     get() = when (this) {
-        is ScanDecision.Confirmed -> "CONFIRMED"
-        ScanDecision.TooWeak -> "TOO_WEAK"
+        is ScanDecision.Confirmed -> ScanDecisionCode.CONFIRMED
+        ScanDecision.TooWeak -> ScanDecisionCode.TOO_WEAK
     }
 
 @Serializable

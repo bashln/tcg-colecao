@@ -5,6 +5,7 @@ import app.tcg.core.domain.model.OcrLine
 import app.tcg.core.domain.model.ParsedCardText
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ScanDiagnosticsTest {
@@ -15,8 +16,8 @@ class ScanDiagnosticsTest {
         val parsed = ParsedCardText("Pikachu", "027", null, 80, "raw", setTotal = 128)
         val lines = listOf(OcrLine("Pikachu", 175f, 54f), OcrLine("027/128", 1270f, 22f))
         val ranked = listOf(
-            RankedCandidate(card("30th-027", "Pikachu", "027", 128, 80), 15, setOf(ScanSignal.EXACT_NAME)),
-            RankedCandidate(card("sv03.5-006", "Charizard ex", "006", 165, 330), 0, emptySet()),
+            RankedCandidate(card("30th-027", "Pikachu", "027", 128, 80), setOf(ScanSignal.EXACT_NAME)),
+            RankedCandidate(card("sv03.5-006", "Charizard ex", "006", 165, 330), emptySet()),
         )
 
         val diagnostics = ScanDiagnostics.from(parsed, lines, ranked)
@@ -26,7 +27,7 @@ class ScanDiagnosticsTest {
         assertTrue(json.contains("\"collectorNumber\": \"027\""), json)
         assertTrue(json.contains("\"setTotal\": 128"), json)
         assertTrue(json.contains("\"ocrLines\""), json)
-        assertTrue(json.contains("\"score\": 15"), json)
+        assertTrue(json.contains("\"score\": 7"), json)
     }
 
     @Test fun records_the_decision_and_the_top_signals() {
@@ -34,7 +35,6 @@ class ScanDiagnosticsTest {
         val ranked = listOf(
             RankedCandidate(
                 card("p-042", "Pikachu", "042", null, 80),
-                13,
                 setOf(ScanSignal.HP, ScanSignal.EXACT_NAME),
             ),
         )
@@ -49,8 +49,8 @@ class ScanDiagnosticsTest {
     @Test fun records_a_too_weak_decision_alongside_the_top_signals() {
         val parsed = ParsedCardText(null, "042", null, null, "")
         val ranked = listOf(
-            RankedCandidate(card("a-042", "Finizen", "042", null, null), 4, setOf(ScanSignal.COLLECTOR_NUMBER)),
-            RankedCandidate(card("b-042", "Zebstrika", "042", null, null), 4, setOf(ScanSignal.COLLECTOR_NUMBER)),
+            RankedCandidate(card("a-042", "Finizen", "042", null, null), setOf(ScanSignal.COLLECTOR_NUMBER)),
+            RankedCandidate(card("b-042", "Zebstrika", "042", null, null), setOf(ScanSignal.COLLECTOR_NUMBER)),
         )
 
         val json = ScanDiagnostics.from(parsed, emptyList(), ranked).toJson()
@@ -73,5 +73,25 @@ class ScanDiagnosticsTest {
         )
 
         assertEquals(diagnostics, decoded)
+    }
+
+    @Test fun decodes_a_diagnostics_written_before_the_decision_fields_existed() {
+        val old = """
+            {
+              "parsedName": "Finizen",
+              "collectorNumber": "042",
+              "setTotal": null,
+              "hp": null,
+              "promoCode": null,
+              "ocrLines": ["042/189"],
+              "candidates": []
+            }
+        """.trimIndent()
+
+        val decoded = kotlinx.serialization.json.Json.decodeFromString(ScanDiagnostics.serializer(), old)
+
+        assertNull(decoded.decision)
+        assertEquals(emptyList(), decoded.topSignals)
+        assertEquals(ScanOrigin.CAMERA, decoded.origin)
     }
 }

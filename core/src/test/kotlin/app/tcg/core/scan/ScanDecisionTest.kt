@@ -14,8 +14,7 @@ class ScanDecisionTest {
     private fun decided(parsed: ParsedCardText, vararg cards: Card): ScanDecision =
         ScanDecision.from(CandidateRanker.rank(parsed, cards.toList()))
 
-    // Device case from the plan: OCR read the number 42, and the exact name on the card puts
-    // me05-021 at the top even though bw1-42 shares the printed number.
+    // Device case: the OCR read the number 42 from a Finizen.
     @Test fun finizen_42_with_zebstrika_42_keeps_finizen_on_top_and_confirms() {
         val decision = decided(
             ParsedCardText("Finizen", "42", null, null, ""),
@@ -82,6 +81,28 @@ class ScanDecisionTest {
             ParsedCardText("Furret", "136", null, null, ""),
             card("sentret-136", "Sentret", "136", 60),
             card("furret-999", "Furret", "999", 110),
+        )
+
+        val confirmed = assertIs<ScanDecision.Confirmed>(decision)
+        assertEquals("furret-999", confirmed.candidates.first().card.id)
+    }
+
+    @Test fun a_unique_exact_name_moves_ahead_of_set_total_and_hp() {
+        val decision = decided(
+            ParsedCardText("Furret", null, null, null, "", setTotal = 189),
+            card("other-001", "Sentret", "001", null, setTotal = 189),
+            card("furret-136", "Furret", "136", 110),
+        )
+
+        val confirmed = assertIs<ScanDecision.Confirmed>(decision)
+        assertEquals("furret-136", confirmed.candidates.first().card.id)
+    }
+
+    @Test fun exact_name_alone_outranks_a_number_and_hp_pair() {
+        val decision = decided(
+            ParsedCardText("Furret", "136", null, 110, ""),
+            card("zebstrika-136", "Zebstrika", "136", 110),
+            card("furret-999", "Furret", "999", 90),
         )
 
         val confirmed = assertIs<ScanDecision.Confirmed>(decision)

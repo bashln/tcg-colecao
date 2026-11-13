@@ -64,7 +64,7 @@ class ScanScreenTest {
         rule.setContent {
             TcgTheme {
                 ScanContent(
-                    state = ScanUiState(candidates = listOf(RankedCandidate(furret(), 100, setOf(ScanSignal.EXACT_NAME)))),
+                    state = ScanUiState(candidates = listOf(RankedCandidate(furret(), setOf(ScanSignal.EXACT_NAME)))),
                     capturedBitmap = Bitmap.createBitmap(20, 28, Bitmap.Config.ARGB_8888),
                     manualQuery = "",
                     onManualQueryChange = {},
@@ -120,7 +120,7 @@ class ScanScreenTest {
                     onManualQueryChange = { query.value = it },
                     onManualSearch = {
                         searched = query.value
-                        state.value = ScanUiState(candidates = listOf(RankedCandidate(furret(), 100, setOf(ScanSignal.EXACT_NAME))))
+                        state.value = ScanUiState(candidates = listOf(RankedCandidate(furret(), setOf(ScanSignal.EXACT_NAME))))
                     },
                     onCapture = {},
                     onGallery = {},

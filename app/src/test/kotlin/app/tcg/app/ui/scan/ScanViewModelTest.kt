@@ -3,6 +3,7 @@ package app.tcg.app.ui.scan
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.PriceRefreshReport
 import app.tcg.core.data.repository.SetCatalogResult
+import app.tcg.core.scan.ScanDecisionCode
 import app.tcg.core.domain.model.Card
 import app.tcg.core.domain.model.OcrLine
 import java.io.IOException
@@ -314,6 +315,23 @@ class ScanViewModelTest {
             "Não foi possível confirmar a carta pela foto. Digite o nome ou o número da carta.",
             vm.state.value.error,
         )
+        assertEquals(ScanDecisionCode.TOO_WEAK, vm.state.value.diagnostics?.decision)
+    }
+
+    @Test
+    fun manual_search_with_an_ambiguous_result_still_lists_candidates() = runTest {
+        val repo = FakeCardRepository(listOf(
+            card("a-42", "Zebstrika", "42", null),
+            card("b-042", "Finizen", "042", null),
+            card("c-42", "Pikachu", "42", null),
+        ))
+        val vm = ScanViewModel(repo)
+
+        vm.onManualSearch("42")
+
+        assertEquals(3, vm.state.value.candidates.size)
+        assertFalse(vm.state.value.manualSearch)
+        assertNull(vm.state.value.error)
     }
 
     @Test

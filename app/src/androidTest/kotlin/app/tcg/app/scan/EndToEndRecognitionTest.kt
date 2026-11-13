@@ -10,6 +10,7 @@ import app.tcg.app.data.repository.RoomCardRepository
 import app.tcg.app.ui.scan.ScanViewModel
 import app.tcg.app.ui.scan.toOcrLines
 import app.tcg.core.data.tcgdex.KtorTcgdexCardSource
+import app.tcg.core.scan.ScanDecisionCode
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -61,6 +62,7 @@ class EndToEndRecognitionTest {
         val total: Int,
         val top1: Int,
         val top5: Int,
+        val refused: Int,
     )
 
     private val datasets = listOf(
@@ -87,6 +89,7 @@ class EndToEndRecognitionTest {
         val cards = expectedCards(dataset.dir)
         var top1Hits = 0
         var top5Hits = 0
+        var refused = 0
         val misses = mutableListOf<String>()
 
         for (card in cards) {
@@ -104,6 +107,7 @@ class EndToEndRecognitionTest {
             viewModel.onTextRecognized(text.toOcrLines())
 
             val state = viewModel.state.value
+            if (state.diagnostics?.decision == ScanDecisionCode.TOO_WEAK) refused++
             val gotTop = state.candidates.take(5).map { it.card.id }
             val top1 = gotTop.firstOrNull() == card.id
             val top5 = gotTop.contains(card.id)
@@ -116,7 +120,7 @@ class EndToEndRecognitionTest {
 
             println(
                 "E2E ${card.file} -> top1=$top1 top5=$top5 expectedId=${card.id} gotTop=$gotTop " +
-                    "| error=${state.error}"
+                    "| decision=${state.diagnostics?.decision} error=${state.error}"
             )
             delay(150)
         }
@@ -124,7 +128,7 @@ class EndToEndRecognitionTest {
         if (misses.isNotEmpty()) {
             println("E2E_MISSES[${dataset.label}]:\n" + misses.joinToString("\n"))
         }
-        return Summary(dataset.label, cards.size, top1Hits, top5Hits)
+        return Summary(dataset.label, cards.size, top1Hits, top5Hits, refused)
     }
 
     private fun report(summary: Summary) {
@@ -133,7 +137,8 @@ class EndToEndRecognitionTest {
         println(
             "E2E_SUMMARY[${summary.label}] total=$total " +
                 "top1=${summary.top1}/$total (${"%.1f".format(pct(summary.top1))}%) " +
-                "top5=${summary.top5}/$total (${"%.1f".format(pct(summary.top5))}%)"
+                "top5=${summary.top5}/$total (${"%.1f".format(pct(summary.top5))}%) " +
+                "refused=${summary.refused}/$total"
         )
     }
 
