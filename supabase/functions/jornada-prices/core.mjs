@@ -267,6 +267,17 @@ function retryAfterOf(response) {
   return Number.isFinite(value) && value > 0 ? value : null
 }
 
+function secondsUntil(instant, now) {
+  if (typeof instant !== 'string') return null
+  const parsed = Date.parse(instant)
+  if (!Number.isFinite(parsed)) return null
+  return Math.max(1, Math.ceil((parsed - now.getTime()) / 1000))
+}
+
+function minuteSpent(rate) {
+  return typeof rate?.scope === 'string' && rate.scope.endsWith(':minute') && rate.remaining === 0
+}
+
 function responseQuote(quote, status, variants) {
   return {
     status,
@@ -396,6 +407,10 @@ export async function handleRequest({ body, deps, now = new Date() }) {
     }
 
     applyRate(quota, 'market', response.rate)
+    if (minuteSpent(response.rate)) {
+      marketBlocked = true
+      retryAfter = secondsUntil(response.rate.resetAt, now) ?? retryAfter
+    }
     const quote = normalisePrices(response.json, {
       cardId: card.cardId,
       publicId,
