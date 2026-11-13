@@ -49,8 +49,6 @@ function parseVariantPrices(variant: CardVariant, pricing: unknown): MarketQuote
   const quotes: MarketQuote[] = []
   const cardmarket = pricing.cardmarket
   if (isRecord(cardmarket)) {
-    // Cardmarket publishes a parallel `-holo` block for the holo printing. Only the holo
-    // variant may read it, with the base field as fallback; reverse holo has no field of its own.
     const amount = variant === 'HOLOFOIL'
       ? positiveAmount(cardmarket['avg-holo']) ?? positiveAmount(cardmarket.avg)
       : positiveAmount(cardmarket.avg)

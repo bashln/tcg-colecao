@@ -88,11 +88,6 @@ private fun TcgdexCardmarketDto.toCardPrice(variant: CardVariant) = CardPrice(
     updatedAt = updated,
 )
 
-/**
- * Cardmarket publishes a base block and a parallel `-holo` block for the holo printing.
- * Only the holo variant may read the `-holo` field, with the base field as fallback; the
- * reverse-holo printing has no Cardmarket field of its own, so reading `-holo` would inflate it.
- */
 private fun price(base: Double?, holo: Double?, variant: CardVariant): Double? =
     if (variant == CardVariant.HOLOFOIL) validMarketPrice(holo) ?: validMarketPrice(base) else validMarketPrice(base)
 
