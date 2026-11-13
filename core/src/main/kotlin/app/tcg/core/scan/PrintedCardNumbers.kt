@@ -13,16 +13,30 @@ data class PrintedCardNumberSearchResult(
     val unmatchedReferences: List<String>,
 )
 
-fun parsePrintedCardNumbers(input: String): List<PrintedCardNumber>? {
-    val tokens = input.split(',', ';', '\n', '\r').map(String::trim).filter(String::isNotEmpty)
-    if (tokens.isEmpty()) return null
+/**
+ * References that parsed, plus the tokens as the user typed them that did not.
+ * One typo keeps the rest of the batch usable, and the UI can name what it skipped.
+ */
+data class PrintedCardNumberParse(
+    val references: List<PrintedCardNumber>,
+    val rejected: List<String>,
+)
 
-    val references = tokens.map { token ->
-        val match = PRINTED_CARD_NUMBER.matchEntire(token) ?: return null
-        val setTotal = match.groupValues[2].toIntOrNull()?.takeIf { it > 0 } ?: return null
-        PrintedCardNumber(match.groupValues[1], setTotal)
+fun parsePrintedCardNumbers(input: String): PrintedCardNumberParse {
+    val tokens = input.split(',', ';', '\n', '\r').map(String::trim).filter(String::isNotEmpty)
+    val references = mutableListOf<PrintedCardNumber>()
+    val rejected = mutableListOf<String>()
+    tokens.distinct().forEach { token ->
+        val reference = parsePrintedCardNumberToken(token)
+        if (reference == null) rejected += token else references += reference
     }
-    return references.distinct()
+    return PrintedCardNumberParse(references, rejected)
+}
+
+private fun parsePrintedCardNumberToken(token: String): PrintedCardNumber? {
+    val match = PRINTED_CARD_NUMBER.matchEntire(token) ?: return null
+    val setTotal = match.groupValues[2].toIntOrNull()?.takeIf { it > 0 } ?: return null
+    return PrintedCardNumber(match.groupValues[1], setTotal)
 }
 
 fun matchPrintedCardNumbers(

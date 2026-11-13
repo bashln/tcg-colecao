@@ -59,6 +59,7 @@
     <string name="detail_liga_web_open">🇧🇷 Buscar preço</string>
     <string name="detail_liga_web_title">Preço na LigaPokémon</string>
     <string name="detail_liga_web_loading">Lendo o preço na LigaPokémon…</string>
+    <string name="detail_liga_web_verifying">O site está verificando o navegador. Isso pode levar mais de um minuto.</string>
     <string name="detail_liga_web_normal">Normal: R$ %1$s</string>
     <string name="detail_liga_web_foil">Foil: R$ %1$s</string>
     <string name="detail_liga_web_apply">Usar R$ %1$s</string>
@@ -417,9 +418,16 @@
     <string name="lists_batch_invalid">Confira o formato. Use número/total, como 021/084.</string>
     <string name="lists_batch_offline">Sem conexão para buscar agora.</string>
     <string name="lists_batch_none">Nenhuma carta encontrada para esses números.</string>
-    <string name="lists_batch_matched">%1$d cartas encontradas.</string>
+    <string name="lists_batch_rejected">Não reconheci: %1$s</string>
+    <plurals name="lists_batch_matched">
+        <item quantity="one">%1$d carta encontrada.</item>
+        <item quantity="other">%1$d cartas encontradas.</item>
+    </plurals>
     <string name="lists_batch_unmatched">Não encontrados: %1$s</string>
-    <string name="lists_batch_add">Adicionar %1$d cartas</string>
+    <plurals name="lists_batch_add">
+        <item quantity="one">Adicionar %1$d carta</item>
+        <item quantity="other">Adicionar %1$d cartas</item>
+    </plurals>
     <string name="lists_already_in_list">Essas cartas já estavam na lista.</string>
     <plurals name="lists_added_count">
         <item quantity="one">%1$d carta adicionada.</item>

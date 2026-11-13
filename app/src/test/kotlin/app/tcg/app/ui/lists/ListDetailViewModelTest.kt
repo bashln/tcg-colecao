@@ -41,11 +41,40 @@ class ListDetailViewModelTest {
     }
 
     @Test
-    fun text_that_is_not_a_printed_number_fails_the_format_check() = runTest {
+    fun text_that_is_not_a_printed_number_fails_the_format_check_and_names_the_token() = runTest {
         val viewModel = detailViewModel(SearchCardRepository(emptyList()))
         advanceUntilIdle()
 
         viewModel.updateBatchInput("Pikachu")
+        viewModel.runBatchSearch()
+        advanceUntilIdle()
+
+        val batch = (viewModel.state.value as ListDetailUiState.Ready).batch
+        assertEquals(BatchState.Failed(BatchError.INVALID_FORMAT, listOf("Pikachu")), batch)
+    }
+
+    @Test
+    fun a_malformed_token_does_not_discard_the_rest_of_the_batch() = runTest {
+        val card = printedCard(id = "swsh3-21", number = "21", setTotal = 84)
+        val viewModel = detailViewModel(SearchCardRepository(listOf(card)))
+        advanceUntilIdle()
+
+        viewModel.updateBatchInput("150, 021/084")
+        viewModel.runBatchSearch()
+        advanceUntilIdle()
+
+        val batch = (viewModel.state.value as ListDetailUiState.Ready).batch as BatchState.Ready
+        assertEquals(listOf(card), batch.matched)
+        assertEquals(listOf("150"), batch.rejected)
+        assertEquals(emptyList<String>(), batch.unmatched)
+    }
+
+    @Test
+    fun input_of_only_separators_reports_the_format_instead_of_doing_nothing() = runTest {
+        val viewModel = detailViewModel(SearchCardRepository(emptyList()))
+        advanceUntilIdle()
+
+        viewModel.updateBatchInput(" , ")
         viewModel.runBatchSearch()
         advanceUntilIdle()
 

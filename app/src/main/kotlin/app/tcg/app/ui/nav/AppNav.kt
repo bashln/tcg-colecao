@@ -346,6 +346,7 @@ fun AppNav(
                 ListDetailScreen(
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() },
+                    onCardSelected = { cardId -> navController.navigate(Routes.cardDetail(cardId)) },
                 )
             }
             composable(

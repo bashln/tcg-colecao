@@ -23,8 +23,15 @@ enum class BatchError { INVALID_FORMAT, OFFLINE }
 sealed interface BatchState {
     data object Idle : BatchState
     data object Searching : BatchState
-    data class Ready(val matched: List<Card>, val unmatched: List<String>) : BatchState
-    data class Failed(val reason: BatchError) : BatchState
+    data class Ready(
+        val matched: List<Card>,
+        val unmatched: List<String>,
+        val rejected: List<String> = emptyList(),
+    ) : BatchState
+    data class Failed(
+        val reason: BatchError,
+        val rejected: List<String> = emptyList(),
+    ) : BatchState
 }
 
 /** Carries the number the repository actually stored, so a re-add does not claim new cards. */
@@ -87,24 +94,31 @@ class ListDetailViewModel(
         val current = draft.value
         if (current.batch == BatchState.Searching) return
         val parsed = parsePrintedCardNumbers(current.batchInput)
-        if (parsed == null) {
-            draft.update { it.copy(batch = BatchState.Failed(BatchError.INVALID_FORMAT)) }
+        if (parsed.references.isEmpty()) {
+            val batch = if (current.batchInput.isBlank()) {
+                BatchState.Idle
+            } else {
+                BatchState.Failed(BatchError.INVALID_FORMAT, parsed.rejected)
+            }
+            draft.update { it.copy(batch = batch) }
             return
         }
 
         draft.update { it.copy(batch = BatchState.Searching) }
         viewModelScope.launch {
             val candidates = try {
-                cards.searchByNumbers(parsed.map { it.localId }.toSet())
+                cards.searchByNumbers(parsed.references.map { it.localId }.toSet())
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 null
             }
             val next: BatchState = if (candidates == null) {
-                BatchState.Failed(BatchError.OFFLINE)
+                BatchState.Failed(BatchError.OFFLINE, parsed.rejected)
             } else {
-                matchPrintedCardNumbers(parsed, candidates).let { BatchState.Ready(it.cards, it.unmatchedReferences) }
+                matchPrintedCardNumbers(parsed.references, candidates).let {
+                    BatchState.Ready(it.cards, it.unmatchedReferences, parsed.rejected)
+                }
             }
             // Drop a result the user has already edited past, so the dialog never shows other numbers' cards.
             draft.update { if (it.batchInput == current.batchInput) it.copy(batch = next) else it }
