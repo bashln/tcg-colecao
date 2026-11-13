@@ -74,13 +74,18 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(12.dp))
         Box(
             modifier = Modifier
-                .size(width = 4.dp, height = 18.dp)
-                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)),
+                .weight(1f)
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant),
         )
-        Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -98,9 +103,11 @@ fun PriceRow(label: String, price: Money?, modifier: Modifier = Modifier) {
         )
         Text(
             text = formatMoney(price) ?: stringResource(R.string.common_no_price),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall.copy(
+                fontFamily = app.tcg.app.ui.theme.NumeralsFamily,
+            ),
             color = if (price != null) {
-                MaterialTheme.colorScheme.primary
+                MaterialTheme.colorScheme.onSurface
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },

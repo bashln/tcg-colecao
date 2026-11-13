@@ -197,11 +197,17 @@ private fun MostValuableRow(entry: CollectionEntry, priceSource: PriceSource, on
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            val price = Valuation.itemValue(card, entry.item.variant, priceSource)
             Text(
-                text = formatMoney(Valuation.itemValue(card, entry.item.variant, priceSource))
-                    ?: stringResource(R.string.common_no_price),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
+                text = formatMoney(price) ?: stringResource(R.string.common_no_price),
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontFamily = app.tcg.app.ui.theme.NumeralsFamily,
+                ),
+                color = if (price != null) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
             )
         }
     }
@@ -225,18 +231,7 @@ private fun PriceHistoryCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.ShowChart,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text = stringResource(R.string.home_chart_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            SectionHeader(stringResource(R.string.home_chart_title))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -244,7 +239,7 @@ private fun PriceHistoryCard(
                 FilterChip(
                     selected = source == PriceSource.LIGAPOKEMON,
                     onClick = { onSourceSelected(PriceSource.LIGAPOKEMON) },
-                    label = { Text("🇧🇷 " + stringResource(R.string.common_price_ligapokemon), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    label = { Text(stringResource(R.string.common_price_ligapokemon), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
                 FilterChip(
                     selected = source == PriceSource.TCGPLAYER,
