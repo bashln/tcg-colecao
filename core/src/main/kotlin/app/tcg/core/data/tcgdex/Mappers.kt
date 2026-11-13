@@ -6,6 +6,7 @@ import app.tcg.core.domain.model.CardPrice
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.PriceSource
+import app.tcg.core.domain.price.validMarketPrice
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -93,18 +94,16 @@ private fun TcgdexCardmarketDto.toCardPrice(variant: CardVariant) = CardPrice(
  * reverse-holo printing has no Cardmarket field of its own, so reading `-holo` would inflate it.
  */
 private fun price(base: Double?, holo: Double?, variant: CardVariant): Double? =
-    if (variant == CardVariant.HOLOFOIL) validPrice(holo) ?: validPrice(base) else validPrice(base)
-
-private fun validPrice(value: Double?): Double? = value?.takeIf { it.isFinite() && it > 0 }
+    if (variant == CardVariant.HOLOFOIL) validMarketPrice(holo) ?: validMarketPrice(base) else validMarketPrice(base)
 
 private fun TcgdexTcgplayerPriceDto.toCardPrice(variant: CardVariant, updatedAt: String?) = CardPrice(
     source = PriceSource.TCGPLAYER,
     variant = variant,
     currency = Currency.USD,
-    market = validPrice(marketPrice),
-    low = validPrice(lowPrice),
-    mid = validPrice(midPrice),
-    high = validPrice(highPrice),
+    market = validMarketPrice(marketPrice),
+    low = validMarketPrice(lowPrice),
+    mid = validMarketPrice(midPrice),
+    high = validMarketPrice(highPrice),
     trend = null,
     avg1 = null,
     avg7 = null,
