@@ -7,6 +7,31 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+// Um APK público assinado com a chave de debug nunca recebe atualização da release real,
+// porque o Android recusa trocar a assinatura. Por isso o empacotamento de release falha
+// sem keystore, em vez de cair para debug em silêncio. TCG_ALLOW_DEBUG_SIGNING=1 libera
+// o fallback só para um build local de teste.
+val releaseKeystore = System.getenv("TCG_KEYSTORE_PATH")
+    ?.takeIf { it.isNotBlank() }
+    ?.let { file(it) }
+    ?.takeIf { it.exists() }
+val allowDebugSigning = System.getenv("TCG_ALLOW_DEBUG_SIGNING") == "1"
+val releasePackagingRequested = gradle.startParameter.taskNames.any { requested ->
+    when (requested.substringAfterLast(':')) {
+        "assembleRelease", "bundleRelease", "packageRelease", "packageReleaseBundle" -> true
+        else -> false
+    }
+}
+
+if (releasePackagingRequested && releaseKeystore == null && !allowDebugSigning) {
+    throw GradleException(
+        "release-build: keystore de release ausente. Defina TCG_KEYSTORE_PATH, " +
+            "TCG_KEYSTORE_PASSWORD, TCG_KEY_ALIAS e TCG_KEY_PASSWORD, ou use " +
+            "TCG_ALLOW_DEBUG_SIGNING=1 para um APK de teste assinado com debug.",
+    )
+}
+
+
 android {
     namespace = "app.tcg.app"
     compileSdk = 35
@@ -30,9 +55,8 @@ android {
 
     signingConfigs {
         create("release") {
-            val path = System.getenv("TCG_KEYSTORE_PATH")
-            if (!path.isNullOrBlank() && file(path).exists()) {
-                storeFile = file(path)
+            if (releaseKeystore != null) {
+                storeFile = releaseKeystore
                 storePassword = System.getenv("TCG_KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("TCG_KEY_ALIAS")
                 keyPassword = System.getenv("TCG_KEY_PASSWORD")
@@ -42,11 +66,10 @@ android {
 
     buildTypes {
         release {
+            // R8 fica desligado até uma execução em aparelho provar o APK encolhido. Um release
+            // público não estreia com shrinking que nunca rodou.
             isMinifyEnabled = false
-            // Sem keystore no ambiente, cai para a assinatura de debug para o build local funcionar.
-            val path = System.getenv("TCG_KEYSTORE_PATH")
-            val hasKey = !path.isNullOrBlank() && file(path).exists()
-            signingConfig = if (hasKey) {
+            signingConfig = if (releaseKeystore != null) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")

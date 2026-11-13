@@ -119,10 +119,17 @@ rejeitadas. Nunca reduza o código de versão para encaixar uma Alpha.
 ./gradlew :app:assembleRelease
 ```
 
-Sem as variáveis `TCG_KEYSTORE_PATH`, `TCG_KEYSTORE_PASSWORD`, `TCG_KEY_ALIAS`
-e `TCG_KEY_PASSWORD` no ambiente, o release usa a assinatura de debug. Sem
-`TCG_VERSION_NAME` e `TCG_VERSION_CODE`, usa `1.0` e `1`. Isso vale só para o
-build local; a tag no CI sempre usa a chave de release e a versão da tag.
+Sem keystore, o empacotamento de release falha com
+`release-build: keystore de release ausente` antes de compilar. Um APK
+assinado com a chave de debug nunca recebe atualização de uma release real,
+porque o Android recusa a troca de assinatura. Para gerar um APK de teste
+assinado com debug, use `TCG_ALLOW_DEBUG_SIGNING=1`. Esse APK não serve para
+distribuição. O workflow `android.yml` roda `assembleRelease` sem keystore e
+exige essa falha, para o guard não regredir.
+
+As variáveis `TCG_KEYSTORE_PATH`, `TCG_KEYSTORE_PASSWORD`, `TCG_KEY_ALIAS` e
+`TCG_KEY_PASSWORD` habilitam a assinatura real. Sem `TCG_VERSION_NAME` e
+`TCG_VERSION_CODE`, o build usa `1.0` e `1`.
 
 ## Obtainium
 
