@@ -23,10 +23,15 @@ interface TcgdexCardSource {
 
 class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSource {
     private val json = Json { ignoreUnknownKeys = true }
-    private var setOfficialCache: Map<String, Int>? = null
+    private val setOfficialCache = mutableMapOf<String, Map<String, Int>>()
 
-    override suspend fun searchByName(name: String, language: String): List<Card> =
-        search(language, "cards") { parameter("name", name) }
+    override suspend fun searchByName(name: String, language: String): List<Card> {
+        val cards = search(language, "cards") { parameter("name", name) }
+        if (cards.isEmpty() && language != "en") {
+            return search("en", "cards") { parameter("name", name) }
+        }
+        return cards
+    }
 
     override suspend fun searchByNumber(setId: String?, collectorNumber: String, language: String): List<Card> {
         // Printed collector numbers and the stored localId disagree on zero padding across sets,
@@ -38,15 +43,30 @@ class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSourc
             }
             if (cards.isNotEmpty()) return cards
         }
+        if (language != "en") {
+            return searchByNumber(setId, collectorNumber, "en")
+        }
         return emptyList()
     }
 
     override suspend fun searchByNumbers(collectorNumbers: Set<String>, language: String): List<Card> {
         val localIds = batchLocalIdCandidates(collectorNumbers)
         if (localIds.isEmpty()) return emptyList()
-        return search(language, "cards") {
+        val cards = search(language, "cards") {
             parameter("localId", localIds.joinToString(","))
         }
+        if (language != "en") {
+            val foundNumbers = cards.map { it.collectorNumber }.toSet()
+            val missing = collectorNumbers.filter { num ->
+                val candidates = localIdCandidates(num)
+                candidates.none { it in foundNumbers }
+            }.toSet()
+            if (missing.isNotEmpty()) {
+                val fallbackCards = searchByNumbers(missing, "en")
+                return (cards + fallbackCards).distinctBy(Card::id)
+            }
+        }
+        return cards
     }
 
     /** One request carries every spelling of every number, so a mixed batch costs one round trip. */
@@ -65,7 +85,12 @@ class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSourc
 
     override suspend fun getCard(id: String, language: String): Card? {
         val response = httpClient.get("$BASE_URL/$language/cards/$id")
-        if (response.status == HttpStatusCode.NotFound) return null
+        if (response.status == HttpStatusCode.NotFound) {
+            if (language != "en") {
+                return getCard(id, "en")
+            }
+            return null
+        }
         return json.decodeFromString(TcgdexCardDto.serializer(), response.bodyAsText()).toCard()
     }
 
@@ -81,6 +106,9 @@ class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSourc
             .map { json.decodeFromJsonElement(TcgdexCardDto.serializer(), it).toCard() }
             .filter { it.setId == setId }
             .distinctBy { it.id }
+        if (cards.isEmpty() && language != "en") {
+            return getSetCatalog(setId, "en")
+        }
         return SetCatalog(setId, cards)
     }
 
@@ -109,7 +137,7 @@ class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSourc
     }
 
     private suspend fun setOfficials(language: String): Map<String, Int> {
-        setOfficialCache?.let { return it }
+        setOfficialCache[language]?.let { return it }
         val body = httpClient.get("$BASE_URL/$language/sets").bodyAsText()
         val sets = when (val element = json.parseToJsonElement(body)) {
             is JsonArray -> element.map { json.decodeFromJsonElement(TcgdexSetDto.serializer(), it) }
@@ -119,7 +147,7 @@ class KtorTcgdexCardSource(private val httpClient: HttpClient) : TcgdexCardSourc
         val officials = sets.mapNotNull { set ->
             set.id?.let { id -> set.cardCount?.official?.let { id to it } }
         }.toMap()
-        if (officials.isNotEmpty()) setOfficialCache = officials
+        if (officials.isNotEmpty()) setOfficialCache[language] = officials
         return officials
     }
 

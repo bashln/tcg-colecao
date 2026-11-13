@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -59,8 +60,11 @@ class TcgdexCardSourceTest {
     fun batch_search_sends_all_normalized_local_ids_in_one_request() = runTest {
         val requested = mutableListOf<String>()
         val engine = MockEngine { request ->
-            requested += request.url.parameters["localId"].orEmpty()
-            respond("[]", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+            if (request.url.encodedPath.endsWith("/cards")) {
+                requested += request.url.parameters["localId"].orEmpty()
+            }
+            val body = """[{"id":"me05-21","localId":"021","name":"Finizen","set":{"cardCount":{"official":84}}},{"id":"me05-9","localId":"9","name":"Pawmi","set":{"cardCount":{"official":84}}}]"""
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
         }
         val source = KtorTcgdexCardSource(HttpClient(engine))
 
@@ -293,6 +297,92 @@ class TcgdexCardSourceTest {
 
         assertNull(price.market)
         assertNull(price.low)
+    }
+
+    @Test
+    fun search_by_number_falls_back_to_english_when_pt_returns_empty() = runTest {
+        val requestedUrls = mutableListOf<String>()
+        val enFixture = """[{"id":"base1-4","localId":"4","name":"Charizard","set":{"id":"base1","name":"Base Set"}}]"""
+        val engine = MockEngine { request ->
+            val url = request.url.toString()
+            requestedUrls += url
+            val body = if (url.contains("/pt/")) "[]" else enFixture
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val source = KtorTcgdexCardSource(
+            HttpClient(engine) {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            },
+        )
+
+        val cards = source.searchByNumber("base1", "4", "pt")
+
+        assertEquals("Charizard", cards.single().name)
+        assertTrue(requestedUrls.any { it.contains("/pt/cards") })
+        assertTrue(requestedUrls.any { it.contains("/en/cards") })
+    }
+
+    @Test
+    fun search_by_numbers_batch_falls_back_to_english_for_missing_cards() = runTest {
+        val ptCards = """[{"id":"me05-21","localId":"021","name":"Finizen"}]"""
+        val enCards = """[{"id":"base1-4","localId":"4","name":"Charizard"}]"""
+        val engine = MockEngine { request ->
+            val url = request.url.toString()
+            val body = if (url.contains("/pt/")) ptCards else enCards
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val source = KtorTcgdexCardSource(
+            HttpClient(engine) {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            },
+        )
+
+        val cards = source.searchByNumbers(setOf("021", "4"), "pt")
+
+        assertEquals(setOf("Finizen", "Charizard"), cards.map { it.name }.toSet())
+    }
+
+    @Test
+    fun get_card_falls_back_to_english_on_not_found() = runTest {
+        val engine = MockEngine { request ->
+            if (request.url.encodedPath.contains("/pt/")) {
+                respond("", HttpStatusCode.NotFound)
+            } else {
+                respond("""{"id":"base1-4","localId":"4","name":"Charizard"}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+            }
+        }
+        val source = KtorTcgdexCardSource(
+            HttpClient(engine) {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            },
+        )
+
+        val card = source.getCard("base1-4", "pt")
+
+        assertNotNull(card)
+        assertEquals("Charizard", card.name)
+    }
+
+    @Test
+    fun get_set_catalog_falls_back_to_english_when_pt_has_empty_card_list() = runTest {
+        val engine = MockEngine { request ->
+            val body = if (request.url.encodedPath.contains("/pt/")) {
+                "[]"
+            } else {
+                """[{"id":"base1-4","localId":"4","name":"Charizard","set":{"id":"base1"}}]"""
+            }
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val source = KtorTcgdexCardSource(
+            HttpClient(engine) {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            },
+        )
+
+        val catalog = source.getSetCatalog("base1", "pt")
+
+        assertEquals("base1", catalog.setId)
+        assertEquals("Charizard", catalog.cards.single().name)
     }
 
     private fun Card.cardmarketPrices(variant: CardVariant) =
