@@ -84,7 +84,7 @@ export const conditionLabels: Record<Condition, string> = {
 }
 
 export function parseCardId(value: unknown): CardId | null {
-  return typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,80}$/.test(value)
+  return typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,80}$/.test(value)
     ? value as CardId
     : null
 }

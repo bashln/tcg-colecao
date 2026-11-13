@@ -8,6 +8,11 @@ import type { CardSummary, CollectionEntry, SetCoverage } from './model.ts'
 const id = parseCardId('swsh3-136')
 if (id === null) throw new Error('Invalid test card ID')
 
+test('parseCardId accepts a decimal set id and still rejects other punctuation', () => {
+  assert.equal(parseCardId('sv08.5-001'), 'sv08.5-001')
+  assert.equal(parseCardId('sv08/5-001'), null)
+})
+
 const card: CardSummary = {
   id,
   name: 'Carta do catálogo',

@@ -89,6 +89,41 @@ class WebBackupAdapterTest {
     }
 
     @Test
+    fun dotted_set_id_survives_encode_and_parse() {
+        val cardId = "sv08.5-001"
+        val item = CollectionItemEntity(
+            id = "00000000-0000-4000-8000-000000000002",
+            cardId = cardId,
+            quantity = 1,
+            variant = CardVariant.REVERSE_HOLOFOIL,
+            condition = Condition.NEAR_MINT,
+            pricePaidAmount = null,
+            pricePaidCurrency = null,
+            addedAt = 1791667200000L,
+            revision = 1L,
+        )
+        val card = CardEntity(
+            id = cardId,
+            name = "Exeggcute",
+            setId = "sv08.5",
+            setName = "Prismatic Evolutions",
+            collectorNumber = "001/131",
+            rarity = "Common",
+            hp = 50,
+            imageUrl = null,
+            types = listOf("Grass"),
+            attacks = emptyList(),
+            variants = setOf(CardVariant.REVERSE_HOLOFOIL),
+            setTotal = 180,
+        )
+        val entry = WebBackupAdapter.fromRoom(item, card, emptyList())
+        val bytes = WebBackupAdapter.encode(listOf(entry), "2026-11-13T00:00:00Z")
+        val parsed = WebBackupAdapter.parse(bytes)
+        assertEquals(cardId, parsed.entries.single().item.cardId)
+        assertEquals("sv08.5", parsed.entries.single().card.setId)
+    }
+
+    @Test
     fun fromRoom_maps_all_portable_fields() {
         val item = CollectionItemEntity(
             id = "00000000-0000-4000-8000-000000000001",
