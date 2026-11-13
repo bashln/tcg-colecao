@@ -22,8 +22,8 @@ function string(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : null
 }
 
-function finiteNonnegative(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+function positiveAmount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
 }
 
 function positiveInteger(value: unknown): number | null {
@@ -49,7 +49,11 @@ function parseVariantPrices(variant: CardVariant, pricing: unknown): MarketQuote
   const quotes: MarketQuote[] = []
   const cardmarket = pricing.cardmarket
   if (isRecord(cardmarket)) {
-    const amount = finiteNonnegative(cardmarket.avg)
+    // Cardmarket publishes a parallel `-holo` block for the holo printing. Only the holo
+    // variant may read it, with the base field as fallback; reverse holo has no field of its own.
+    const amount = variant === 'HOLOFOIL'
+      ? positiveAmount(cardmarket['avg-holo']) ?? positiveAmount(cardmarket.avg)
+      : positiveAmount(cardmarket.avg)
     if (amount !== null) {
       quotes.push({
         source: 'CARDMARKET', variant, currency: 'EUR', amount,
@@ -62,7 +66,7 @@ function parseVariantPrices(variant: CardVariant, pricing: unknown): MarketQuote
     const key = variant === 'NORMAL' ? 'normal' : variant === 'HOLOFOIL' ? 'holofoil' : variant === 'REVERSE_HOLOFOIL' ? 'reverse-holofoil' : null
     const price = key === null ? null : tcgplayer[key]
     if (isRecord(price)) {
-      const amount = finiteNonnegative(price.marketPrice)
+      const amount = positiveAmount(price.marketPrice)
       if (amount !== null) {
         quotes.push({
           source: 'TCGPLAYER', variant, currency: 'USD', amount,
