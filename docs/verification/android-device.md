@@ -33,7 +33,7 @@ O `doctor` confere quatro coisas e falha com um código próprio:
 ./scripts/verify-android.sh wait "Início"
 ```
 
-`install` usa `adb install -r`, que preserva os dados locais. O driver nunca desinstala: desinstalar apagaria a coleção do aparelho. Por padrão ele instala o APK de debug. Para verificar o APK publicado, aponte `VERIFY_APK` para o arquivo baixado da release.
+Builds de debug usam o sufixo `.debug`, então convivem com o APK publicado no mesmo aparelho. Para dirigir esse build, defina `VERIFY_PACKAGE=app.tcg.app.debug`. `install` usa `adb install -r`, que preserva os dados locais. O driver nunca desinstala: desinstalar apagaria a coleção do aparelho. Por padrão ele instala o APK de debug. Para verificar o APK publicado, aponte `VERIFY_APK` para o arquivo baixado da release.
 
 ## Dirigir por texto
 

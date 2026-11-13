@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Folder
@@ -232,86 +233,89 @@ fun ProfileScreen(
         )
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Text(
-            text = stringResource(R.string.profile_title),
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
-                onClick = onAccountClick,
-                modifier = Modifier.weight(1f),
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Text(
+                text = stringResource(R.string.profile_title),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Icon(Icons.Outlined.Person, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.account_title))
-            }
-            OutlinedButton(
-                onClick = onUpdatesClick,
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(Icons.Outlined.SystemUpdate, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.update_title))
+                OutlinedButton(
+                    onClick = onAccountClick,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Outlined.Person, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.account_title))
+                }
+                OutlinedButton(
+                    onClick = onUpdatesClick,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Outlined.SystemUpdate, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.update_title))
+                }
             }
         }
-
-        Spacer(Modifier.height(12.dp))
-
-        BackupCard(
-            status = state.backupStatus,
-            encryptionEnabled = state.encryptionEnabled,
-            importMessage = state.importMessage,
-            previewError = state.previewError,
-            onChooseFolder = { folderLauncher.launch(null) },
-            onImportClick = { fileLauncher.launch(arrayOf("application/json", "*/*")) },
-            onSetEncryption = { showEncryptionDialog = true },
-            onDisableEncryption = { showDisableEncryptionDialog = true },
-            onDismissMessages = { viewModel.dismissMessages() },
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        CurrencyPreferenceCard(
-            currentSource = state.priceSource,
-            onSelectSource = viewModel::onPriceSourceSelected,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-
-        Spacer(Modifier.height(8.dp))
-
+        item {
+            BackupCard(
+                status = state.backupStatus,
+                encryptionEnabled = state.encryptionEnabled,
+                importMessage = state.importMessage,
+                previewError = state.previewError,
+                onChooseFolder = { folderLauncher.launch(null) },
+                onImportClick = { fileLauncher.launch(arrayOf("application/json", "*/*")) },
+                onSetEncryption = { showEncryptionDialog = true },
+                onDisableEncryption = { showDisableEncryptionDialog = true },
+                onDismissMessages = { viewModel.dismissMessages() },
+            )
+        }
+        item {
+            CurrencyPreferenceCard(
+                currentSource = state.priceSource,
+                onSelectSource = viewModel::onPriceSourceSelected,
+            )
+        }
         when {
-            state.loading -> Box(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentAlignment = Alignment.Center,
-            ) {
-                LoadingState(stringResource(R.string.profile_loading))
+            state.loading -> item {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LoadingState(stringResource(R.string.profile_loading))
+                }
             }
-            state.stats.totalCards == 0 -> Box(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentAlignment = Alignment.Center,
-            ) {
-                EmptyState(
-                    icon = Icons.Outlined.QrCodeScanner,
-                    title = stringResource(R.string.profile_empty_title),
-                    body = stringResource(R.string.profile_empty_body),
-                    action = {
-                        Button(onClick = onScanClick) {
-                            Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.profile_empty_action))
-                        }
-                    },
-                )
+            state.stats.totalCards == 0 -> item {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EmptyState(
+                        icon = Icons.Outlined.QrCodeScanner,
+                        title = stringResource(R.string.profile_empty_title),
+                        body = stringResource(R.string.profile_empty_body),
+                        action = {
+                            Button(onClick = onScanClick) {
+                                Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.profile_empty_action))
+                            }
+                        },
+                    )
+                }
             }
-            else -> Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                ProfileContent(state.stats)
-            }
+            else -> profileStatsItems(state.stats)
         }
     }
 }
@@ -473,13 +477,7 @@ private fun BackupCard(
     }
 }
 
-@Composable
-private fun ProfileContent(stats: CollectionStats) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
+private fun LazyListScope.profileStatsItems(stats: CollectionStats) {
         item {
             TotalValueHero(
                 label = stringResource(R.string.profile_total_value),
@@ -519,7 +517,6 @@ private fun ProfileContent(stats: CollectionStats) {
                 ) { rarity -> rarity ?: stringResource(R.string.profile_rarity_unknown) }
             }
         }
-    }
 }
 
 @Composable

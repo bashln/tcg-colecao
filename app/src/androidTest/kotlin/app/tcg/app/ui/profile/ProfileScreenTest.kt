@@ -1,9 +1,14 @@
 package app.tcg.app.ui.profile
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.tcg.app.ui.theme.TcgTheme
@@ -53,12 +58,32 @@ class ProfileScreenTest {
         rule.setContent { TcgTheme { ProfileScreen(viewModel = viewModel) } }
 
         rule.waitUntil(timeoutMillis = 5_000) {
-            rule.onAllNodesWithText("Por condição").fetchSemanticsNodes().isNotEmpty()
+            rule.onAllNodesWithText("Perfil").fetchSemanticsNodes().isNotEmpty()
         }
+        val page = rule.onNode(hasScrollAction())
+        page.performScrollToNode(hasText("Investido", substring = true))
+        rule.onNodeWithText("Investido", substring = true).assertIsDisplayed()
+        page.performScrollToNode(hasText("Por condição"))
         rule.onNodeWithText("Por condição").assertIsDisplayed()
+        page.performScrollToNode(hasText("Por variante"))
         rule.onNodeWithText("Por variante").assertIsDisplayed()
+        page.performScrollToNode(hasText("Por raridade"))
         rule.onNodeWithText("Por raridade").assertIsDisplayed()
-        rule.onNodeWithText("Investido").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_title_scrolls_with_the_page_instead_of_staying_fixed() {
+        val viewModel = ProfileViewModel(
+            FakeCollectionRepository(
+                listOf(entry(furret(), pricePaid = Money(0.10, Currency.USD))),
+            ),
+        )
+        rule.setContent { TcgTheme { ProfileScreen(viewModel = viewModel) } }
+
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodes(hasScrollAction()).fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNode(hasScrollAction()).assert(hasAnyDescendant(hasText("Perfil")))
     }
 
     private class FakeCollectionRepository(

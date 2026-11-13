@@ -20,8 +20,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-package_name="app.tcg.app"
-activity_name=".MainActivity"
+package_name="${VERIFY_PACKAGE:-app.tcg.app}"
 apk="${VERIFY_APK:-$root/app/build/outputs/apk/debug/app-debug.apk}"
 run_dir="${VERIFY_RUN_DIR:-$root/.audit/verify/$(date -u +%Y%m%dT%H%M%SZ)}"
 
@@ -161,8 +160,11 @@ cmd_install() {
 
 cmd_launch() {
     require_device_consent
-    adb shell am start -W -n "$package_name/$activity_name" >/dev/null
-    echo "verify-android: $package_name iniciado"
+    local component
+    component="$(adb shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER "$package_name" | tail -n1 | tr -d '\r')"
+    [[ -n "$component" ]] || die 4 "nenhuma atividade principal para $package_name"
+    adb shell am start -W -n "$component" >/dev/null
+    echo "verify-android: $package_name iniciado ($component)"
 }
 
 cmd_dump() {

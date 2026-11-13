@@ -73,6 +73,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // O build de teste convive com o APK de release assinado no mesmo aparelho, então
+            // a correção pode ser comparada sem desinstalar a versão publicada nem apagar dados.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             // R8 fica desligado até uma execução em aparelho provar o APK encolhido. Um release
             // público não estreia com shrinking que nunca rodou.
