@@ -195,6 +195,41 @@ class AuthControllerTest {
     }
 
     @Test
+    fun `refresh replaces the stored session after a rejected token`() = runTest {
+        store.session = session(token = "old", expiresAt = 500L)
+        val refreshed = session(token = "new", refresh = "refresh-2", expiresAt = 3_000L)
+        remote.refreshResult = refreshed
+        val controller = controller()
+
+        assertEquals(SessionRefresh.Refreshed(refreshed), controller.refreshSession())
+        assertEquals(refreshed, store.session)
+        assertEquals(AuthState.SignedIn(refreshed), controller.state.value)
+    }
+
+    @Test
+    fun `refresh keeps the session when the server is unreachable`() = runTest {
+        store.session = session(expiresAt = 500L)
+        remote.refreshError = AuthError.Network
+        val controller = controller()
+
+        assertEquals(SessionRefresh.Unavailable, controller.refreshSession())
+        assertEquals(session(expiresAt = 500L), store.session)
+        assertEquals(0, store.clears)
+    }
+
+    @Test
+    fun `refresh signs out when the server rejects the credential`() = runTest {
+        store.session = session(expiresAt = 500L)
+        remote.refreshError = AuthError.InvalidCredentials
+        val controller = controller()
+
+        assertEquals(SessionRefresh.Rejected, controller.refreshSession())
+        assertEquals(AuthState.SignedOut, controller.state.value)
+        assertNull(store.session)
+        assertEquals(1, store.clears)
+    }
+
+    @Test
     fun `sign out clears the session, calls remote logout, and never touches the collection`() = runTest {
         remote.signInResult = session()
         val controller = controller()

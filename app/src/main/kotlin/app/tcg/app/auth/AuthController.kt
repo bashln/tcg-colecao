@@ -61,6 +61,45 @@ class AuthController(
         }
     }
 
+    /**
+     * Forces a refresh after a 401 from another component. Returns [SessionRefresh.Rejected]
+     * only when the server refused the credential, in which case the session is cleared and
+     * the state becomes signed out; an unreachable server leaves the stored session intact.
+     */
+    suspend fun refreshSession(): SessionRefresh {
+        val (version, current) = sessionLock.withLock { sessionVersion to store.read() }
+        if (current == null) return SessionRefresh.Rejected
+        return try {
+            val refreshed = remote.refresh(current.refreshToken)
+            sessionLock.withLock {
+                if (sessionVersion != version) return@withLock SessionRefresh.Rejected
+                if (refreshed.userId != current.userId) {
+                    store.clear()
+                    _state.value = AuthState.SignedOut
+                    SessionRefresh.Rejected
+                } else {
+                    store.write(refreshed)
+                    _state.value = AuthState.SignedIn(refreshed)
+                    SessionRefresh.Refreshed(refreshed)
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            if ((error as? AuthRemoteException)?.error?.rejectedCredential == true) {
+                sessionLock.withLock {
+                    if (sessionVersion == version) {
+                        store.clear()
+                        _state.value = AuthState.SignedOut
+                    }
+                }
+                SessionRefresh.Rejected
+            } else {
+                SessionRefresh.Unavailable
+            }
+        }
+    }
+
     suspend fun signUp(email: String, password: String): AuthResult = try {
         when (val outcome = remote.signUp(email, password)) {
             is RemoteAuth.Session -> signInState(outcome.session)

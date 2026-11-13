@@ -189,6 +189,7 @@ object AppModule {
             apiKey = BuildConfig.SUPABASE_PUBLISHABLE_KEY,
             httpClient = httpClient,
             sessionProvider = { (authController.state.value as? app.tcg.app.auth.AuthState.SignedIn)?.session },
+            refreshSession = authController::refreshSession,
         )
 
     @Provides
