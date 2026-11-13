@@ -142,6 +142,7 @@ object WebBackupAdapter {
             card.id, card.name, card.setId, card.setName, card.collectorNumber,
             card.imageUrl, card.variants.toList(),
             prices.mapNotNull { price ->
+                if (price.source == PriceSource.JORANDA) return@mapNotNull null
                 price.market?.let { WebQuote(it, price.currency, price.source, price.variant, price.updatedAt) }
             },
             card.setTotal,

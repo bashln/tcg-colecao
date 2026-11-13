@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [CardEntity::class, CollectionItemEntity::class, CardPriceEntity::class, CardPriceObservationEntity::class, SyncBindingEntity::class, SyncOutboxEntity::class, SyncCursorEntity::class, SyncConflictEntity::class, BackupStateEntity::class, BackupGenerationEntity::class, BackupImportMarkerEntity::class, CardListEntity::class, CardListMemberEntity::class],
-    version = 10,
+    version = 11,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -223,6 +223,13 @@ abstract class TcgDatabase : RoomDatabase() {
                     PRIMARY KEY(`listId`, `cardId`),
                     FOREIGN KEY(`listId`) REFERENCES `card_lists`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)""".trimIndent())
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_card_list_members_cardId` ON `card_list_members` (`cardId`)")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `card_prices` ADD COLUMN `condition` TEXT")
+                db.execSQL("ALTER TABLE `card_prices` ADD COLUMN `language` TEXT")
             }
         }
     }

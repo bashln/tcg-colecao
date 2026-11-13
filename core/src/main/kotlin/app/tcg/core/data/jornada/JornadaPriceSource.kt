@@ -12,6 +12,10 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import kotlinx.serialization.json.Json
 
+interface JornadaQuoteSource {
+    suspend fun quotes(cards: List<JornadaCardRequest>, maxAgeHours: Int): JornadaResponse
+}
+
 /**
  * Calls the Supabase function that holds the Jornada Games key. The client only
  * needs the publishable Supabase key, so the Jornada key never reaches the app.
@@ -20,16 +24,16 @@ class JornadaPriceSource(
     private val httpClient: HttpClient,
     baseUrl: String,
     private val apiKey: String,
-) {
+) : JornadaQuoteSource {
     private val endpoint = "${baseUrl.trimEnd('/')}/functions/v1/jornada-prices"
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
 
-    suspend fun quotes(
+    override suspend fun quotes(
         cards: List<JornadaCardRequest>,
-        maxAgeHours: Int = DEFAULT_MAX_AGE_HOURS,
+        maxAgeHours: Int,
     ): JornadaResponse {
         require(cards.isNotEmpty()) { "Uma consulta de preço precisa de pelo menos uma carta" }
         require(apiKey.isNotBlank()) { "A fonte de preço da Jornada não está configurada" }

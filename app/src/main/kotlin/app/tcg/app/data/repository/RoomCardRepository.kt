@@ -3,6 +3,11 @@ package app.tcg.app.data.repository
 import app.tcg.app.data.local.CardDao
 import app.tcg.app.data.local.CardPriceEntity
 import app.tcg.app.data.local.toCard
+import app.tcg.app.data.local.toEntity
+import app.tcg.core.data.jornada.DEFAULT_MAX_AGE_HOURS
+import app.tcg.core.data.jornada.JornadaCardRequest
+import app.tcg.core.data.jornada.JornadaQuoteSource
+import app.tcg.core.data.jornada.toCardPrices
 import app.tcg.core.data.repository.CardRepository
 import app.tcg.core.data.repository.PriceRefreshReport
 import app.tcg.core.data.repository.SetCatalogResult
@@ -16,6 +21,7 @@ import kotlinx.coroutines.CancellationException
 class RoomCardRepository(
     private val cardDao: CardDao,
     private val source: TcgdexCardSource,
+    private val jornada: JornadaQuoteSource? = null,
 ) : CardRepository {
 
     override suspend fun searchByName(name: String): List<Card> {
@@ -68,8 +74,7 @@ class RoomCardRepository(
 
     override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport {
         val ids = cardIds.distinct()
-        var refreshed = 0
-        var unavailable = 0
+        val refreshed = mutableSetOf<String>()
         for (id in ids) {
             val stored = try {
                 refreshOne(id)
@@ -78,9 +83,48 @@ class RoomCardRepository(
             } catch (_: Exception) {
                 false
             }
-            if (stored) refreshed++ else unavailable++
+            if (stored) refreshed += id
         }
-        return PriceRefreshReport(requested = ids.size, refreshed = refreshed, unavailable = unavailable)
+        refreshed += refreshJornada(ids)
+        return PriceRefreshReport(
+            requested = ids.size,
+            refreshed = refreshed.size,
+            unavailable = ids.size - refreshed.size,
+        )
+    }
+
+    private suspend fun refreshJornada(ids: List<String>): Set<String> {
+        val priceSource = jornada ?: return emptySet()
+        val cards = ids.mapNotNull { cardDao.getById(it) }
+        if (cards.isEmpty()) return emptySet()
+        val response = try {
+            priceSource.quotes(
+                cards.map { card ->
+                    JornadaCardRequest(
+                        cardId = card.id,
+                        setId = card.setId,
+                        collectorNumber = card.collectorNumber,
+                        name = card.name,
+                        variants = card.variants.map(CardVariant::name).sorted(),
+                    )
+                },
+                DEFAULT_MAX_AGE_HOURS,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return emptySet()
+        }
+        val refreshed = mutableSetOf<String>()
+        val observedAt = System.currentTimeMillis()
+        for (card in cards) {
+            val quote = response.quotes[card.id] ?: continue
+            val prices = quote.toCardPrices(card.variants)
+            if (prices.isEmpty()) continue
+            prices.forEach { cardDao.saveSinglePrice(it.toEntity(card.id), observedAt) }
+            refreshed += card.id
+        }
+        return refreshed
     }
 
     override suspend fun saveCardPrice(
