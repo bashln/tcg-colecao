@@ -59,5 +59,6 @@ class ValuationTest {
 
     @Test fun currency_of_ligapokemon_is_brl() {
         assertEquals(Currency.BRL, Valuation.currencyOf(PriceSource.LIGAPOKEMON))
+        assertEquals(Currency.BRL, Valuation.currencyOf(PriceSource.JORANDA))
     }
 }

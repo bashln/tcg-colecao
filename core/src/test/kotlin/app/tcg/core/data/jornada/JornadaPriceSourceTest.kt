@@ -56,7 +56,7 @@ class JornadaPriceSourceTest {
         }
         val source = JornadaPriceSource(HttpClient(engine), "https://example.supabase.co/", "test-key")
 
-        val response = source.quotes(listOf(card().toJornadaRequest()))
+        val response = source.quotes(listOf(card().toJornadaRequest()), DEFAULT_MAX_AGE_HOURS)
 
         val quote = response.quotes.getValue("me02.5-161")
         assertEquals("ok", quote.status)
@@ -78,7 +78,7 @@ class JornadaPriceSourceTest {
         val source = JornadaPriceSource(HttpClient(engine), "https://example.supabase.co", "test-key")
 
         val error = assertFailsWith<JornadaPriceException> {
-            source.quotes(listOf(card().toJornadaRequest()))
+            source.quotes(listOf(card().toJornadaRequest()), DEFAULT_MAX_AGE_HOURS)
         }
         assertEquals(429, error.status)
     }
@@ -89,7 +89,7 @@ class JornadaPriceSourceTest {
         val source = JornadaPriceSource(HttpClient(engine), "https://example.supabase.co", "")
 
         assertFailsWith<IllegalArgumentException> {
-            source.quotes(listOf(card().toJornadaRequest()))
+            source.quotes(listOf(card().toJornadaRequest()), DEFAULT_MAX_AGE_HOURS)
         }
     }
 

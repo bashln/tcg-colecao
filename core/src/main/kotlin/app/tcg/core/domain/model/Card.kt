@@ -28,4 +28,5 @@ data class CardPrice(
     val market: Double?, val low: Double?, val mid: Double?, val high: Double?,
     val trend: Double?, val avg1: Double?, val avg7: Double?, val avg30: Double?,
     val updatedAt: String?,
+    val condition: String? = null, val language: String? = null,
 )
