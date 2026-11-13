@@ -2,6 +2,7 @@ package app.tcg.app.data.sync
 
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.app.auth.AuthSession
+import app.tcg.app.auth.SessionRefresh
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
@@ -142,6 +143,7 @@ class SupabaseSyncTransport(
     private val apiKey: String,
     private val httpClient: HttpClient,
     private val sessionProvider: () -> AuthSession?,
+    private val refreshSession: suspend () -> SessionRefresh = { SessionRefresh.Rejected },
 ) : SyncTransport, SyncLinkTransport {
 
     private val json = Json { ignoreUnknownKeys = true }

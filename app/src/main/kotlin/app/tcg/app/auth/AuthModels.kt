@@ -48,9 +48,21 @@ sealed interface AuthResult {
     data class Failure(val error: AuthError) : AuthResult
 }
 
-/** Outcome of a remote sign-up: either a live session or a pending email verification. */sealed interface RemoteAuth {
+/** Outcome of a remote sign-up: either a live session or a pending email verification. */
+sealed interface RemoteAuth {
     data class Session(val session: AuthSession) : RemoteAuth
     data class VerificationRequired(val email: String) : RemoteAuth
+}
+
+/** Result of a forced session refresh, as seen by a caller recovering from a 401. */
+sealed interface SessionRefresh {
+    data class Refreshed(val session: AuthSession) : SessionRefresh
+
+    /** The server rejected the credential; the session has already been cleared. */
+    data object Rejected : SessionRefresh
+
+    /** The server could not be reached; the stored session is unchanged. */
+    data object Unavailable : SessionRefresh
 }
 
 class AuthRemoteException(
