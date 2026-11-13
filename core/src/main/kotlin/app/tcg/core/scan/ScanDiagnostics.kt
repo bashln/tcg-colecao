@@ -18,6 +18,8 @@ data class ScanDiagnostics(
     val promoCode: String?,
     val ocrLines: List<String>,
     val candidates: List<ScannedCandidate>,
+    val decision: String,
+    val topSignals: List<String>,
 ) {
     fun toJson(): String = json.encodeToString(serializer(), this)
 
@@ -34,9 +36,18 @@ data class ScanDiagnostics(
             promoCode = parsed.promoCode,
             ocrLines = lines.map { it.text },
             candidates = ranked.map { it.toSnapshot() },
+            decision = ScanDecision.from(ranked).code,
+            topSignals = ranked.firstOrNull()?.signals?.sortedBy { it.ordinal }?.map { it.name }.orEmpty(),
         )
     }
 }
+
+/** Stable strings: a device failure becomes a fixture these values can be compared against. */
+private val ScanDecision.code: String
+    get() = when (this) {
+        is ScanDecision.Confirmed -> "CONFIRMED"
+        ScanDecision.TooWeak -> "TOO_WEAK"
+    }
 
 @Serializable
 data class ScannedCandidate(

@@ -29,6 +29,37 @@ class ScanDiagnosticsTest {
         assertTrue(json.contains("\"score\": 15"), json)
     }
 
+    @Test fun records_the_decision_and_the_top_signals() {
+        val parsed = ParsedCardText("Pikachu", "042", null, 80, "raw")
+        val ranked = listOf(
+            RankedCandidate(
+                card("p-042", "Pikachu", "042", null, 80),
+                13,
+                setOf(ScanSignal.HP, ScanSignal.EXACT_NAME),
+            ),
+        )
+
+        val json = ScanDiagnostics.from(parsed, emptyList(), ranked).toJson()
+
+        assertTrue(json.contains("\"decision\": \"CONFIRMED\""), json)
+        assertTrue(json.contains("\"EXACT_NAME\""), json)
+        assertTrue(json.contains("\"HP\""), json)
+    }
+
+    @Test fun records_a_too_weak_decision_alongside_the_top_signals() {
+        val parsed = ParsedCardText(null, "042", null, null, "")
+        val ranked = listOf(
+            RankedCandidate(card("a-042", "Finizen", "042", null, null), 4, setOf(ScanSignal.COLLECTOR_NUMBER)),
+            RankedCandidate(card("b-042", "Zebstrika", "042", null, null), 4, setOf(ScanSignal.COLLECTOR_NUMBER)),
+        )
+
+        val json = ScanDiagnostics.from(parsed, emptyList(), ranked).toJson()
+
+        assertTrue(json.contains("\"decision\": \"TOO_WEAK\""), json)
+        assertTrue(json.contains("\"topSignals\":"), json)
+        assertTrue(json.contains("\"COLLECTOR_NUMBER\""), json)
+    }
+
     @Test fun round_trips_through_json() {
         val diagnostics = ScanDiagnostics.from(
             parsed = ParsedCardText(null, null, null, null, ""),

@@ -8,9 +8,10 @@ import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.OcrLine
 import app.tcg.core.domain.model.ParsedCardText
-import app.tcg.core.domain.model.Scored
 import app.tcg.core.scan.CandidateRanker
 import app.tcg.core.scan.OcrParser
+import app.tcg.core.scan.RankedCandidate
+import app.tcg.core.scan.ScanDecision
 import app.tcg.core.scan.ScanDiagnostics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,12 +27,12 @@ enum class ScanGridMode {
 data class MultiCardResult(
     val quadrantIndex: Int, // 0: Top-Left, 1: Top-Right, 2: Bottom-Left, 3: Bottom-Right
     val parsed: ParsedCardText,
-    val candidates: List<Scored<Card>>,
-    val selectedCard: Card? = candidates.firstOrNull()?.value,
+    val candidates: List<RankedCandidate>,
+    val selectedCard: Card? = candidates.firstOrNull()?.card,
 )
 
 data class ScanUiState(
-    val candidates: List<Scored<Card>> = emptyList(),
+    val candidates: List<RankedCandidate> = emptyList(),
     val loading: Boolean = false,
     val error: String? = null,
     val manualSearch: Boolean = false,
@@ -97,14 +98,14 @@ class ScanViewModel(
                 val byName = if (name != null) repository.searchByName(name) else emptyList()
                 val byNumber = if (collectorNumber != null) repository.searchByNumber(null, collectorNumber) else emptyList()
                 val ranked = CandidateRanker.rank(parsed, (byName + byNumber).distinctBy { it.id }).take(CANDIDATE_LIMIT)
-                if (ranked.isNotEmpty()) {
-                    results += MultiCardResult(
-                        quadrantIndex = quadrantIndex,
-                        parsed = parsed,
-                        candidates = ranked,
-                        selectedCard = ranked.first().value,
-                    )
-                }
+                // A weak quadrant has no card to quick-add, so it stays out of the batch.
+                val confirmed = ScanDecision.from(ranked) as? ScanDecision.Confirmed ?: continue
+                results += MultiCardResult(
+                    quadrantIndex = quadrantIndex,
+                    parsed = parsed,
+                    candidates = confirmed.candidates,
+                    selectedCard = confirmed.candidates.first().card,
+                )
             }
         } catch (e: CancellationException) {
             throw e
@@ -137,6 +138,8 @@ class ScanViewModel(
         search(
             parsed = ParsedCardText(name = name, collectorNumber = null, promoCode = null, hp = null, rawText = name),
             lines = lastOcrLines,
+            // A typed query is the user's own evidence; there is no camera reading to confirm.
+            requireConfirmation = false,
         )
     }
 
@@ -226,7 +229,11 @@ class ScanViewModel(
         }
     }
 
-    private suspend fun search(parsed: ParsedCardText, lines: List<OcrLine> = emptyList()) {
+    private suspend fun search(
+        parsed: ParsedCardText,
+        lines: List<OcrLine> = emptyList(),
+        requireConfirmation: Boolean = true,
+    ) {
         val requestGeneration = ++searchGeneration
         _state.update { it.copy(loading = true, error = null) }
         val collectorNumber = parsed.collectorNumber
@@ -250,18 +257,38 @@ class ScanViewModel(
             return
         }
         if (requestGeneration != searchGeneration) return
+        val confirmed = ScanDecision.from(ranked) as? ScanDecision.Confirmed
+        val diagnostics = ScanDiagnostics.from(parsed, lines, ranked)
+        if (confirmed == null && requireConfirmation) {
+            _state.update {
+                it.copy(
+                    candidates = emptyList(),
+                    loading = false,
+                    error = WEAK_EVIDENCE_MESSAGE,
+                    manualSearch = true,
+                    diagnostics = diagnostics,
+                )
+            }
+            return
+        }
+        val candidates = confirmed?.candidates ?: ranked
         _state.update {
             it.copy(
-                candidates = ranked,
+                candidates = candidates,
                 loading = false,
                 error = null,
-                manualSearch = ranked.isEmpty(),
-                diagnostics = ScanDiagnostics.from(parsed, lines, ranked),
+                manualSearch = candidates.isEmpty(),
+                diagnostics = diagnostics,
             )
         }
     }
 
     private companion object {
         const val CANDIDATE_LIMIT = 10
+
+        // Distinct from the network failure message: the search worked and the reading is what
+        // could not be trusted, so the user is told what to type instead.
+        const val WEAK_EVIDENCE_MESSAGE =
+            "Não foi possível confirmar a carta pela foto. Digite o nome ou o número da carta."
     }
 }
