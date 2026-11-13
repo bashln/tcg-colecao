@@ -104,7 +104,7 @@ class EndToEndRecognitionTest {
             viewModel.onTextRecognized(text.toOcrLines())
 
             val state = viewModel.state.value
-            val gotTop = state.candidates.take(5).map { it.value.id }
+            val gotTop = state.candidates.take(5).map { it.card.id }
             val top1 = gotTop.firstOrNull() == card.id
             val top5 = gotTop.contains(card.id)
             if (top1) top1Hits++
