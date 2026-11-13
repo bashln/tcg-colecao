@@ -219,6 +219,19 @@ class CardRepositoryTest {
     }
 
     @Test
+    fun a_failed_refresh_keeps_the_quote_already_known() = runTest {
+        source.getResults["swsh3-136"] = pricedCard("swsh3-136", 0.27)
+        repo.refreshPrices(listOf("swsh3-136"))
+
+        source.getErrors["swsh3-136"] = RuntimeException("offline")
+        val report = repo.refreshPrices(listOf("swsh3-136"))
+
+        assertEquals(PriceRefreshReport(requested = 1, refreshed = 0, unavailable = 1), report)
+        assertEquals(0.27, observations("swsh3-136").single().amount, 0.0)
+        assertEquals(0.27, db.cardDao().pricesFor("swsh3-136").single().market!!, 0.0)
+    }
+
+    @Test
     fun refresh_prices_rethrows_cancellation() = runTest {
         source.getErrors["swsh3-136"] = CancellationException("cancelled")
 

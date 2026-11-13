@@ -246,4 +246,39 @@ class RoomCollectionBackupTest {
         assertEquals(0, dao.listItems().size)
         assertEquals(0, dao.listImportMarkers().size)
     }
+
+    @Test
+    fun a_file_that_is_not_a_backup_is_invalid_and_leaves_the_collection_alone() = runBlocking {
+        val preview = backup.previewImport("isto não é um backup".toByteArray())
+
+        assertTrue(preview is ImportPreview.Invalid)
+        assertEquals(0, dao.listItems().size)
+        assertEquals(0, dao.listImportMarkers().size)
+    }
+
+    @Test
+    fun an_encrypted_backup_without_a_saved_passphrase_asks_for_the_password() = runBlocking {
+        val encrypted = BackupEncryption.encrypt(
+            validBackupJson.toByteArray(),
+            "senha-de-teste-123".toCharArray(),
+        )
+
+        val preview = backup.previewImport(encrypted)
+
+        assertTrue(preview is ImportPreview.PasswordRequired)
+        assertEquals(0, dao.listItems().size)
+    }
+
+    @Test
+    fun the_wrong_password_on_an_encrypted_backup_is_invalid() = runBlocking {
+        val encrypted = BackupEncryption.encrypt(
+            validBackupJson.toByteArray(),
+            "senha-de-teste-123".toCharArray(),
+        )
+
+        val preview = backup.previewImport(encrypted, "outra-senha-123456".toCharArray())
+
+        assertTrue(preview is ImportPreview.Invalid)
+        assertEquals(0, dao.listItems().size)
+    }
 }
