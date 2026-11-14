@@ -419,4 +419,15 @@ class OcrParserTest {
         )
         assertNull(OcrParser.parse(lines).collectorNumber)
     }
+
+    // Device case: basic energy card. The energy symbol between the words is read as a lone "O",
+    // which leaves "Energia O Básica"; the catalog has "Energia Básica".
+    @Test fun the_energy_symbol_read_as_a_lone_letter_is_not_part_of_the_name() {
+        val lines = listOf(
+            line("Energia O Básica", 30f, 200f, 40f),
+            line("Energia Básica", 80f, 200f, 30f),
+        )
+
+        assertEquals("Energia Básica", OcrParser.parse(lines).name)
+    }
 }

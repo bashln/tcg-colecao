@@ -257,7 +257,7 @@ export function App() {
       return
     }
     const query = recognition.parsed.name ?? recognition.parsed.collectorNumber
-    if (query === null || query.length < 2) {
+    if (query === null || (recognition.parsed.name !== null && query.length < 2)) {
       navigate({ kind: 'catalog', photoUrl: capturedPhoto })
       setNotice('Não identificamos um nome ou número. Busque a carta manualmente.')
       return
@@ -359,7 +359,7 @@ export function App() {
             else setNotice(storageMessage())
             return result.kind === 'saved'
           }} /> : null}
-        {screen.kind === 'edit' ? <EditScreen key={screen.entry.item.id} entry={screen.entry} onBack={() => navigate({ kind: 'collection' })}
+        {screen.kind === 'edit' ? <EditScreen key={screen.entry.item.id} entry={screen.entry} currency={currency} onBack={() => navigate({ kind: 'collection' })}
           onSave={async (draft) => {
             const result = await editCollectionItem(screen.entry.item.id, screen.entry.item.revision, draft)
             if (result.kind === 'saved') { navigate({ kind: 'collection' }); setNotice('Alterações salvas.'); await refreshCollection() }
@@ -584,7 +584,7 @@ function ConfirmScreen({ card, alternatives, photoUrl, onBack, onAlternative, on
   return <><SubpageHeader title="Confirme a carta" onBack={onBack} /><p className="subpage-intro">Verifique se a carta identificada está correta antes de adicionar à sua coleção.</p>{photoUrl !== null ? <div className="photo-context"><img src={photoUrl} alt="Foto capturada, mantida neste navegador" /><span><strong>Foto capturada</strong><br />Use a imagem para conferir o resultado abaixo.</span></div> : null}<section className="confirmation-card"><span className="eyebrow">Candidato selecionado</span><CardIdentity card={card} /><ItemFields draft={draft} onChange={setDraft} disabled={saving} /></section>{alternatives.filter((candidate) => candidate.id !== card.id).slice(0, 3).map((candidate) => <button key={candidate.id} type="button" className="alternative-card" onClick={() => onAlternative(candidate)}><CardArtwork card={candidate} /><span><strong>{candidate.name}</strong><small>{candidate.setName} · {candidate.collectorNumber}</small></span></button>)}{error !== '' ? <p className="form-error" role="alert">{error}</p> : null}<div className="form-actions"><button type="button" className="primary-button" disabled={saving} onClick={() => { void submit() }}>{saving ? 'Adicionando...' : 'Adicionar à coleção'}</button><button type="button" className="secondary-button" disabled={saving} onClick={onManual}>Buscar manualmente</button></div></>
 }
 
-function EditScreen({ entry, onBack, onSave, onRemove }: { entry: CollectionEntry; onBack: () => void; onSave: (draft: Extract<ReturnType<typeof parseItemDraft>, { kind: 'valid' }>) => Promise<boolean>; onRemove: () => Promise<boolean> }) {
+function EditScreen({ entry, currency, onBack, onSave, onRemove }: { entry: CollectionEntry; currency: Currency; onBack: () => void; onSave: (draft: Extract<ReturnType<typeof parseItemDraft>, { kind: 'valid' }>) => Promise<boolean>; onRemove: () => Promise<boolean> }) {
   const [draft, setDraft] = useState<ItemDraft>(() => draftFromItem(entry.item))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -627,7 +627,7 @@ function EditScreen({ entry, onBack, onSave, onRemove }: { entry: CollectionEntr
       closeRemoveConfirmation()
     }
   }
-  const quote = quoteFor(entry.card, draft.variant, 'USD') ?? quoteFor(entry.card, draft.variant, 'EUR')
+  const quote = quoteFor(entry.card, draft.variant, currency)
   const save = async () => {
     const parsed = parseItemDraft(draft)
     if (parsed.kind === 'invalid') { setError(parsed.message); return }

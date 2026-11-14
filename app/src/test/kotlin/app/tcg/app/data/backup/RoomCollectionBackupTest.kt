@@ -23,11 +23,16 @@ import org.robolectric.RobolectricTestRunner
 class FakeRecoveryStore : RecoveryStore {
     var shouldFail = false
     var lastSavedEntries: List<WebEntry>? = null
+    var discards = 0
 
     override suspend fun writeAndVerifyRecovery(entries: List<WebEntry>): Boolean {
         if (shouldFail) return false
         lastSavedEntries = entries
         return true
+    }
+
+    override suspend fun discardRecovery() {
+        discards += 1
     }
 }
 
@@ -235,6 +240,28 @@ class RoomCollectionBackupTest {
     }
 
     @Test
+    fun confirmed_import_discards_the_recovery_copy() = runBlocking {
+        val preview = backup.previewImport(validBackupJson.toByteArray())
+        val ticket = (preview as ImportPreview.Ready).ticket
+
+        assertTrue(backup.confirmImport(ticket) is ImportResult.Success)
+
+        assertEquals(1, recoveryStore.discards)
+    }
+
+    @Test
+    fun refused_import_discards_the_recovery_copy() = runBlocking {
+        val preview = backup.previewImport(validBackupJson.toByteArray())
+        val ticket = (preview as ImportPreview.Ready).ticket
+        dao.setSyncBinding(SyncBindingEntity(slot = 0, identity = "user-1", deviceId = "dev-1"))
+
+        assertEquals(ImportResult.ChangedSincePreview, backup.confirmImport(ticket))
+
+        assertEquals(1, recoveryStore.discards)
+        assertEquals(0, dao.listItems().size)
+    }
+
+    @Test
     fun recovery_failure_aborts_import_without_mutating_room() = runBlocking {
         val preview = backup.previewImport(validBackupJson.toByteArray())
         val ticket = (preview as ImportPreview.Ready).ticket
@@ -245,5 +272,40 @@ class RoomCollectionBackupTest {
 
         assertEquals(0, dao.listItems().size)
         assertEquals(0, dao.listImportMarkers().size)
+    }
+
+    @Test
+    fun a_file_that_is_not_a_backup_is_invalid_and_leaves_the_collection_alone() = runBlocking {
+        val preview = backup.previewImport("isto não é um backup".toByteArray())
+
+        assertTrue(preview is ImportPreview.Invalid)
+        assertEquals(0, dao.listItems().size)
+        assertEquals(0, dao.listImportMarkers().size)
+    }
+
+    @Test
+    fun an_encrypted_backup_without_a_saved_passphrase_asks_for_the_password() = runBlocking {
+        val encrypted = BackupEncryption.encrypt(
+            validBackupJson.toByteArray(),
+            "senha-de-teste-123".toCharArray(),
+        )
+
+        val preview = backup.previewImport(encrypted)
+
+        assertTrue(preview is ImportPreview.PasswordRequired)
+        assertEquals(0, dao.listItems().size)
+    }
+
+    @Test
+    fun the_wrong_password_on_an_encrypted_backup_is_invalid() = runBlocking {
+        val encrypted = BackupEncryption.encrypt(
+            validBackupJson.toByteArray(),
+            "senha-de-teste-123".toCharArray(),
+        )
+
+        val preview = backup.previewImport(encrypted, "outra-senha-123456".toCharArray())
+
+        assertTrue(preview is ImportPreview.Invalid)
+        assertEquals(0, dao.listItems().size)
     }
 }

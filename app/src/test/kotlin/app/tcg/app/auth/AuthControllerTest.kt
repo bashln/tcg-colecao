@@ -170,7 +170,20 @@ class AuthControllerTest {
     }
 
     @Test
-    fun `start clears the session when refresh fails`() = runTest {
+    fun `network failure during startup keeps the stored session and reports offline`() = runTest {
+        val stored = session(expiresAt = 500L)
+        store.session = stored
+        nowEpochSeconds = 1_000L
+        remote.refreshError = AuthError.Network
+        val controller = controller()
+        controller.start()
+        assertEquals(stored, store.session)
+        assertEquals(0, store.clears)
+        assertEquals(AuthState.SignedIn(stored, offline = true), controller.state.value)
+    }
+
+    @Test
+    fun `start clears the session when the refresh is rejected`() = runTest {
         store.session = session(expiresAt = 500L)
         nowEpochSeconds = 1_000L
         remote.refreshError = AuthError.InvalidCredentials
@@ -179,6 +192,41 @@ class AuthControllerTest {
         assertEquals(AuthState.SignedOut, controller.state.value)
         assertEquals(1, store.clears)
         assertNull(store.session)
+    }
+
+    @Test
+    fun `refresh replaces the stored session after a rejected token`() = runTest {
+        store.session = session(token = "old", expiresAt = 500L)
+        val refreshed = session(token = "new", refresh = "refresh-2", expiresAt = 3_000L)
+        remote.refreshResult = refreshed
+        val controller = controller()
+
+        assertEquals(SessionRefresh.Refreshed(refreshed), controller.refreshSession())
+        assertEquals(refreshed, store.session)
+        assertEquals(AuthState.SignedIn(refreshed), controller.state.value)
+    }
+
+    @Test
+    fun `refresh keeps the session when the server is unreachable`() = runTest {
+        store.session = session(expiresAt = 500L)
+        remote.refreshError = AuthError.Network
+        val controller = controller()
+
+        assertEquals(SessionRefresh.Unavailable, controller.refreshSession())
+        assertEquals(session(expiresAt = 500L), store.session)
+        assertEquals(0, store.clears)
+    }
+
+    @Test
+    fun `refresh signs out when the server rejects the credential`() = runTest {
+        store.session = session(expiresAt = 500L)
+        remote.refreshError = AuthError.InvalidCredentials
+        val controller = controller()
+
+        assertEquals(SessionRefresh.Rejected, controller.refreshSession())
+        assertEquals(AuthState.SignedOut, controller.state.value)
+        assertNull(store.session)
+        assertEquals(1, store.clears)
     }
 
     @Test

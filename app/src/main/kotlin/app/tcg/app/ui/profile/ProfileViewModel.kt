@@ -9,7 +9,9 @@ import app.tcg.app.data.backup.ImportPreview
 import app.tcg.app.data.backup.ImportResult
 import app.tcg.app.data.backup.ImportTicket
 import app.tcg.app.data.preferences.AppPreferences
+import app.tcg.app.data.prices.PriceRefresher
 import app.tcg.core.data.repository.CollectionRepository
+import app.tcg.core.domain.model.CollectionEntry
 import app.tcg.core.domain.model.PriceSource
 import app.tcg.core.domain.stats.CollectionStats
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 data class ProfileUiState(
     val stats: CollectionStats = CollectionStats.EMPTY,
@@ -30,13 +33,44 @@ data class ProfileUiState(
     val importMessage: String? = null,
     val importPasswordRequired: Boolean = false,
     val priceSource: PriceSource = PriceSource.TCGPLAYER,
+    val refreshingPrices: Boolean = false,
+    val refreshPricesMessage: String? = null,
 )
 
 class ProfileViewModel(
-    repository: CollectionRepository,
+    private val repository: CollectionRepository,
     private val backup: CollectionBackup? = null,
     private val preferences: AppPreferences? = null,
+    private val priceRefresher: PriceRefresher? = null,
 ) : ViewModel() {
+
+    private data class RefreshStatus(val refreshing: Boolean = false, val message: String? = null)
+    private val refreshStatus = MutableStateFlow(RefreshStatus())
+
+    /** Fetches the catalog and Jornada prices on demand, so a card never waits for the daily worker. */
+    fun refreshPrices() {
+        val refresher = priceRefresher ?: return
+        if (refreshStatus.value.refreshing) return
+        viewModelScope.launch {
+            refreshStatus.value = RefreshStatus(refreshing = true)
+            val report = try {
+                refresher.refresh()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            if (report != null) refreshedEntries.value = repository.list()
+            refreshStatus.value = RefreshStatus(
+                refreshing = false,
+                message = if (report == null) {
+                    "Não foi possível atualizar os preços agora."
+                } else {
+                    "Preços atualizados: ${report.refreshed} de ${report.requested} cartas."
+                },
+            )
+        }
+    }
 
     val selectedPriceSource: StateFlow<PriceSource> =
         preferences?.priceSource ?: MutableStateFlow(PriceSource.TCGPLAYER)
@@ -51,8 +85,11 @@ class ProfileViewModel(
     private val importPasswordRequired = MutableStateFlow(false)
     private var pendingImportBytes: ByteArray? = null
 
-    private val statsFlow = combine(repository.observe(), selectedPriceSource) { entries, source ->
-        Pair(CollectionStats.compute(entries, source), source)
+    /** Re-read after a price refresh: the collection flow does not re-emit when only prices change. */
+    private val refreshedEntries = MutableStateFlow<List<CollectionEntry>?>(null)
+
+    private val statsFlow = combine(repository.observe(), selectedPriceSource, refreshedEntries) { entries, source, override ->
+        Pair(CollectionStats.compute(override ?: entries, source), source)
     }
 
     private val coreState = combine(
@@ -80,7 +117,14 @@ class ProfileViewModel(
     val state: StateFlow<ProfileUiState> = combine(
         stateWithImportPassword,
         backup?.encryptionEnabled ?: flowOf(false),
-    ) { state, encrypted -> state.copy(encryptionEnabled = encrypted) }
+        refreshStatus,
+    ) { state, encrypted, refresh ->
+        state.copy(
+            encryptionEnabled = encrypted,
+            refreshingPrices = refresh.refreshing,
+            refreshPricesMessage = refresh.message,
+        )
+    }
         .stateIn(viewModelScope, SharingStarted.Eagerly, ProfileUiState())
 
     fun chooseBackupFolder(treeUri: Uri) {

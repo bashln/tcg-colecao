@@ -34,6 +34,8 @@ Run Android's JVM and build gates from the repository root:
 
 These Android tasks do not install the app. Do not run connected tests on a device that may contain a personal collection. Use an isolated emulator for runtime-only checks.
 
+To drive the installed app by on-screen text, use `scripts/verify-android.sh`, documented in [Android on a device](./android-device.md). It requires `VERIFY_DEVICE_OK=1` and refuses to touch a device without it. The driver's own behavior is tested without a device by `scripts/verify-android.test.sh`.
+
 ## Keep evidence
 
 Playwright writes traces under `web/test-results/`. With `--trace on`, traces record actions, DOM snapshots, network activity, and screenshots. Inspect the trace path printed by Playwright with:
@@ -53,3 +55,4 @@ Playwright owns the browser and Vite process it starts. Let it clean them up. Do
 - [Photo scan](./photo-scan.md) covers image selection, recognition, and manual fallback.
 - [Accounts and sync](./accounts-and-sync.md) covers signup, link preview, sync triggers, conflicts, and logout.
 - [Android Profile and updates](./android-profile-and-updates.md) covers account controls and the OTA updater.
+- [Android on a device](./android-device.md) covers launching the installed app, driving it by label, and keeping evidence.

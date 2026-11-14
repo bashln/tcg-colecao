@@ -19,6 +19,7 @@ class AuthController(
 ) {
     private val _state = MutableStateFlow<AuthState>(AuthState.SignedOut)
     private val sessionLock = Mutex()
+    private val refreshLock = Mutex()
     private var sessionVersion = 0L
     val state: StateFlow<AuthState> = _state.asStateFlow()
 
@@ -44,12 +45,58 @@ class AuthController(
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            // Only an explicit credential rejection may drop the session. A network or
+            // unknown failure keeps it and reports the offline state instead.
+            val rejected = (error as? AuthRemoteException)?.error?.rejectedCredential == true
             sessionLock.withLock {
                 if (sessionVersion == version) {
+                    if (rejected) {
+                        store.clear()
+                        _state.value = AuthState.SignedOut
+                    } else {
+                        _state.value = AuthState.SignedIn(stored, offline = true)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Forces a refresh after a 401 from another component. Returns [SessionRefresh.Rejected]
+     * only when the server refused the credential, in which case the session is cleared and
+     * the state becomes signed out; an unreachable server leaves the stored session intact.
+     */
+    suspend fun refreshSession(): SessionRefresh = refreshLock.withLock {
+        val (version, current) = sessionLock.withLock { sessionVersion to store.read() }
+        if (current == null) return@withLock SessionRefresh.Rejected
+        try {
+            val refreshed = remote.refresh(current.refreshToken)
+            sessionLock.withLock {
+                if (sessionVersion != version) return@withLock SessionRefresh.Rejected
+                if (refreshed.userId != current.userId) {
                     store.clear()
                     _state.value = AuthState.SignedOut
+                    SessionRefresh.Rejected
+                } else {
+                    store.write(refreshed)
+                    _state.value = AuthState.SignedIn(refreshed)
+                    SessionRefresh.Refreshed(refreshed)
                 }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            if ((error as? AuthRemoteException)?.error?.rejectedCredential == true) {
+                sessionLock.withLock {
+                    if (sessionVersion == version) {
+                        store.clear()
+                        _state.value = AuthState.SignedOut
+                    }
+                }
+                SessionRefresh.Rejected
+            } else {
+                SessionRefresh.Unavailable
             }
         }
     }

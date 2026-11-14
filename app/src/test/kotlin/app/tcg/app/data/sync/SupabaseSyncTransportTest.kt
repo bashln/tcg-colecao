@@ -1,6 +1,7 @@
 package app.tcg.app.data.sync
 
 import app.tcg.app.auth.AuthSession
+import app.tcg.app.auth.SessionRefresh
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
@@ -279,6 +280,102 @@ class SupabaseSyncTransportTest {
         } catch (error: SupabaseSyncException) {
             assertEquals(SyncErrorKind.UNAUTHORIZED, error.kind)
         }
+    }
+
+    @Test
+    fun `a 401 refreshes the session once and retries the call with the new token`() = runTest {
+        val authorization = mutableListOf<String?>()
+        var requests = 0
+        val engine = MockEngine { request ->
+            authorization += request.headers[HttpHeaders.Authorization]
+            requests++
+            if (requests == 1) {
+                respond(
+                    content = """{"message":"JWT expired","code":"PGRST301"}""",
+                    status = HttpStatusCode.Unauthorized,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            } else {
+                respond(
+                    content = """{"operations":[],"highWater":3}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            }
+        }
+        var refreshes = 0
+        val transport = SupabaseSyncTransport(
+            baseUrl = "https://example.supabase.co",
+            apiKey = "publishable-key",
+            httpClient = client(engine),
+            sessionProvider = { AuthSession("account-a", "user@example.com", "stale-token", "refresh-a", 9_999L) },
+            refreshSession = {
+                refreshes++
+                SessionRefresh.Refreshed(AuthSession("account-a", "user@example.com", "fresh-token", "refresh-b", 19_999L))
+            },
+        )
+
+        val page = transport.pull("account-a", 0)
+
+        assertEquals(1, refreshes)
+        assertEquals(2, requests)
+        assertEquals(listOf("Bearer stale-token", "Bearer fresh-token"), authorization)
+        assertEquals(3L, page.highWaterMark)
+    }
+
+    @Test
+    fun `a rejected refresh after a 401 surfaces unauthorized without retrying`() = runTest {
+        var requests = 0
+        val engine = MockEngine {
+            requests++
+            respond(
+                content = """{"message":"JWT expired","code":"PGRST301"}""",
+                status = HttpStatusCode.Unauthorized,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        var refreshes = 0
+        val transport = SupabaseSyncTransport(
+            baseUrl = "https://example.supabase.co",
+            apiKey = "publishable-key",
+            httpClient = client(engine),
+            sessionProvider = { AuthSession("account-a", "user@example.com", "stale-token", "refresh-a", 9_999L) },
+            refreshSession = {
+                refreshes++
+                SessionRefresh.Rejected
+            },
+        )
+
+        val failure = runCatching { transport.pull("account-a", 0) }.exceptionOrNull()
+
+        assertEquals(SyncErrorKind.UNAUTHORIZED, (failure as SupabaseSyncException).kind)
+        assertEquals(1, refreshes)
+        assertEquals(1, requests)
+    }
+
+    @Test
+    fun `an unreachable refresh after a 401 surfaces an unavailable error`() = runTest {
+        var requests = 0
+        val engine = MockEngine {
+            requests++
+            respond(
+                content = """{"message":"JWT expired","code":"PGRST301"}""",
+                status = HttpStatusCode.Unauthorized,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val transport = SupabaseSyncTransport(
+            baseUrl = "https://example.supabase.co",
+            apiKey = "publishable-key",
+            httpClient = client(engine),
+            sessionProvider = { AuthSession("account-a", "user@example.com", "stale-token", "refresh-a", 9_999L) },
+            refreshSession = { SessionRefresh.Unavailable },
+        )
+
+        val failure = runCatching { transport.pull("account-a", 0) }.exceptionOrNull()
+
+        assertEquals(SyncErrorKind.UNAVAILABLE, (failure as SupabaseSyncException).kind)
+        assertEquals(1, requests)
     }
 
     @Test

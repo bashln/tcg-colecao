@@ -102,11 +102,19 @@ class EndToEndRecognitionTest {
                 println("E2E ${card.file} -> top1=false top5=false expectedId=${card.id} gotTop=[] OCR_ERROR=${e.message}")
                 misses += "${card.file}: OCR error ${e.message} | expected=${card.name}/${card.id}"
                 continue
+            } finally {
+                bitmap.recycle()
             }
 
             viewModel.onTextRecognized(text.toOcrLines())
 
             val state = viewModel.state.value
+            // Production invariant: a scan never ends in a blank screen. It either offers
+            // candidates to confirm or opens the manual search.
+            assertTrue(
+                "${card.file}: scan must offer candidates or manual search",
+                state.candidates.isNotEmpty() || state.manualSearch,
+            )
             if (state.diagnostics?.decision == ScanDecisionCode.TOO_WEAK) refused++
             val gotTop = state.candidates.take(5).map { it.card.id }
             val top1 = gotTop.firstOrNull() == card.id

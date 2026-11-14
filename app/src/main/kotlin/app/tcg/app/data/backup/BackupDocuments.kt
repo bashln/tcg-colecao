@@ -36,6 +36,9 @@ class SafBackupDocumentStore(context: Context) : BackupDocumentStore {
 
 interface RecoveryStore {
     suspend fun writeAndVerifyRecovery(entries: List<WebEntry>): Boolean
+
+    /** Removes the recovery copy once the import it guarded is resolved. */
+    suspend fun discardRecovery()
 }
 
 class FileRecoveryStore(private val directory: File) : RecoveryStore {
@@ -46,6 +49,19 @@ class FileRecoveryStore(private val directory: File) : RecoveryStore {
         file.writeBytes(bytes)
         val readBack = file.readBytes()
         val parsed = WebBackupAdapter.parse(readBack)
-        parsed.entries.size == entries.size
+        val verified = parsed.entries.size == entries.size
+        if (verified) pruneCopies(keep = file) else file.delete()
+        verified
     }.getOrDefault(false)
+
+    override suspend fun discardRecovery() {
+        pruneCopies(keep = null)
+    }
+
+    /** The copies are unencrypted, so at most one may exist and only while an import runs. */
+    private fun pruneCopies(keep: File?) {
+        directory.listFiles().orEmpty()
+            .filter { it.name.startsWith("recovery-") && it.name.endsWith(".json") }
+            .forEach { if (it.name != keep?.name) it.delete() }
+    }
 }

@@ -19,6 +19,22 @@ git push origin v1.0.0
 A release aparece em `https://github.com/<owner>/<repo>/releases`, com o
 arquivo `tcg-colecao-v1.0.0.apk`.
 
+## Se o Actions não puder publicar
+
+O passo de publicação precisa de `contents: write`. Quando o `GITHUB_TOKEN` do
+repositório está restrito, o run falha com 403 e a release não é criada, mas o
+APK assinado continua guardado como artefato do run. Publique manualmente:
+
+```bash
+gh run download <run-id> -n tcg-colecao-vX.Y.Z -D out
+gh release create vX.Y.Z out/tcg-colecao-vX.Y.Z.apk --generate-notes
+```
+
+Para automatizar de vez, cadastre um token com `contents: write` como
+`RELEASE_TOKEN` e passe `token: ${{ secrets.RELEASE_TOKEN }}` ao passo de
+publicação. O guard de assinatura continua valendo: o APK só é aceito com o
+certificado fixado em `EXPECTED_SIGNING_CERT_SHA256`.
+
 ## Alpha
 
 Alphas são GitHub pre-releases, instalados manualmente pelo arquivo APK. O app
@@ -79,9 +95,12 @@ Cadastre em Settings, Secrets and variables, Actions.
 | `ANDROID_KEYSTORE_PASSWORD` | a senha do keystore |
 | `ANDROID_KEY_ALIAS` | `tcg` |
 | `ANDROID_KEY_PASSWORD` | a senha da chave |
+| `TCG_SUPABASE_URL` | URL do projeto Supabase |
+| `TCG_SUPABASE_PUBLISHABLE_KEY` | chave publicável do Supabase |
 
 Sem esses secrets o workflow falha na etapa "Exigir keystore de release" e nada é
-publicado. O workflow verifica o SHA-256 do certificado com
+publicado. Sem os dois secrets do Supabase ele falha em "Exigir configuracao do Supabase",
+porque um APK sem eles abre a tela de conta e nunca entra. O workflow verifica o SHA-256 do certificado com
 `scripts/verify-release-signature.sh`. O fingerprint fixado foi confirmado nos
 APKs públicos `v0.1.1` e `v0.2.0`:
 `d31a9c98580212663993b2ee7ea757e05fa284ccd2b54ad3b38e6b92a4c3f88f`.
@@ -119,10 +138,17 @@ rejeitadas. Nunca reduza o código de versão para encaixar uma Alpha.
 ./gradlew :app:assembleRelease
 ```
 
-Sem as variáveis `TCG_KEYSTORE_PATH`, `TCG_KEYSTORE_PASSWORD`, `TCG_KEY_ALIAS`
-e `TCG_KEY_PASSWORD` no ambiente, o release usa a assinatura de debug. Sem
-`TCG_VERSION_NAME` e `TCG_VERSION_CODE`, usa `1.0` e `1`. Isso vale só para o
-build local; a tag no CI sempre usa a chave de release e a versão da tag.
+Sem keystore, o empacotamento de release falha com
+`release-build: keystore de release ausente` antes de compilar. Um APK
+assinado com a chave de debug nunca recebe atualização de uma release real,
+porque o Android recusa a troca de assinatura. Para gerar um APK de teste
+assinado com debug, use `TCG_ALLOW_DEBUG_SIGNING=1`. Esse APK não serve para
+distribuição. O workflow `android.yml` roda `assembleRelease` sem keystore e
+exige essa falha, para o guard não regredir.
+
+As variáveis `TCG_KEYSTORE_PATH`, `TCG_KEYSTORE_PASSWORD`, `TCG_KEY_ALIAS` e
+`TCG_KEY_PASSWORD` habilitam a assinatura real. Sem `TCG_VERSION_NAME` e
+`TCG_VERSION_CODE`, o build usa `1.0` e `1`.
 
 ## Obtainium
 

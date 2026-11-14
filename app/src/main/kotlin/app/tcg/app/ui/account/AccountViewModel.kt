@@ -36,7 +36,6 @@ sealed interface LinkState {
 /** Coarse, user-presentable error; the Compose layer maps it to a localized string. */
 enum class AccountError {
     INVALID_CREDENTIALS,
-    EMAIL_ALREADY_REGISTERED,
     EMAIL_NOT_CONFIRMED,
     NETWORK,
     /** The preview is blocked by rows the person must resolve before linking. */
@@ -279,7 +278,6 @@ class AccountViewModel(
 
     private fun AuthError.toAccountError(): AccountError = when (this) {
         AuthError.InvalidCredentials -> AccountError.INVALID_CREDENTIALS
-        AuthError.EmailAlreadyRegistered -> AccountError.EMAIL_ALREADY_REGISTERED
         AuthError.EmailNotConfirmed -> AccountError.EMAIL_NOT_CONFIRMED
         AuthError.Network -> AccountError.NETWORK
         is AuthError.Unknown -> AccountError.UNKNOWN

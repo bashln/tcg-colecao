@@ -68,6 +68,7 @@ export async function recognizePhoto(photo: Blob): Promise<RecognitionResult> {
     const worker = await createWorker('por', undefined, {
       workerPath: new URL(workerPath, window.location.href).href,
       corePath: new URL(corePath, window.location.href).href,
+      langPath: new URL('./tessdata', window.location.href).href,
     })
     try {
       const result = await worker.recognize(photo)

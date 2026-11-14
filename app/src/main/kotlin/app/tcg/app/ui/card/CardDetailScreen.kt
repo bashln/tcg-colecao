@@ -1,6 +1,7 @@
 package app.tcg.app.ui.card
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -108,10 +109,11 @@ fun CardDetailScreen(
                 saving = true
                 try {
                     viewModel.save(state.variant, state.condition, state.quantity)
-                    snackbarHostState.showSnackbar(
-                        if (viewModel.state.value.purchaseAmountNotApplied) keptPurchaseAmountMessage else savedMessage,
-                    )
-                    delay(600)
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            if (viewModel.state.value.purchaseAmountNotApplied) keptPurchaseAmountMessage else savedMessage,
+                        )
+                    }
                     onSaved()
                 } catch (e: CancellationException) {
                     throw e
@@ -156,6 +158,7 @@ fun CardDetailScreen(
                         tcgplayer = state.tcgplayer,
                         cardmarket = state.cardmarket,
                         ligapokemon = state.ligapokemon,
+                        jornada = state.jornada,
                         onSaveLigaPrice = saveLigaPrice,
                         onFetchLigaPrice = { showLigaFetch = true },
                     )
@@ -278,11 +281,8 @@ internal fun HeroCard(card: Card) {
             .fillMaxWidth()
             .height(280.dp)
             .clip(MaterialTheme.shapes.large)
-            .background(
-                Brush.verticalGradient(
-                    listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.surface),
-                ),
-            ),
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.large),
         contentAlignment = Alignment.Center,
     ) {
         AsyncImage(
@@ -331,7 +331,8 @@ private fun AttackSection(card: Card) {
             Card(
                 shape = MaterialTheme.shapes.medium,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     card.attacks.forEach { AttackRow(it) }
@@ -347,6 +348,7 @@ private fun PriceSection(
     tcgplayer: app.tcg.core.domain.model.Money?,
     cardmarket: app.tcg.core.domain.model.Money?,
     ligapokemon: app.tcg.core.domain.model.Money? = null,
+    jornada: app.tcg.core.domain.model.Money? = null,
     onSaveLigaPrice: ((Double) -> Unit)? = null,
     onFetchLigaPrice: (() -> Unit)? = null,
 ) {
@@ -405,12 +407,14 @@ private fun PriceSection(
         Card(
             shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 PriceRow(stringResource(R.string.common_price_tcgplayer), tcgplayer)
                 PriceRow(stringResource(R.string.common_price_cardmarket), cardmarket)
                 PriceRow(stringResource(R.string.common_price_ligapokemon) + " (Brasil)", ligapokemon)
+                PriceRow(stringResource(R.string.common_price_jornada) + " (Brasil)", jornada)
                 androidx.compose.material3.HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 )
@@ -429,7 +433,7 @@ private fun PriceSection(
                             onClick = { showEditDialog = true },
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("✏️ Ajustar R$")
+                            Text("Ajustar R$")
                         }
                     }
                 }
@@ -506,7 +510,7 @@ internal fun QuantityStepper(
 @Composable
 private fun InfoChip(text: String) {
     Surface(
-        shape = RoundedCornerShape(50),
+        shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
     ) {

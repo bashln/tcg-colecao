@@ -35,6 +35,24 @@ class JornadaMapperTest {
     }
 
     @Test
+    fun a_low_liquidity_card_without_a_sku_uses_the_market_ask() {
+        val quote = JornadaQuote(
+            status = "ok",
+            marketCents = 10,
+            marketKind = "ask",
+            fetchedAt = "2026-11-14T12:36:41.669Z",
+        )
+
+        val prices = quote.toCardPrices(setOf(CardVariant.NORMAL))
+
+        assertEquals(1, prices.size)
+        assertEquals(PriceSource.JORANDA, prices.single().source)
+        assertEquals(Currency.BRL, prices.single().currency)
+        assertEquals(0.10, prices.single().market)
+        assertEquals("2026-11-14T12:36:41.669Z", prices.single().updatedAt)
+    }
+
+    @Test
     fun a_variant_without_an_active_price_is_skipped() {
         val quote = JornadaQuote(
             status = "ok",

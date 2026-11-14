@@ -13,6 +13,7 @@ object OcrParser {
     private val DAMAGE_OR_MODIFIER = Regex("""[+xX×%-]\s*\d+|\d+\s*[+xX×%-]""")
     private val YEAR = Regex("""\b(19\d{2}|20\d{2})\b""")
     private val PROMO = Regex("""\b([A-Z]{2,4})(\d{2,3})\b""")
+    private val HP_PREFIXES = setOf("HP", "PS", "PV", "PL")
     private val HP_EXTRACTION = Regex("""(?i)\b(?:HP|PS|PV|PL|P\$)\s*(\d+)""")
     private val HP_REGEX = Regex("""(?i)\b(HP|PS|PV|PL|P\$)\s*\d+""")
     private val HP_LABEL = Regex("""(?i)^\s*(?:HP|PS|PV|PL|P\$)\s*$""")
@@ -38,8 +39,8 @@ object OcrParser {
         val promoCode = lines.firstNotNullOfOrNull { line ->
             PROMO.find(line.text)?.let { match ->
                 val letters = match.groupValues[1]
-                // No-space HP ("HP110") matches the promo shape but is not a promo.
-                if (letters == "HP") null else letters + match.groupValues[2]
+                // No-space HP ("HP110", "PS110", "PV110") matches the promo shape but is not a promo.
+                if (letters in HP_PREFIXES) null else letters + match.groupValues[2]
             }
         }
         val hp = lines.firstNotNullOfOrNull { HP_EXTRACTION.find(it.text)?.groupValues?.get(1)?.toIntOrNull() }
@@ -81,7 +82,7 @@ object OcrParser {
         val fromSlash = printedNumber(lines)?.number
         if (fromSlash != null) return fromSlash
 
-        if (lines.any { PROMO.containsMatchIn(it.text) }) return null
+        if (lines.any { line -> PROMO.findAll(line.text).any { it.groupValues[1] !in HP_PREFIXES } }) return null
 
         val maxBottom = lines.maxOfOrNull { it.top + it.height } ?: 0f
         val bottomLines = if (maxBottom > 0f) {
@@ -201,16 +202,20 @@ object OcrParser {
 
     private fun normalizeCardName(name: String, allLines: List<OcrLine>): String {
         var s = name
+        // The energy symbol prints as a lone "O" between the words ("Energia O Básica").
+        s = s.replace(Regex("""(?<=\p{L}\s)[O0](?=\s\p{L})"""), "")
+            .replace(Regex("""\s{2,}"""), " ")
+            .trim()
         s = SUFFIX_SPACE.replace(s) { m -> "${m.groupValues[1]} ${m.groupValues[2]}" }
         s = s.replace(Regex("""\s+X\b"""), " GX")
         s = s.replace(Regex("""(?<=[a-z])X\b"""), " GX")
 
         val ruleText = allLines.joinToString(" ") { it.text }
-        val isVmax = Regex("""(?i)Regra.*VMAX|Quando seu Pokémon VMAX\b|\bVMAX\b""").containsMatchIn(ruleText)
+        val isVmax = Regex("""(?i)Regra.*VMAX|Quando seu Pokémon VMAX\b""").containsMatchIn(ruleText)
         if (isVmax) {
             s = s.replace(Regex("""(?i)\s*(VMAX|Vx|VM|V)$"""), "").trim()
             s = "$s VMAX"
-        } else if (Regex("""(?i)Regra.*GX|ALIADOS|ataque\s*GX|\bGX\b""").containsMatchIn(ruleText)) {
+        } else if (Regex("""(?i)Regra.*GX|ALIADOS|ataque\s*GX""").containsMatchIn(ruleText)) {
             s = s.replace(Regex("""(?i)\s*GX$"""), "").trim()
             s = "$s GX"
         } else if (Regex("""(?i)Regra\s*V\b|Quando seu Pokémon V é Nocauteado""").containsMatchIn(ruleText)) {
@@ -235,9 +240,6 @@ object OcrParser {
         val trimmed = line.text.trim()
         if (HP_REGEX.containsMatchIn(trimmed) || HP_SOLO_REGEX.matches(trimmed)) return true
         if (HP_LABEL.matches(trimmed)) return true
-        // An HP value carries digits. A letter-only line in the right third is a name fragment,
-        // so it stays a name candidate.
-        if (line.left > 350f && trimmed.any { it.isDigit() }) return true
         return false
     }
 
@@ -248,7 +250,8 @@ object OcrParser {
 
     private fun isNoise(text: String): Boolean {
         val trimmed = text.trim()
-        if (SLASH_NUMBER.containsMatchIn(trimmed) || PROMO.containsMatchIn(trimmed) || HP_REGEX.containsMatchIn(trimmed)) {
+        val hasRealPromo = PROMO.findAll(trimmed).any { it.groupValues[1] !in HP_PREFIXES }
+        if (SLASH_NUMBER.containsMatchIn(trimmed) || hasRealPromo || HP_REGEX.containsMatchIn(trimmed)) {
             return true
         }
         val upper = trimmed.uppercase()

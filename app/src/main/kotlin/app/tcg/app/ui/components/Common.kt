@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -74,13 +77,18 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(12.dp))
         Box(
             modifier = Modifier
-                .size(width = 4.dp, height = 18.dp)
-                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)),
+                .weight(1f)
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant),
         )
-        Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -98,9 +106,11 @@ fun PriceRow(label: String, price: Money?, modifier: Modifier = Modifier) {
         )
         Text(
             text = formatMoney(price) ?: stringResource(R.string.common_no_price),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall.copy(
+                fontFamily = app.tcg.app.ui.theme.NumeralsFamily,
+            ),
             color = if (price != null) {
-                MaterialTheme.colorScheme.primary
+                MaterialTheme.colorScheme.onSurface
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
@@ -190,5 +200,27 @@ fun ErrorBanner(
             )
             trailing?.invoke()
         }
+    }
+}
+
+
+/** Título de tela com volta explícita. Telas que escondem a barra inferior não podem virar beco. */
+@Composable
+fun BackTitle(title: String, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                contentDescription = stringResource(R.string.cd_back),
+            )
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(start = 4.dp),
+        )
     }
 }

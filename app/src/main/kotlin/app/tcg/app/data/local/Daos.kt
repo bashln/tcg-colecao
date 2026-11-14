@@ -304,6 +304,7 @@ abstract class CollectionDao {
     open suspend fun removeAndQueue(itemId: String) {
         val current = getById(itemId) ?: return
         deleteById(itemId)
+        deleteImportMarker(itemId)
         val binding = getSyncBinding() ?: return
         insertSyncOperation(
             SyncOutboxEntity(
@@ -374,6 +375,9 @@ abstract class CollectionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun insertImportMarker(marker: BackupImportMarkerEntity)
 
+    @Query("DELETE FROM backup_import_markers WHERE itemId = :itemId")
+    abstract suspend fun deleteImportMarker(itemId: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun insertImportMarkers(markers: List<BackupImportMarkerEntity>)
 
@@ -433,15 +437,16 @@ abstract class CollectionDao {
                         addedAt = action.entry.item.addedAt,
                         revision = action.entry.item.revision,
                     )
-                    insertIfAbsent(item)
-                    insertImportMarker(
-                        BackupImportMarkerEntity(
-                            itemId = item.id,
-                            signature = WebBackupAdapter.itemSignature(action.entry.item),
+                    if (insertIfAbsent(item) != -1L) {
+                        insertImportMarker(
+                            BackupImportMarkerEntity(
+                                itemId = item.id,
+                                signature = WebBackupAdapter.itemSignature(action.entry.item),
+                            )
                         )
-                    )
-                    if (currentBinding != null) {
-                        insertSyncOperation(item.toSyncOperation(currentBinding, "create", null))
+                        if (currentBinding != null) {
+                            insertSyncOperation(item.toSyncOperation(currentBinding, "create", null))
+                        }
                     }
                 }
                 is ImportAction.Merge -> {

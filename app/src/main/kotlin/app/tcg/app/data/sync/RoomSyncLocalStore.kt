@@ -526,7 +526,7 @@ private fun encodePushCloudItem(cloud: PushCloudItem): String = when (cloud) {
     is PushCloudItem.Missing -> JsonObject(mapOf("itemId" to JsonPrimitive(cloud.itemId), "deleted" to JsonPrimitive(true), "revision" to JsonPrimitive(0))).toString()
 }
 
-private fun decodePushCloudItem(element: kotlinx.serialization.json.JsonElement?): PushCloudItem? {
+internal fun decodePushCloudItem(element: kotlinx.serialization.json.JsonElement?): PushCloudItem? {
     if (element == null || element is JsonNull) return null
     val row = element.jsonObject
     val itemId = row.getValue("itemId").jsonPrimitive.content

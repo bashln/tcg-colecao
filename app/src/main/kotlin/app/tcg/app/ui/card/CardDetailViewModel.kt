@@ -33,6 +33,7 @@ data class CardDetailUiState(
     val tcgplayer: Money? = null,
     val cardmarket: Money? = null,
     val ligapokemon: Money? = null,
+    val jornada: Money? = null,
 )
 
 class CardDetailViewModel(
@@ -74,6 +75,7 @@ class CardDetailViewModel(
                 tcgplayer = Valuation.itemValue(it.card, variant, PriceSource.TCGPLAYER),
                 cardmarket = Valuation.itemValue(it.card, variant, PriceSource.CARDMARKET),
                 ligapokemon = Valuation.itemValue(it.card, variant, PriceSource.LIGAPOKEMON),
+                jornada = Valuation.itemValue(it.card, variant, PriceSource.JORANDA),
             )
         }
     }
@@ -149,6 +151,7 @@ class CardDetailViewModel(
             tcgplayer = Valuation.itemValue(card, variant, PriceSource.TCGPLAYER),
             cardmarket = Valuation.itemValue(card, variant, PriceSource.CARDMARKET),
             ligapokemon = Valuation.itemValue(card, variant, PriceSource.LIGAPOKEMON),
+            jornada = Valuation.itemValue(card, variant, PriceSource.JORANDA),
         )
 
         fun defaultVariant(card: Card): CardVariant =

@@ -157,7 +157,7 @@ export async function searchCatalog(query: string): Promise<CatalogResult<CardSu
   const trimmed = query.trim()
   if (trimmed.length < 2) return { kind: 'unavailable', message: 'Digite ao menos duas letras ou números para buscar.' }
   try {
-    const isNumber = /^\d{1,4}$/.test(trimmed)
+    const isNumber = /^\d{1,4}$/.test(trimmed) || /^(?:TG|GG|SV|SWSH|SM|XY|BW)\d{1,4}$/i.test(trimmed)
     const params = new URLSearchParams({ [isNumber ? 'localId' : 'name']: trimmed })
     const result = parseArray(await fetchJson('/cards', params))
     if (result === null) return { kind: 'unavailable', message: 'O catálogo respondeu em um formato inesperado. Tente novamente.' }
@@ -208,7 +208,11 @@ export async function getSetCoverage(set: SetOption): Promise<SetCoverage> {
   try {
     const result = parseArray(await fetchJson('/cards', new URLSearchParams({ set: set.id })))
     if (result === null) return { kind: 'unavailable', setId: set.id, message: 'A lista desta expansão está indisponível.' }
-    const cards = result.cards.filter((card) => card.setId === set.id)
+    // The /cards?set= briefs omit the set object, so the coverage carries the set name from
+    // the selected set instead of showing "Expansão não informada".
+    const cards = result.cards
+      .filter((card) => card.setId === set.id)
+      .map((card) => ({ ...card, setId: set.id, setName: set.name }))
     if (set.expectedCount !== null && cards.length === set.expectedCount && result.invalidCount === 0 && cards.length === result.cards.length) {
       return { kind: 'complete', setId: set.id, cards, expectedCount: set.expectedCount }
     }

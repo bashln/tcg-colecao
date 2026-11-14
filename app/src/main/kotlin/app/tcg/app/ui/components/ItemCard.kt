@@ -94,12 +94,17 @@ fun CollectionItemCard(
                 }
                 QuantityBadge(entry.item.quantity)
             }
+            val price = Valuation.itemValue(card, entry.item.variant, priceSource)
             Text(
-                text = formatMoney(
-                    Valuation.itemValue(card, entry.item.variant, priceSource),
-                ) ?: stringResource(R.string.common_no_price),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
+                text = formatMoney(price) ?: stringResource(R.string.common_no_price),
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontFamily = app.tcg.app.ui.theme.NumeralsFamily,
+                ),
+                color = if (price != null) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
             )
         }
     }
@@ -107,15 +112,11 @@ fun CollectionItemCard(
 
 @Composable
 private fun QuantityBadge(quantity: Int) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-    ) {
-        Text(
-            text = "x$quantity",
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-        )
-    }
+    Text(
+        text = "\u00d7$quantity",
+        style = MaterialTheme.typography.labelMedium.copy(
+            fontFamily = app.tcg.app.ui.theme.NumeralsFamily,
+        ),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }

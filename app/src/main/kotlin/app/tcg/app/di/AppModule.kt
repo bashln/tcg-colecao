@@ -202,6 +202,7 @@ object AppModule {
             apiKey = BuildConfig.SUPABASE_PUBLISHABLE_KEY,
             httpClient = httpClient,
             sessionProvider = { (authController.state.value as? app.tcg.app.auth.AuthState.SignedIn)?.session },
+            refreshSession = authController::refreshSession,
         )
 
     @Provides
@@ -214,7 +215,12 @@ object AppModule {
     fun provideCollectionSyncCoordinator(
         transport: SupabaseSyncTransport,
         store: RoomSyncLocalStore,
-    ): CollectionSyncCoordinator = CollectionSyncCoordinator(transport, store)
+        cardRepository: CardRepository,
+    ): CollectionSyncCoordinator = CollectionSyncCoordinator(
+        transport = transport,
+        local = store,
+        ensureCardCached = { cardId -> cardRepository.getCard(cardId) != null },
+    )
 
     @Provides
     @Singleton

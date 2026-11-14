@@ -2,6 +2,7 @@ package app.tcg.app.data.sync
 
 import app.tcg.core.domain.model.CardVariant
 import app.tcg.app.auth.AuthSession
+import app.tcg.app.auth.SessionRefresh
 import app.tcg.core.domain.model.Condition
 import app.tcg.core.domain.model.Currency
 import app.tcg.core.domain.model.Money
@@ -10,6 +11,7 @@ import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -142,6 +144,7 @@ class SupabaseSyncTransport(
     private val apiKey: String,
     private val httpClient: HttpClient,
     private val sessionProvider: () -> AuthSession?,
+    private val refreshSession: suspend () -> SessionRefresh = { SessionRefresh.Rejected },
 ) : SyncTransport, SyncLinkTransport {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -383,21 +386,22 @@ class SupabaseSyncTransport(
         callElement(function, payload, expectedIdentity) as? JsonObject ?: throw invalidResponse("Resposta inválida do servidor")
 
     private suspend fun callElement(function: String, payload: JsonObject, expectedIdentity: String? = null): JsonElement {
-        val session = sessionProvider()
+        var session = sessionProvider()
         if (expectedIdentity != null && session?.userId != expectedIdentity) {
             throw SupabaseSyncException(SyncErrorKind.UNAUTHORIZED, "A conta mudou antes da sincronização")
         }
-        val response = try {
-            httpClient.post("$baseUrl/rest/v1/rpc/$function") {
-                contentType(ContentType.Application.Json)
-                setBody(payload.toString())
-                session?.let { header(HttpHeaders.Authorization, "Bearer ${it.accessToken}") }
-                header("apikey", apiKey)
+        var response = rpc(function, payload, session)
+        if (response.status == HttpStatusCode.Unauthorized) {
+            // One refresh, one retry: an expired token is recoverable, a rejected one is not.
+            session = when (val refreshed = refreshSession()) {
+                is SessionRefresh.Refreshed -> refreshed.session
+                SessionRefresh.Rejected -> throw SupabaseSyncException(SyncErrorKind.UNAUTHORIZED, "Sessão expirada. Entre novamente.")
+                SessionRefresh.Unavailable -> throw SupabaseSyncException(SyncErrorKind.UNAVAILABLE, "Não foi possível renovar a sessão agora")
             }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            throw SupabaseSyncException(SyncErrorKind.UNAVAILABLE, error.message ?: "Falha de rede na sincronização")
+            if (expectedIdentity != null && session.userId != expectedIdentity) {
+                throw SupabaseSyncException(SyncErrorKind.UNAUTHORIZED, "A conta mudou antes da sincronização")
+            }
+            response = rpc(function, payload, session)
         }
 
         if (response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden) {
@@ -420,6 +424,19 @@ class SupabaseSyncTransport(
             throw SupabaseSyncException(SyncErrorKind.UNAUTHORIZED, message)
         }
         return body
+    }
+
+    private suspend fun rpc(function: String, payload: JsonObject, session: AuthSession?): HttpResponse = try {
+        httpClient.post("$baseUrl/rest/v1/rpc/$function") {
+            contentType(ContentType.Application.Json)
+            setBody(payload.toString())
+            session?.let { header(HttpHeaders.Authorization, "Bearer ${it.accessToken}") }
+            header("apikey", apiKey)
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        throw SupabaseSyncException(SyncErrorKind.UNAVAILABLE, error.message ?: "Falha de rede na sincronização")
     }
 
     private fun mapPushOutcome(row: JsonObject): PushOutcome {

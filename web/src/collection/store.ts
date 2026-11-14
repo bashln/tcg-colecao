@@ -523,10 +523,26 @@ export async function applyPushConflictResolution(
   identity: string,
   conflictId: string,
   receipt: PushResolutionResponse,
+  resolveCard?: (cardId: string) => Promise<CardSummary>,
 ): Promise<boolean> {
   if ((receipt.status !== 'resolved' && receipt.status !== 'already-resolved') || receipt.result === undefined || receipt.resolutionId === undefined ||
     (receipt.choice !== 'keep-local' && receipt.choice !== 'keep-cloud')) return false
   const result = receipt.result
+  const remoteStates = [parseResolutionCloudItem(result.cloudItem), parseResolutionCloudItem(result.conflictingItem)]
+  const present = remoteStates.filter((state): state is Extract<PushCloudItem, { kind: 'present' }> => state?.kind === 'present')
+  const pendingCards = new Set(present.map((state) => state.item.cardId))
+  const resolvedCards = new Map<string, CardSummary>()
+  if (resolveCard !== undefined) {
+    for (const cardId of pendingCards) {
+      try {
+        const card = await getCachedCard(cardId) ?? await resolveCard(cardId)
+        if (card.id !== cardId) return false
+        resolvedCards.set(cardId, card)
+      } catch {
+        return false
+      }
+    }
+  }
   const database = await openDatabase()
   const transaction = database.transaction(['sync', 'syncConflicts', 'items', 'cards', 'outbox', 'outboxOrder'], 'readwrite')
   const end = transactionEnd(transaction)
@@ -558,11 +574,8 @@ export async function applyPushConflictResolution(
     if (typeof result.conflictingItemId === 'string') itemIds.add(result.conflictingItemId)
 
     if (receipt.choice === 'keep-cloud') {
-      const remoteStates = [parseResolutionCloudItem(result.cloudItem), parseResolutionCloudItem(result.conflictingItem)]
-      const present = remoteStates.filter((state): state is Extract<PushCloudItem, { kind: 'present' }> => state?.kind === 'present')
-      const pendingCards = new Set(present.map((state) => state.item.cardId))
-      const cards = new Map<string, CardSummary>()
-      let remainingCards = pendingCards.size
+      const cards = new Map<string, CardSummary>(resolvedCards)
+      let remainingCards = pendingCards.size - cards.size
       const finishCloudApply = () => {
         if (remainingCards > 0) return
         for (const id of itemIds) if (!present.some((state) => state.item.id === id)) transaction.objectStore('items').delete(id)
@@ -574,6 +587,7 @@ export async function applyPushConflictResolution(
       }
       if (remainingCards === 0) finishCloudApply()
       for (const cardId of pendingCards) {
+        if (cards.has(cardId)) continue
         const cardRequest = transaction.objectStore('cards').get(cardId)
         cardRequest.onsuccess = () => {
           const card: unknown = cardRequest.result
@@ -639,7 +653,7 @@ export async function finishPushConflictResolution(identity: string, conflictId:
 }
 
 function parseResolutionCloudItem(value: unknown): PushCloudItem {
-  if (value === null) return null
+  if (value === null || value === undefined) return null
   if (!isRecord(value) || typeof value.itemId !== 'string' || typeof value.deleted !== 'boolean') throw new Error('Snapshot de resolução inválido')
   if (value.deleted) {
     if (typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision)) throw new Error('Tombstone de resolução inválido')

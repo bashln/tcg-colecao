@@ -45,6 +45,7 @@ import app.tcg.app.BuildConfig
 import app.tcg.app.R
 import app.tcg.app.auth.AuthController
 import app.tcg.app.data.preferences.AppPreferences
+import app.tcg.app.data.prices.PriceRefresher
 import app.tcg.app.data.sync.SyncLinkCoordinator
 import app.tcg.app.data.sync.SyncLifecycle
 import app.tcg.app.data.sync.SyncLinkRepository
@@ -250,13 +251,22 @@ fun AppNav(
             }
             composable(Routes.PROFILE) {
                 val viewModel: ProfileViewModel = viewModel(
-                    factory = viewModelFactory { initializer { ProfileViewModel(collectionRepository, collectionBackup, appPreferences) } },
+                    factory = viewModelFactory { initializer {
+                        ProfileViewModel(
+                            collectionRepository,
+                            collectionBackup,
+                            appPreferences,
+                            PriceRefresher(collectionRepository, cardRepository),
+                        )
+                    } },
                 )
                 ProfileScreen(
                     viewModel = viewModel,
                     onScanClick = { navController.navigateToTopLevel(Routes.SCAN) },
                     onAccountClick = { navController.navigate(Routes.ACCOUNT) },
                     onUpdatesClick = { navController.navigate(Routes.UPDATE) },
+                    syncAvailable = BuildConfig.SUPABASE_URL.isNotBlank() &&
+                        BuildConfig.SUPABASE_PUBLISHABLE_KEY.isNotBlank(),
                 )
             }
             composable(Routes.ACCOUNT) {
@@ -294,6 +304,7 @@ fun AppNav(
                     onResolveConflict = viewModel::resolveConflict,
                     onSignOut = viewModel::signOut,
                     onDismissError = viewModel::dismissError,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(Routes.UPDATE) {
@@ -318,6 +329,7 @@ fun AppNav(
                     onCancel = viewModel::cancelDownload,
                     onInstall = viewModel::install,
                     onDismissError = viewModel::dismissError,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(

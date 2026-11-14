@@ -201,7 +201,7 @@ function SyncStatusPanel({ state, entries, onSyncNow, onResolveConflict }: {
   onResolveConflict: (conflictId: string, resolution: 'keep-local' | 'keep-cloud') => Promise<void>
 }) {
   const [resolvingConflictId, setResolvingConflictId] = useState<string | null>(null)
-  const [resolutionError, setResolutionError] = useState('')
+  const [resolutionError, setResolutionError] = useState<{ id: string; message: string } | null>(null)
   const result: SyncResult | null = state.result
   return <div className="sync-status">
     <p aria-live="polite">
@@ -229,15 +229,17 @@ function SyncStatusPanel({ state, entries, onSyncNow, onResolveConflict }: {
         {detail.reason === 'duplicate-configuration' ? <p className="storage-footnote">Manter minha coleção substitui o identificador local pelo identificador da nuvem. Usar versão da nuvem mantém a posse existente e remove a duplicata local.</p> : null}
         {permanentConflictCopy(detail.reason) !== null ? <p className="form-error" role="alert">{permanentConflictCopy(detail.reason)}</p> : null}
         {resolvingConflictId === detail.id ? <p aria-live="polite">Aplicando escolha e confirmando na nuvem…</p> : null}
-        {resolutionError !== '' && resolvingConflictId === detail.id ? <p role="alert" className="form-error">{resolutionError}</p> : null}
+        {resolutionError !== null && resolutionError.id === detail.id ? <p role="alert" className="form-error">{resolutionError.message}</p> : null}
         {detail.id !== undefined && canResolvePushConflict(detail) ? <div className="conflict-actions" aria-label="Resolver conflito" aria-busy={resolvingConflictId === detail.id}>
           {(['keep-local', 'keep-cloud'] as const).map((choice) => <button key={choice} type="button" className="secondary-button"
             disabled={state.running || resolvingConflictId !== null}
             onClick={() => {
               setResolvingConflictId(detail.id ?? null)
-              setResolutionError('')
-              void onResolveConflict(detail.id!, choice).catch(() => setResolutionError('Não foi possível concluir a escolha. A resolução continuará disponível para tentar novamente.'))
-                .finally(() => setResolvingConflictId(null))
+              setResolutionError(null)
+              void onResolveConflict(detail.id!, choice).catch(() => setResolutionError({
+                id: detail.id!,
+                message: 'Não foi possível concluir a escolha. A resolução continuará disponível para tentar novamente.',
+              })).finally(() => setResolvingConflictId(null))
             }}>
             {choice === 'keep-local' ? 'Manter minha coleção' : 'Usar versão da nuvem'}
           </button>)}

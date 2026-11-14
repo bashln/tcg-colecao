@@ -19,17 +19,28 @@ data class AuthSession(
 sealed interface AuthState {
     data object SignedOut : AuthState
     data class AwaitingVerification(val email: String) : AuthState
-    data class SignedIn(val session: AuthSession) : AuthState
+
+    /**
+     * [offline] is set when a stored session could not be refreshed because the server was
+     * unreachable. The session stays valid locally; only a rejection clears it.
+     */
+    data class SignedIn(val session: AuthSession, val offline: Boolean = false) : AuthState
 }
 
 /** Coarse, non-revealing error taxonomy. Messages never disclose whether an email exists. */
 sealed interface AuthError {
     data object InvalidCredentials : AuthError
-    data object EmailAlreadyRegistered : AuthError
     data object EmailNotConfirmed : AuthError
     data object Network : AuthError
     data class Unknown(val message: String?) : AuthError
 }
+
+/**
+ * True only when the server explicitly refused the credential. A network or unknown failure
+ * says nothing about the session, so it must never clear it.
+ */
+val AuthError.rejectedCredential: Boolean
+    get() = this == AuthError.InvalidCredentials || this == AuthError.EmailNotConfirmed
 
 sealed interface AuthResult {
     data class Success(val state: AuthState) : AuthResult
@@ -40,6 +51,17 @@ sealed interface AuthResult {
 sealed interface RemoteAuth {
     data class Session(val session: AuthSession) : RemoteAuth
     data class VerificationRequired(val email: String) : RemoteAuth
+}
+
+/** Result of a forced session refresh, as seen by a caller recovering from a 401. */
+sealed interface SessionRefresh {
+    data class Refreshed(val session: AuthSession) : SessionRefresh
+
+    /** The server rejected the credential; the session has already been cleared. */
+    data object Rejected : SessionRefresh
+
+    /** The server could not be reached; the stored session is unchanged. */
+    data object Unavailable : SessionRefresh
 }
 
 class AuthRemoteException(
