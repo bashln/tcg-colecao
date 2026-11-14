@@ -86,6 +86,7 @@ test('a complete search keeps both currencies and the catalog image size', async
 
   assert.equal(result.kind, 'complete')
   const [summary] = (result as { value: { prices: { source: string; currency: string; amount: number }[]; imageUrl: string | null }[] }).value
+  assert.ok(summary)
   assert.deepEqual(
     summary.prices.map((quote) => `${quote.source}:${quote.currency}:${quote.amount}`),
     ['CARDMARKET:EUR:1.7', 'TCGPLAYER:USD:0.27'],

@@ -19,6 +19,7 @@ class AuthController(
 ) {
     private val _state = MutableStateFlow<AuthState>(AuthState.SignedOut)
     private val sessionLock = Mutex()
+    private val refreshLock = Mutex()
     private var sessionVersion = 0L
     val state: StateFlow<AuthState> = _state.asStateFlow()
 
@@ -66,10 +67,10 @@ class AuthController(
      * only when the server refused the credential, in which case the session is cleared and
      * the state becomes signed out; an unreachable server leaves the stored session intact.
      */
-    suspend fun refreshSession(): SessionRefresh {
+    suspend fun refreshSession(): SessionRefresh = refreshLock.withLock {
         val (version, current) = sessionLock.withLock { sessionVersion to store.read() }
-        if (current == null) return SessionRefresh.Rejected
-        return try {
+        if (current == null) return@withLock SessionRefresh.Rejected
+        try {
             val refreshed = remote.refresh(current.refreshToken)
             sessionLock.withLock {
                 if (sessionVersion != version) return@withLock SessionRefresh.Rejected

@@ -189,8 +189,6 @@ fun CollectionItemEditScreen(
                             onClick = {
                                 scope.launch {
                                     if (viewModel.save()) {
-                                        scope.launch { snackbarHostState.showSnackbar(savedMessage) }
-                                        delay(450)
                                         onSaved()
                                     }
                                 }

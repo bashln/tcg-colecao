@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.util.concurrent.atomic.AtomicBoolean
 
 enum class ScanGridMode {
     SINGLE,
@@ -53,6 +54,9 @@ class ScanViewModel(
     private val _state = MutableStateFlow(ScanUiState())
     val state: StateFlow<ScanUiState> = _state.asStateFlow()
     private var searchGeneration = 0L
+
+    /** A double tap must not add the same card twice. */
+    private val addInFlight = AtomicBoolean(false)
 
     /** Kept so a manual retry still reports what the camera read, not just the typed query. */
     private var lastOcrLines: List<OcrLine> = emptyList()
@@ -183,51 +187,61 @@ class ScanViewModel(
         condition: Condition = Condition.NEAR_MINT,
         quantity: Int = 1,
     ) {
-        val selectedVariant = if (variant in card.variants) variant else (card.variants.firstOrNull() ?: CardVariant.NORMAL)
-        collection?.add(
-            card = card,
-            variant = selectedVariant,
-            condition = condition,
-            quantity = quantity,
-            pricePaid = null,
-        )
-        searchGeneration++
-        _state.update {
-            it.copy(
-                batchCount = it.batchCount + quantity,
-                lastAddedCard = card,
-                candidates = emptyList(),
-                loading = false,
-                error = null,
-                manualSearch = false,
+        if (!addInFlight.compareAndSet(false, true)) return
+        try {
+            val selectedVariant = if (variant in card.variants) variant else (card.variants.firstOrNull() ?: CardVariant.NORMAL)
+            collection?.add(
+                card = card,
+                variant = selectedVariant,
+                condition = condition,
+                quantity = quantity,
+                pricePaid = null,
             )
+            searchGeneration++
+            _state.update {
+                it.copy(
+                    batchCount = it.batchCount + quantity,
+                    lastAddedCard = card,
+                    candidates = emptyList(),
+                    loading = false,
+                    error = null,
+                    manualSearch = false,
+                )
+            }
+        } finally {
+            addInFlight.set(false)
         }
     }
 
     suspend fun quickAddAllMultiCards() {
-        val cards = _state.value.multiCardResults.mapNotNull { it.selectedCard }
-        if (cards.isEmpty()) return
-        for (card in cards) {
-            val variant = if (CardVariant.NORMAL in card.variants) CardVariant.NORMAL else (card.variants.firstOrNull() ?: CardVariant.NORMAL)
-            collection?.add(
-                card = card,
-                variant = variant,
-                condition = Condition.NEAR_MINT,
-                quantity = 1,
-                pricePaid = null,
-            )
-        }
-        searchGeneration++
-        _state.update {
-            it.copy(
-                batchCount = it.batchCount + cards.size,
-                lastAddedCard = cards.lastOrNull(),
-                multiCardResults = emptyList(),
-                candidates = emptyList(),
-                loading = false,
-                error = null,
-                manualSearch = false,
-            )
+        if (!addInFlight.compareAndSet(false, true)) return
+        try {
+            val cards = _state.value.multiCardResults.mapNotNull { it.selectedCard }
+            if (cards.isEmpty()) return
+            for (card in cards) {
+                val variant = if (CardVariant.NORMAL in card.variants) CardVariant.NORMAL else (card.variants.firstOrNull() ?: CardVariant.NORMAL)
+                collection?.add(
+                    card = card,
+                    variant = variant,
+                    condition = Condition.NEAR_MINT,
+                    quantity = 1,
+                    pricePaid = null,
+                )
+            }
+            searchGeneration++
+            _state.update {
+                it.copy(
+                    batchCount = it.batchCount + cards.size,
+                    lastAddedCard = cards.lastOrNull(),
+                    multiCardResults = emptyList(),
+                    candidates = emptyList(),
+                    loading = false,
+                    error = null,
+                    manualSearch = false,
+                )
+            }
+        } finally {
+            addInFlight.set(false)
         }
     }
 
@@ -241,7 +255,7 @@ class ScanViewModel(
         val collectorNumber = parsed.collectorNumber
         val name = parsed.name
         val full = try {
-            val byName = if (name != null) repository.searchByName(name) else emptyList()
+            val byName = if (name != null) searchByNameWithFallback(name) else emptyList()
             val byNumber = if (collectorNumber != null) repository.searchByNumber(null, collectorNumber) else emptyList()
             CandidateRanker.rank(parsed, (byName + byNumber).distinctBy { it.id })
         } catch (e: CancellationException) {
@@ -263,7 +277,9 @@ class ScanViewModel(
         val ranked = full.take(CANDIDATE_LIMIT)
         val confirmed = decision as? ScanDecision.Confirmed
         val diagnostics = ScanDiagnostics.from(parsed, lines, ranked, decision, origin)
-        if (confirmed == null && origin == ScanOrigin.CAMERA) {
+        // A weak camera read must never be a dead end: when the catalog returned candidates,
+        // show them for the person to confirm instead of hiding the list behind manual search.
+        if (confirmed == null && origin == ScanOrigin.CAMERA && ranked.isEmpty()) {
             _state.update {
                 it.copy(
                     candidates = emptyList(),
@@ -285,6 +301,20 @@ class ScanViewModel(
                 diagnostics = diagnostics,
             )
         }
+    }
+
+    /**
+     * A noisy OCR read can miss the catalog's exact name. Basic energy cards print the generic
+     * "Energia Básica" while the catalog names the type ("Energia Psíquica"), so an exact search
+     * returns nothing. Retry once with the broad category so the person still gets cards to pick
+     * from. This is a fallback, never a replacement for an exact hit.
+     */
+    private suspend fun searchByNameWithFallback(name: String): List<Card> {
+        val direct = repository.searchByName(name)
+        if (direct.isNotEmpty()) return direct
+        val broad = if (name.contains("Energia", ignoreCase = true)) "Energia" else null
+        if (broad == null || broad.equals(name, ignoreCase = true)) return emptyList()
+        return repository.searchByName(broad)
     }
 
     private companion object {

@@ -35,7 +35,8 @@ export function createIndexedDbSyncLocalStore(input: {
     },
     finishConflict: finishSyncConflict,
     savePushConflict,
-    applyPushConflictResolution,
+    applyPushConflictResolution: (identity, conflictId, receipt) =>
+      applyPushConflictResolution(identity, conflictId, receipt, input.resolveCard),
     finishPushConflictResolution,
     deviceId: syncDeviceId,
     lastSequence: lastSyncSequence,

@@ -56,7 +56,8 @@ class CollectionItemEditViewModel(
     private val _state = MutableStateFlow<CollectionItemEditState>(CollectionItemEditState.Loading)
     val state: StateFlow<CollectionItemEditState> = _state.asStateFlow()
 
-    suspend fun load() {
+    suspend fun load(force: Boolean = false) {
+        if (!force && _state.value is CollectionItemEditState.Ready) return
         _state.value = CollectionItemEditState.Loading
         _state.value = try {
             val details = collection.getById(itemId)

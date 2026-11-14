@@ -654,17 +654,17 @@ private fun CurrencyPreferenceCard(
                 androidx.compose.material3.FilterChip(
                     selected = currentSource == app.tcg.core.domain.model.PriceSource.LIGAPOKEMON,
                     onClick = { onSelectSource(app.tcg.core.domain.model.PriceSource.LIGAPOKEMON) },
-                    label = { Text("🇧🇷 R$ (Liga)") },
+                    label = { Text("R$ (Liga)") },
                 )
                 androidx.compose.material3.FilterChip(
                     selected = currentSource == app.tcg.core.domain.model.PriceSource.TCGPLAYER,
                     onClick = { onSelectSource(app.tcg.core.domain.model.PriceSource.TCGPLAYER) },
-                    label = { Text("🇺🇸 US$") },
+                    label = { Text("US$") },
                 )
                 androidx.compose.material3.FilterChip(
                     selected = currentSource == app.tcg.core.domain.model.PriceSource.CARDMARKET,
                     onClick = { onSelectSource(app.tcg.core.domain.model.PriceSource.CARDMARKET) },
-                    label = { Text("🇪🇺 €") },
+                    label = { Text("€") },
                 )
             }
         }

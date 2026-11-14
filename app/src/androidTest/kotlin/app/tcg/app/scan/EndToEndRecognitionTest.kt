@@ -102,6 +102,8 @@ class EndToEndRecognitionTest {
                 println("E2E ${card.file} -> top1=false top5=false expectedId=${card.id} gotTop=[] OCR_ERROR=${e.message}")
                 misses += "${card.file}: OCR error ${e.message} | expected=${card.name}/${card.id}"
                 continue
+            } finally {
+                bitmap.recycle()
             }
 
             viewModel.onTextRecognized(text.toOcrLines())

@@ -665,7 +665,7 @@ private fun ColumnScope.SelectedSetSection(
                     style = MaterialTheme.typography.titleSmall,
                 )
                 LinearProgressIndicator(
-                    progress = { ownedCount.toFloat() / catalogSize },
+                    progress = { if (catalogSize > 0) ownedCount.toFloat() / catalogSize else 0f },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

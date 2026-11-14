@@ -179,13 +179,13 @@ class ScanViewModelTest {
     }
 
     @Test
-    fun unmatched_name_with_two_same_number_cards_falls_back_to_manual_search() = runTest {
+    fun unmatched_name_with_two_same_number_cards_shows_them_for_confirmation() = runTest {
         val unrelated = listOf(card("a", "Charmander", "001", 60), card("b", "Bulbasaur", "001", 70))
         val repo = SplitCardRepository(byName = emptyList(), byNumber = unrelated)
         val vm = ScanViewModel(repo)
         vm.onTextRecognized(listOf(OcrLine("Frogadier", 0f, 40f), OcrLine("001/198", 100f, 40f)))
-        assertTrue(vm.state.value.candidates.isEmpty())
-        assertTrue(vm.state.value.manualSearch)
+        assertEquals(2, vm.state.value.candidates.size)
+        assertFalse(vm.state.value.manualSearch)
     }
 
     @Test
@@ -197,13 +197,13 @@ class ScanViewModelTest {
     }
 
     @Test
-    fun two_same_number_cards_without_a_name_fall_back_to_manual_search() = runTest {
+    fun two_same_number_cards_without_a_name_are_shown_for_confirmation() = runTest {
         val results = listOf(card("a", "Charmander", "049", 60), card("b", "Squirtle", "049", 60))
         val repo = SplitCardRepository(byName = emptyList(), byNumber = results)
         val vm = ScanViewModel(repo)
         vm.onTextRecognized(listOf(OcrLine("049/086", 100f, 40f)))
-        assertTrue(vm.state.value.candidates.isEmpty())
-        assertTrue(vm.state.value.manualSearch)
+        assertEquals(2, vm.state.value.candidates.size)
+        assertFalse(vm.state.value.manualSearch)
     }
 
     @Test
@@ -260,6 +260,20 @@ class ScanViewModelTest {
         override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
     }
 
+    private class QueryCardRepository(
+        private val byQuery: Map<String, List<Card>>,
+    ) : CardRepository {
+        override suspend fun searchByName(name: String): List<Card> = byQuery[name] ?: emptyList()
+
+        override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> = emptyList()
+
+        override suspend fun getCard(id: String): Card? = byQuery.values.flatten().firstOrNull { it.id == id }
+
+        override suspend fun getSetCatalog(setId: String): SetCatalogResult = SetCatalogResult.Unavailable
+
+        override suspend fun refreshPrices(cardIds: List<String>): PriceRefreshReport = error("unused")
+    }
+
     private class DelayedCardRepository(
         private val firstSearch: CompletableDeferred<List<Card>>,
         private val nextSearch: List<Card>,
@@ -299,7 +313,7 @@ class ScanViewModelTest {
     }
 
     @Test
-    fun loose_number_with_three_candidates_falls_back_to_manual_search() = runTest {
+    fun loose_number_with_three_candidates_shows_them_for_confirmation() = runTest {
         val repo = FakeCardRepository(listOf(
             card("a-42", "Zebstrika", "42", null),
             card("b-042", "Finizen", "042", null),
@@ -309,13 +323,27 @@ class ScanViewModelTest {
 
         vm.onTextRecognized(listOf(OcrLine("042/189", 100f, 40f)))
 
-        assertTrue(vm.state.value.candidates.isEmpty())
-        assertTrue(vm.state.value.manualSearch)
-        assertEquals(
-            "Não foi possível confirmar a carta pela foto. Digite o nome ou o número da carta.",
-            vm.state.value.error,
-        )
+        assertEquals(3, vm.state.value.candidates.size)
+        assertFalse(vm.state.value.manualSearch)
+        assertNull(vm.state.value.error)
         assertEquals(ScanDecisionCode.TOO_WEAK, vm.state.value.diagnostics?.decision)
+    }
+
+    @Test
+    fun basic_energy_falls_back_to_the_broad_category_and_shows_the_types() = runTest {
+        val repo = QueryCardRepository(
+            mapOf(
+                "Energia Básica" to emptyList(),
+                "Energia" to listOf(card("mee-005", "Energia Psíquica", "005", null)),
+            ),
+        )
+        val vm = ScanViewModel(repo)
+
+        vm.onTextRecognized(listOf(OcrLine("Energia Básica", 0f, 200f, 40f)))
+
+        assertEquals(listOf("mee-005"), vm.state.value.candidates.map { it.card.id })
+        assertFalse(vm.state.value.manualSearch)
+        assertNull(vm.state.value.error)
     }
 
     @Test

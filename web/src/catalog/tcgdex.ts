@@ -139,7 +139,7 @@ export async function searchCatalog(query: string): Promise<CatalogResult<CardSu
   const trimmed = query.trim()
   if (trimmed.length < 2) return { kind: 'unavailable', message: 'Digite ao menos duas letras ou números para buscar.' }
   try {
-    const isNumber = /^\d{1,4}$/.test(trimmed)
+    const isNumber = /^\d{1,4}$/.test(trimmed) || /^(?:TG|GG|SV|SWSH|SM|XY|BW)\d{1,4}$/i.test(trimmed)
     const params = new URLSearchParams({ [isNumber ? 'localId' : 'name']: trimmed })
     const result = parseArray(await fetchJson('/cards', params))
     if (result === null) return { kind: 'unavailable', message: 'O catálogo respondeu em um formato inesperado. Tente novamente.' }

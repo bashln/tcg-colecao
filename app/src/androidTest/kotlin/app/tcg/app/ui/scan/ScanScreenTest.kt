@@ -111,6 +111,7 @@ class ScanScreenTest {
     fun entering_name_and_searching_yields_candidates() {
         val state = mutableStateOf(ScanUiState())
         val query = mutableStateOf("")
+        val manualSearchRevealed = mutableStateOf(false)
         var searched: String? = null
         rule.setContent {
             TcgTheme {
@@ -118,6 +119,8 @@ class ScanScreenTest {
                     state = state.value,
                     manualQuery = query.value,
                     onManualQueryChange = { query.value = it },
+                    manualSearchRevealed = manualSearchRevealed.value,
+                    onManualSearchRevealedChange = { manualSearchRevealed.value = it },
                     onManualSearch = {
                         searched = query.value
                         state.value = ScanUiState(candidates = listOf(RankedCandidate(furret(), setOf(ScanSignal.EXACT_NAME))))
@@ -129,7 +132,7 @@ class ScanScreenTest {
             }
         }
 
-        rule.onNodeWithText("Buscar por nome").performClick()
+        rule.onNodeWithContentDescription("Buscar por nome").performClick()
         rule.onNodeWithText("Nome da carta").assertIsDisplayed()
         rule.onNode(hasSetTextAction()).performTextInput("Furr")
         rule.onNodeWithText("Buscar").performClick()

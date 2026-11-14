@@ -1,5 +1,6 @@
 package app.tcg.app.ui.scan
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -33,6 +34,8 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.FlashOff
+import androidx.compose.material.icons.outlined.FlashOn
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
@@ -59,6 +62,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,7 +71,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -89,7 +96,9 @@ import app.tcg.core.domain.model.PriceSource
 import app.tcg.core.domain.valuation.Valuation
 import coil.compose.AsyncImage
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ScanScreen(
@@ -113,10 +122,11 @@ fun ScanScreen(
     var torchError by remember { mutableStateOf(false) }
 
     // Auto-unfreeze camera on resume: whenever returning from CardDetailScreen, reset stale scan state
+    val currentState by rememberUpdatedState(state)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                if (!state.isBatchMode && state.candidates.isNotEmpty()) {
+                if (!currentState.isBatchMode && currentState.candidates.isNotEmpty()) {
                     viewModel.resetForNextScan()
                     capturedBitmap = null
                 }
@@ -129,26 +139,31 @@ fun ScanScreen(
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri: Uri? ->
-        val bitmap = uri?.let { loadBitmap(context, it) }
-        if (bitmap != null) {
-            viewModel.prepareForCapture()
-            val uncroppedWidth = bitmap.width
-            val uncroppedHeight = bitmap.height
-            val cardBitmap = bitmap.cropToCard()
-            if (cardBitmap !== bitmap) bitmap.recycle()
-            capturedBitmap = null
-            capturedBitmap = cardBitmap.previewCopy()
-            recognizeText(
-                recognizer = recognizer,
-                bitmap = cardBitmap,
-                rotationDegrees = 0,
-                onTextRecognized = { lines ->
-                    val filtered = linesInsideCardCropFrame(lines, uncroppedWidth, uncroppedHeight)
-                    scope.launch { viewModel.onTextRecognized(filtered) }
-                },
-                onError = viewModel::onCaptureError,
-                onComplete = { cardBitmap.recycle() },
-            )
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val bitmap = withContext(Dispatchers.IO) { loadBitmap(context, uri) }
+            if (bitmap != null) {
+                viewModel.prepareForCapture()
+                val uncroppedWidth = bitmap.width
+                val uncroppedHeight = bitmap.height
+                val cardBitmap = bitmap.cropToCard()
+                if (cardBitmap !== bitmap) bitmap.recycle()
+                capturedBitmap = null
+                capturedBitmap = cardBitmap.previewCopy()
+                recognizeText(
+                    recognizer = recognizer,
+                    bitmap = cardBitmap,
+                    rotationDegrees = 0,
+                    onTextRecognized = { lines ->
+                        val filtered = linesInsideCardCropFrame(lines, uncroppedWidth, uncroppedHeight)
+                        scope.launch { viewModel.onTextRecognized(filtered) }
+                    },
+                    onError = viewModel::onCaptureError,
+                    onComplete = { cardBitmap.recycle() },
+                )
+            } else {
+                viewModel.onCaptureError(context.getString(R.string.scan_gallery_error))
+            }
         }
     }
 
@@ -322,7 +337,7 @@ fun ScanContent(
                     FilterChip(
                         selected = state.isBatchMode,
                         onClick = onToggleBatchMode,
-                        label = { Text(if (state.isBatchMode) "⚡ " + stringResource(R.string.scan_mode_batch) else stringResource(R.string.scan_mode_single)) },
+                        label = { Text(stringResource(if (state.isBatchMode) R.string.scan_mode_batch else R.string.scan_mode_single)) },
                         colors = FilterChipDefaults.filterChipColors(
                             containerColor = Color.Black.copy(alpha = 0.55f),
                             labelColor = Color.White,
@@ -428,11 +443,13 @@ fun ScanContent(
             LinearProgressIndicator(Modifier.fillMaxWidth())
         }
 
-        state.error?.let { message ->
-            ErrorBanner(
-                message = message,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+        if (!state.manualSearch) {
+            state.error?.let { message ->
+                ErrorBanner(
+                    message = message,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
         }
 
         when {
@@ -536,9 +553,10 @@ private fun BatchQuickAddCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -575,10 +593,10 @@ private fun BatchQuickAddCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = "🇧🇷 LigaPokemon",
+                        text = "LigaPokemon",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { uriHandler.openUri(ligaUrl) },
+                        modifier = Modifier.clickable { openUriSafe(uriHandler, ligaUrl) },
                     )
                 }
                 IconButton(onClick = onSkip) {
@@ -622,9 +640,10 @@ private fun MultiCardReviewCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
@@ -637,7 +656,7 @@ private fun MultiCardReviewCard(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Outlined.Close, contentDescription = null)
+                    Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.scan_multi_dismiss))
                 }
             }
             results.forEachIndexed { index, item ->
@@ -747,7 +766,10 @@ private fun CaptureControls(
                         contentDescription = torchDescription
                     },
                 ) {
-                    Text("⚡", style = MaterialTheme.typography.titleLarge)
+                    Icon(
+                        imageVector = if (torchEnabled) Icons.Outlined.FlashOn else Icons.Outlined.FlashOff,
+                        contentDescription = null,
+                    )
                 }
                 Text(
                     text = when {
@@ -837,6 +859,13 @@ private fun ManualSearchPanel(
                 ),
                 style = MaterialTheme.typography.bodySmall,
             )
+            val keyboardController = LocalSoftwareKeyboardController.current
+            val focusManager = LocalFocusManager.current
+            val triggerSearch = {
+                keyboardController?.hide()
+                focusManager.clearFocus()
+                onSearch()
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -845,7 +874,13 @@ private fun ManualSearchPanel(
                 OutlinedTextField(
                     value = query,
                     onValueChange = onQueryChange,
-                    label = { Text(stringResource(R.string.scan_search_label)) },
+                    label = {
+                        Text(
+                            text = stringResource(R.string.scan_search_label),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
                     leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                     trailingIcon = {
                         if (query.isNotEmpty()) {
@@ -859,10 +894,10 @@ private fun ManualSearchPanel(
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+                    keyboardActions = KeyboardActions(onSearch = { triggerSearch() }),
                     modifier = Modifier.weight(1f),
                 )
-                Button(onClick = onSearch, enabled = query.isNotBlank()) {
+                Button(onClick = triggerSearch, enabled = query.isNotBlank()) {
                     Text(stringResource(R.string.scan_search_action))
                 }
             }
@@ -890,7 +925,8 @@ private fun CandidateCard(card: Card, onClick: () -> Unit) {
             .clickable(onClickLabel = stringResource(R.string.cd_open_card), onClick = onClick),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(10.dp),
@@ -937,10 +973,10 @@ private fun CandidateCard(card: Card, onClick: () -> Unit) {
                         )
                     }
                     Text(
-                        text = "🇧🇷 LigaPokemon",
+                        text = "LigaPokemon",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.clickable { uriHandler.openUri(ligaUrl) },
+                        modifier = Modifier.clickable { openUriSafe(uriHandler, ligaUrl) },
                     )
                 }
             }
@@ -953,9 +989,23 @@ private fun CandidateCard(card: Card, onClick: () -> Unit) {
     }
 }
 
-private fun loadBitmap(context: Context, uri: Uri) =
+private fun openUriSafe(uriHandler: UriHandler, url: String) {
     try {
-        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+        uriHandler.openUri(url)
+    } catch (_: ActivityNotFoundException) {
+        // No browser installed on the device.
+    }
+}
+
+private fun loadBitmap(context: Context, uri: Uri): Bitmap? =
+    try {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
+        var sampleSize = 1
+        while (maxDim / sampleSize > 2048) sampleSize *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
     } catch (_: IOException) {
         null
     }

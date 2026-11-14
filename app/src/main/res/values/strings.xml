@@ -13,6 +13,8 @@
     <string name="scan_hint">Enquadre a carta. Leitura automática em 2 segundos</string>
     <string name="scan_capture">Capturar</string>
     <string name="scan_gallery">Galeria</string>
+    <string name="scan_gallery_error">Não foi possível abrir essa imagem. Tente outra foto ou busque pelo nome.</string>
+    <string name="scan_multi_dismiss">Fechar revisão de cartas</string>
     <string name="scan_flash_on">Flash ligado</string>
     <string name="scan_flash_off">Flash desligado</string>
     <string name="scan_flash_unavailable">Sem flash</string>
@@ -49,14 +51,14 @@
     <string name="common_price_ligapokemon">LigaPokemon</string>
     <string name="currency_preference_title">Moeda e Cotação Padrão</string>
     <string name="currency_preference_subtitle">Valores exibidos em toda a coleção e perfil</string>
-    <string name="currency_source_ligapokemon">🇧🇷 LigaPokémon (R$)</string>
-    <string name="currency_source_tcgplayer">🇺🇸 TCGplayer (US$)</string>
-    <string name="currency_source_cardmarket">🇪🇺 Cardmarket (€)</string>
+    <string name="currency_source_ligapokemon">LigaPokémon (R$)</string>
+    <string name="currency_source_tcgplayer">TCGplayer (US$)</string>
+    <string name="currency_source_cardmarket">Cardmarket (€)</string>
     <string name="detail_edit_ligapokemon_price">Ajustar valor em R$ (LigaPokémon)</string>
     <string name="detail_edit_ligapokemon_price_title">Cotação LigaPokémon (R$)</string>
     <string name="detail_edit_ligapokemon_price_help">Insira o valor atual da carta na LigaPokémon para sua coleção.</string>
     <string name="detail_edit_ligapokemon_price_saved">Valor em R$ salvo com sucesso!</string>
-    <string name="detail_liga_web_open">🇧🇷 Buscar preço</string>
+    <string name="detail_liga_web_open">Buscar preço</string>
     <string name="detail_liga_web_title">Preço na LigaPokémon</string>
     <string name="detail_liga_web_loading">Lendo o preço na LigaPokémon…</string>
     <string name="detail_liga_web_verifying">O site está verificando o navegador. Isso pode levar mais de um minuto.</string>

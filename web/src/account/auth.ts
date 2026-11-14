@@ -1,5 +1,7 @@
 import type { SupabaseHttp } from '../sync/supabase-transport.ts'
 
+class RejectedAuthError extends Error {}
+
 export interface AuthSession {
   userId: string
   email: string
@@ -68,8 +70,14 @@ export class SupabaseWebAuth implements SupabaseHttp {
     const version = this.sessionVersion
     try {
       return { kind: 'signed-in', session: await this.freshSession() }
-    } catch {
-      if (this.sessionVersion === version) this.clearSession()
+    } catch (error) {
+      if (error instanceof RejectedAuthError && this.sessionVersion === version) {
+        this.clearSession()
+        return SIGNED_OUT
+      }
+      if (this.sessionVersion === version && this.current !== null) {
+        return { kind: 'signed-in', session: this.current }
+      }
       return SIGNED_OUT
     }
   }
@@ -173,13 +181,13 @@ export class SupabaseWebAuth implements SupabaseHttp {
     const refresh = this.refresh(session.refreshToken)
       .then((refreshed) => {
         if (version !== this.sessionVersion || refreshed.userId !== session.userId) {
-          throw new Error('A conta mudou durante a renovação da sessão')
+          throw new RejectedAuthError('A conta mudou durante a renovação da sessão')
         }
         this.saveSession(refreshed)
         return refreshed
       })
       .catch((error: unknown) => {
-        if (version === this.sessionVersion) this.clearSession()
+        if (error instanceof RejectedAuthError && version === this.sessionVersion) this.clearSession()
         throw error
       })
       .finally(() => { if (this.refreshInFlight === refresh) this.refreshInFlight = null })
@@ -213,7 +221,13 @@ export class SupabaseWebAuth implements SupabaseHttp {
       throw new Error('Não foi possível conectar ao Supabase')
     }
     const body = await response.json().catch(() => null) as unknown
-    if (!response.ok) throw new Error(authMessage(body, response.status))
+    if (!response.ok) {
+      const message = authMessage(body, response.status)
+      if (response.status === 400 || response.status === 401 || response.status === 403) {
+        throw new RejectedAuthError(message)
+      }
+      throw new Error(message)
+    }
     return body
   }
 

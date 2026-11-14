@@ -133,7 +133,12 @@ fun CameraCapture(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             // CameraX reopens the camera on resume with the torch off; re-apply the chosen state.
-            if (event == Lifecycle.Event.ON_RESUME) resumeGeneration++
+            // Also re-check camera permission in case the user granted/revoked it in Settings.
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                    PackageManager.PERMISSION_GRANTED
+                resumeGeneration++
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

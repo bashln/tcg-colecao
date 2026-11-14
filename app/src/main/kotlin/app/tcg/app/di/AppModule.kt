@@ -211,7 +211,12 @@ object AppModule {
     fun provideCollectionSyncCoordinator(
         transport: SupabaseSyncTransport,
         store: RoomSyncLocalStore,
-    ): CollectionSyncCoordinator = CollectionSyncCoordinator(transport, store)
+        cardRepository: CardRepository,
+    ): CollectionSyncCoordinator = CollectionSyncCoordinator(
+        transport = transport,
+        local = store,
+        ensureCardCached = { cardId -> cardRepository.getCard(cardId) != null },
+    )
 
     @Provides
     @Singleton

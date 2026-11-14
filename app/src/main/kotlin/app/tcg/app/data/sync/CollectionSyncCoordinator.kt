@@ -48,6 +48,7 @@ sealed interface SyncResult {
 class CollectionSyncCoordinator(
     private val transport: SyncTransport,
     private val local: SyncLocalStore,
+    private val ensureCardCached: suspend (String) -> Boolean = { true },
 ) {
     private val identity = AtomicReference<String?>(null)
 
@@ -105,21 +106,30 @@ class CollectionSyncCoordinator(
             transport.listPushConflicts(boundIdentity).forEach { conflict ->
                 if (identity.get() != boundIdentity || !local.savePushConflict(boundIdentity, conflict)) return SyncResult.Offline(null)
             }
-            val page = transport.pull(boundIdentity, local.lastSequence(boundIdentity))
-            if (identity.get() != boundIdentity) return SyncResult.Offline(pending.size)
-            for (entry in page.operations) {
+            var cursor = local.lastSequence(boundIdentity)
+            while (true) {
+                val page = transport.pull(boundIdentity, cursor)
                 if (identity.get() != boundIdentity) return SyncResult.Offline(pending.size)
-                when (val result = local.applyRemote(boundIdentity, entry)) {
-                    RemoteApplyResult.Applied -> Unit
-                    is RemoteApplyResult.Conflict -> return SyncResult.Conflicts(
-                        count = 1,
-                        pending = local.pending(boundIdentity).size,
-                        details = listOf(result.detail),
-                    )
+                for (entry in page.operations) {
+                    if (identity.get() != boundIdentity) return SyncResult.Offline(pending.size)
+                    val cardId = entry.operation.cardIdOrNull()
+                    if (cardId != null && !ensureCardCached(cardId)) {
+                        return SyncResult.Error(local.pending(boundIdentity).size)
+                    }
+                    when (val result = local.applyRemote(boundIdentity, entry)) {
+                        RemoteApplyResult.Applied -> Unit
+                        is RemoteApplyResult.Conflict -> return SyncResult.Conflicts(
+                            count = 1,
+                            pending = local.pending(boundIdentity).size,
+                            details = listOf(result.detail),
+                        )
+                    }
                 }
-            }
-            if (identity.get() != boundIdentity || !local.saveSequence(boundIdentity, page.highWaterMark)) {
-                return SyncResult.Offline(pending.size)
+                if (identity.get() != boundIdentity || !local.saveSequence(boundIdentity, page.highWaterMark)) {
+                    return SyncResult.Offline(pending.size)
+                }
+                if (page.operations.size < PULL_PAGE_LIMIT || page.highWaterMark <= cursor) break
+                cursor = page.highWaterMark
             }
 
             val remaining = local.pending(boundIdentity).size
@@ -138,6 +148,16 @@ class CollectionSyncCoordinator(
     suspend fun resolveConflict(conflictId: String, resolution: SyncConflictResolution): SyncResult {
         val boundIdentity = identity.get() ?: return SyncResult.Offline(0)
         return try {
+            val existing = local.conflicts(boundIdentity).firstOrNull {
+                it.id == conflictId || it.serverConflictId == conflictId
+            }
+            if (existing?.source == "push") {
+                val choice = when (resolution) {
+                    SyncConflictResolution.KeepLocal -> PushConflictChoice.KEEP_LOCAL
+                    SyncConflictResolution.KeepCloud -> PushConflictChoice.KEEP_CLOUD
+                }
+                return resolvePushConflict(existing.serverConflictId ?: conflictId, choice)
+            }
             val operation = local.resolveConflict(boundIdentity, conflictId, resolution)
             if (identity.get() != boundIdentity) return SyncResult.Offline(local.pending(boundIdentity).size)
             if (operation != null) {
@@ -174,8 +194,21 @@ class CollectionSyncCoordinator(
                 return SyncResult.Conflicts(1, local.pending(boundIdentity).size, local.conflicts(boundIdentity))
             }
             val resolutionId = receipt.resolutionId
-            if (receipt.status !in setOf("resolved", "already-resolved") || resolutionId == null ||
-                !local.applyPushConflictResolution(boundIdentity, conflictId, receipt)) {
+            if (receipt.status !in setOf("resolved", "already-resolved") || resolutionId == null) {
+                return SyncResult.Error(local.pending(boundIdentity).size)
+            }
+            if (choice == PushConflictChoice.KEEP_CLOUD) {
+                val remoteCardIds = listOf(
+                    decodePushCloudItem(receipt.result?.get("cloudItem")),
+                    decodePushCloudItem(receipt.result?.get("conflictingItem")),
+                ).filterIsInstance<PushCloudItem.Present>().map { it.item.cardId }.distinct()
+                for (cardId in remoteCardIds) {
+                    if (!ensureCardCached(cardId)) {
+                        return SyncResult.Error(local.pending(boundIdentity).size)
+                    }
+                }
+            }
+            if (!local.applyPushConflictResolution(boundIdentity, conflictId, receipt)) {
                 return SyncResult.Error(local.pending(boundIdentity).size)
             }
             if (identity.get() != boundIdentity) return SyncResult.Offline(null)
@@ -195,6 +228,8 @@ class CollectionSyncCoordinator(
     private companion object {
         /** The server refuses a push batch above this many operations. */
         const val PUSH_BATCH_LIMIT = 100
+        /** Matches [SupabaseSyncTransport]'s pull page size. */
+        const val PULL_PAGE_LIMIT = 500
     }
 }
 
@@ -228,4 +263,10 @@ private fun SyncOperation.localItem(): SyncItem? = when (this) {
     is SyncOperation.Delete -> null
     is SyncOperation.Create -> item
     is SyncOperation.Replace -> item
+}
+
+private fun SyncOperation.cardIdOrNull(): String? = when (this) {
+    is SyncOperation.Delete -> null
+    is SyncOperation.Create -> item.cardId
+    is SyncOperation.Replace -> item.cardId
 }
