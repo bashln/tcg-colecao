@@ -42,7 +42,8 @@ class RoomCollectionRepository(
         quantity: Int,
         pricePaid: Money?,
     ): CollectionItem {
-        cardDao.captureCardPrices(card, System.currentTimeMillis())
+        val durable = resolveCard?.invoke(card.id) ?: card
+        cardDao.captureCardPrices(durable, System.currentTimeMillis())
 
         val item = collectionDao.upsertSummingAndQueue(
             newItem(card.id, variant, condition, quantity).copy(
@@ -64,7 +65,9 @@ class RoomCollectionRepository(
 
     override suspend fun getById(itemId: String): CollectionItemDetails? {
         val item = collectionDao.getById(itemId)?.toItem() ?: return null
-        val card = cardDao.getById(item.cardId)?.toCard(cardDao.pricesFor(item.cardId))
+        val resolved = resolveCard?.invoke(item.cardId)
+        val card = resolved
+            ?: cardDao.getById(item.cardId)?.toCard(cardDao.pricesFor(item.cardId))
         return CollectionItemDetails(item, card)
     }
 
