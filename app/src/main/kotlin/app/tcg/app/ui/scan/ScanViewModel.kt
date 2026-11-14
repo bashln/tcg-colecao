@@ -318,11 +318,16 @@ class ScanViewModel(
             if (tokens.size == 2 && tokens.last().lowercase() in SUFFIXES) add(tokens.first())
             if (name.contains("Energia", ignoreCase = true)) add("Energia")
         }.distinct()
+        var firstNonEmpty: List<Card> = emptyList()
         for (query in queries) {
             val result = repository.searchByName(query)
-            if (result.isNotEmpty()) return result
+            if (result.isEmpty()) continue
+            if (firstNonEmpty.isEmpty()) firstNonEmpty = result
+            // A non-empty result is not enough: the catalog can answer a noisy read with an
+            // unrelated card. Only stop when the read and the card refer to the same name.
+            if (result.any { CandidateRanker.nameMatches(name, it.name) }) return result
         }
-        return emptyList()
+        return firstNonEmpty
     }
 
     private companion object {

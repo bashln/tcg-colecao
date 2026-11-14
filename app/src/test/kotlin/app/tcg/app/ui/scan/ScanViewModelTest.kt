@@ -330,6 +330,22 @@ class ScanViewModelTest {
     }
 
     @Test
+    fun an_unrelated_direct_result_falls_back_until_the_name_matches() = runTest {
+        val repo = QueryCardRepository(
+            mapOf(
+                "Arbok ex" to listOf(card("wrong", "Pikachu", "001", 60)),
+                "Arbok" to listOf(card("sv03.5-024", "Arbok ex", "024", 270)),
+            ),
+        )
+        val vm = ScanViewModel(repo)
+
+        vm.onTextRecognized(listOf(OcrLine("Arbok ex", 0f, 200f, 40f)))
+
+        assertEquals(listOf("sv03.5-024"), vm.state.value.candidates.map { it.card.id })
+        assertFalse(vm.state.value.manualSearch)
+    }
+
+    @Test
     fun a_suffix_miss_falls_back_to_the_base_name() = runTest {
         val repo = QueryCardRepository(
             mapOf(
