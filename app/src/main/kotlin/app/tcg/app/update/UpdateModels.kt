@@ -37,6 +37,7 @@ sealed interface UpdateCheck {
 sealed interface ReleaseFetch {
     data class Fetched(val etag: String?, val releasesJson: String) : ReleaseFetch
     data class NotModified(val cachedReleasesJson: String) : ReleaseFetch
+    data class FetchedRelease(val release: GitHubRelease) : ReleaseFetch
     data object Offline : ReleaseFetch
     data class RateLimited(val resetEpochSeconds: Long?) : ReleaseFetch
     data class Invalid(val error: OtaError) : ReleaseFetch

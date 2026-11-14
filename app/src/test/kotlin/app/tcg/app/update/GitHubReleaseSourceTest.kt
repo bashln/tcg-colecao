@@ -6,6 +6,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
@@ -98,6 +99,66 @@ class GitHubReleaseSourceTest {
 
         val limited = result as ReleaseFetch.RateLimited
         assertEquals(1_791_667_200L, limited.resetEpochSeconds)
+    }
+
+    @Test
+    fun `a rate limited api falls back to the public latest release redirect`() = runTest {
+        val engine = MockEngine { request ->
+            when {
+                request.url.host == "api.github.com" -> respond(
+                    content = "",
+                    status = HttpStatusCode.TooManyRequests,
+                    headers = jsonHeaders("X-RateLimit-Reset" to "1791667200"),
+                )
+                request.method == HttpMethod.Head -> respond(
+                    content = "",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(
+                        HttpHeaders.ContentLength to listOf("58352522"),
+                        HttpHeaders.ContentType to listOf("application/vnd.android.package-archive"),
+                    ),
+                )
+                request.url.encodedPath.startsWith("/bashln/tcg-colecao/releases/tag/") -> respond(
+                    content = "<html></html>",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType to listOf("text/html")),
+                )
+                else -> respond(
+                    content = "",
+                    status = HttpStatusCode.Found,
+                    headers = headersOf(
+                        HttpHeaders.Location to listOf("https://github.com/bashln/tcg-colecao/releases/tag/v0.7.6"),
+                    ),
+                )
+            }
+        }
+
+        val result = source(engine).fetchLatestStable()
+
+        val release = (result as ReleaseFetch.FetchedRelease).release
+        assertEquals("v0.7.6", release.tagName)
+        assertEquals("0.7.6", release.versionName)
+        assertEquals(706L, release.versionCode)
+        assertEquals(
+            "https://github.com/bashln/tcg-colecao/releases/download/v0.7.6/tcg-colecao-v0.7.6.apk",
+            release.apkUrl,
+        )
+        assertEquals(58_352_522L, release.apkSizeBytes)
+    }
+
+    @Test
+    fun `a rate limited api with an unusable redirect stays rate limited`() = runTest {
+        val engine = MockEngine { request ->
+            if (request.url.host == "api.github.com") {
+                respond("", HttpStatusCode.TooManyRequests, jsonHeaders("X-RateLimit-Reset" to "1791667200"))
+            } else {
+                respond("", HttpStatusCode.NotFound, headersOf())
+            }
+        }
+
+        val result = source(engine).fetchLatestStable()
+
+        assertEquals(ReleaseFetch.RateLimited(1_791_667_200L), result)
     }
 
     @Test
