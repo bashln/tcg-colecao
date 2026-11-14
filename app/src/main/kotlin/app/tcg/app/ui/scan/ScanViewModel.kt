@@ -310,15 +310,24 @@ class ScanViewModel(
      * from. This is a fallback, never a replacement for an exact hit.
      */
     private suspend fun searchByNameWithFallback(name: String): List<Card> {
-        val direct = repository.searchByName(name)
-        if (direct.isNotEmpty()) return direct
-        val broad = if (name.contains("Energia", ignoreCase = true)) "Energia" else null
-        if (broad == null || broad.equals(name, ignoreCase = true)) return emptyList()
-        return repository.searchByName(broad)
+        val queries = buildList {
+            add(name)
+            val withoutSuffix = name.replace(Regex("""(?i)\s+(ex|gx|v|vmax|vstar|break)$"""), "").trim()
+            if (withoutSuffix.isNotEmpty() && withoutSuffix != name) add(withoutSuffix)
+            val tokens = name.trim().split(Regex("""\s+""")).filter { it.isNotBlank() }
+            if (tokens.size == 2 && tokens.last().lowercase() in SUFFIXES) add(tokens.first())
+            if (name.contains("Energia", ignoreCase = true)) add("Energia")
+        }.distinct()
+        for (query in queries) {
+            val result = repository.searchByName(query)
+            if (result.isNotEmpty()) return result
+        }
+        return emptyList()
     }
 
     private companion object {
         const val CANDIDATE_LIMIT = 10
+        val SUFFIXES = setOf("ex", "gx", "v", "vmax", "vstar", "break")
 
         const val WEAK_EVIDENCE_MESSAGE =
             "Não foi possível confirmar a carta pela foto. Digite o nome ou o número da carta."

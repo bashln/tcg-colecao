@@ -330,6 +330,23 @@ class ScanViewModelTest {
     }
 
     @Test
+    fun a_suffix_miss_falls_back_to_the_base_name() = runTest {
+        val repo = QueryCardRepository(
+            mapOf(
+                "Charizard ex" to emptyList(),
+                "Charizard" to listOf(card("base-4", "Charizard", "4", 120)),
+            ),
+        )
+        val vm = ScanViewModel(repo)
+
+        vm.onTextRecognized(listOf(OcrLine("Charizard ex", 0f, 200f, 40f)))
+
+        assertEquals(listOf("base-4"), vm.state.value.candidates.map { it.card.id })
+        assertFalse(vm.state.value.manualSearch)
+        assertNull(vm.state.value.error)
+    }
+
+    @Test
     fun basic_energy_falls_back_to_the_broad_category_and_shows_the_types() = runTest {
         val repo = QueryCardRepository(
             mapOf(

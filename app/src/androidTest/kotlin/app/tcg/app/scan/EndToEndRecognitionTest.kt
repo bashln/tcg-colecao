@@ -109,6 +109,12 @@ class EndToEndRecognitionTest {
             viewModel.onTextRecognized(text.toOcrLines())
 
             val state = viewModel.state.value
+            // Production invariant: a scan never ends in a blank screen. It either offers
+            // candidates to confirm or opens the manual search.
+            assertTrue(
+                "${card.file}: scan must offer candidates or manual search",
+                state.candidates.isNotEmpty() || state.manualSearch,
+            )
             if (state.diagnostics?.decision == ScanDecisionCode.TOO_WEAK) refused++
             val gotTop = state.candidates.take(5).map { it.card.id }
             val top1 = gotTop.firstOrNull() == card.id
