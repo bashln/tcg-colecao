@@ -35,6 +35,12 @@ class UpdateCoordinator(
                 is ReleaseFetch.Invalid -> _state.value = UpdateState.Error(UpdateErrorKind.InvalidMetadata)
                 is ReleaseFetch.Fetched -> selectFrom(fetch.releasesJson)
                 is ReleaseFetch.NotModified -> selectFrom(fetch.cachedReleasesJson)
+                is ReleaseFetch.FetchedRelease -> {
+                    when (val check = UpdateChecker.check(installedApp.versionCode, fetch.release)) {
+                        UpdateCheck.NoUpdate -> _state.value = UpdateState.NoUpdate
+                        is UpdateCheck.Available -> _state.value = UpdateState.Ready(check.release)
+                    }
+                }
             }
         } finally {
             busy.set(false)

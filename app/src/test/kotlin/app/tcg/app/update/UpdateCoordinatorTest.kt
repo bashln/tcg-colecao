@@ -48,6 +48,27 @@ class UpdateCoordinatorTest {
     }
 
     @Test
+    fun `a release resolved without the api becomes ready`() = runTest {
+        val release = GitHubRelease(
+            tagName = "v2.0.0",
+            versionName = "2.0.0",
+            versionCode = 20_000L,
+            releaseNotes = "",
+            apkUrl = "https://github.com/bashln/tcg-colecao/releases/download/v2.0.0/tcg-colecao-v2.0.0.apk",
+            apkSizeBytes = 58_352_522L,
+            apkSha256 = null,
+            publishedAt = null,
+        )
+        val c = coordinator(fetch = { ReleaseFetch.FetchedRelease(release) })
+
+        c.check()
+
+        val ready = c.state.value as UpdateState.Ready
+        assertEquals("v2.0.0", ready.release.tagName)
+        assertEquals(58_352_522L, ready.release.apkSizeBytes)
+    }
+
+    @Test
     fun `offline check surfaces offline and keeps the app usable`() = runTest {
         val c = coordinator(fetch = { ReleaseFetch.Offline })
         c.check()
