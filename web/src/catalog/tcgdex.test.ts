@@ -85,6 +85,27 @@ test('zero or negative Cardmarket prices produce no quote', () => {
   assert.equal(cardmarketQuote(parsed, 'HOLOFOIL'), null)
 })
 
+test('a card with no catalog image falls back to the TCGplayer product image', () => {
+  const parsed = parseCatalogCard({
+    id: 'mep-081',
+    localId: '081',
+    name: 'Mega Greninja ex',
+    set: { id: 'mep', name: 'MEP Black Star Promos', cardCount: { official: 0, total: 80 } },
+    variants_detailed: [{
+      type: 'holo',
+      pricing: { tcgplayer: { holofoil: { productId: 704879, marketPrice: 0.77 } } },
+    }],
+  })
+
+  assert.equal(parsed?.imageUrl, 'https://tcgplayer-cdn.tcgplayer.com/product/704879_400w.jpg')
+})
+
+test('a brief with no catalog image and no TCGplayer product id has no image', () => {
+  const parsed = parseCatalogCard({ id: 'mep-081', localId: '081', name: 'Mega Greninja ex' })
+
+  assert.equal(parsed?.imageUrl, null)
+})
+
 test('zero TCGplayer market price produces no quote', () => {
   const parsed = card([{
     type: 'normal',
