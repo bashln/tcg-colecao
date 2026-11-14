@@ -158,6 +158,7 @@ fun CardDetailScreen(
                         tcgplayer = state.tcgplayer,
                         cardmarket = state.cardmarket,
                         ligapokemon = state.ligapokemon,
+                        jornada = state.jornada,
                         onSaveLigaPrice = saveLigaPrice,
                         onFetchLigaPrice = { showLigaFetch = true },
                     )
@@ -347,6 +348,7 @@ private fun PriceSection(
     tcgplayer: app.tcg.core.domain.model.Money?,
     cardmarket: app.tcg.core.domain.model.Money?,
     ligapokemon: app.tcg.core.domain.model.Money? = null,
+    jornada: app.tcg.core.domain.model.Money? = null,
     onSaveLigaPrice: ((Double) -> Unit)? = null,
     onFetchLigaPrice: (() -> Unit)? = null,
 ) {
@@ -412,6 +414,7 @@ private fun PriceSection(
                 PriceRow(stringResource(R.string.common_price_tcgplayer), tcgplayer)
                 PriceRow(stringResource(R.string.common_price_cardmarket), cardmarket)
                 PriceRow(stringResource(R.string.common_price_ligapokemon) + " (Brasil)", ligapokemon)
+                PriceRow(stringResource(R.string.common_price_jornada) + " (Brasil)", jornada)
                 androidx.compose.material3.HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 )

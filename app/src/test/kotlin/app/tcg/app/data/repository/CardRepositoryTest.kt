@@ -5,6 +5,10 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import app.tcg.app.data.local.TcgDatabase
 import app.tcg.app.data.local.toEntity
+import app.tcg.core.data.jornada.JornadaCardRequest
+import app.tcg.core.data.jornada.JornadaQuote
+import app.tcg.core.data.jornada.JornadaQuoteSource
+import app.tcg.core.data.jornada.JornadaResponse
 import app.tcg.core.data.tcgdex.TcgdexCardSource
 import app.tcg.core.domain.model.Attack
 import app.tcg.core.domain.model.Card
@@ -286,6 +290,27 @@ class CardRepositoryTest {
             setCatalogError?.let { throw it }
             return setCatalogResult
         }
+    }
+
+    @Test
+    fun a_price_refresh_stores_the_jornada_market_ask() = runTest {
+        source.getResult = fullCard()
+        val jornada = object : JornadaQuoteSource {
+            override suspend fun quotes(cards: List<JornadaCardRequest>, maxAgeHours: Int) =
+                JornadaResponse(
+                    quotes = cards.associate { it.cardId to JornadaQuote(status = "ok", marketCents = 10) },
+                )
+        }
+        val withJornada = RoomCardRepository(db.cardDao(), source, jornada)
+
+        withJornada.refreshPrices(listOf("swsh3-136"))
+
+        val brl = db.cardDao().pricesFor("swsh3-136").first { it.source == PriceSource.JORANDA }
+        assertEquals(0.10, brl.market ?: 0.0, 0.0)
+        assertEquals(Currency.BRL, brl.currency)
+
+        val shown = withJornada.getCard("swsh3-136")
+        assertTrue(shown!!.prices.any { it.source == PriceSource.JORANDA })
     }
 
     private companion object {

@@ -6,6 +6,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -288,6 +290,9 @@ fun ProfileScreen(
             CurrencyPreferenceCard(
                 currentSource = state.priceSource,
                 onSelectSource = viewModel::onPriceSourceSelected,
+                refreshingPrices = state.refreshingPrices,
+                refreshPricesMessage = state.refreshPricesMessage,
+                onRefreshPrices = viewModel::refreshPrices,
             )
         }
         when {
@@ -617,11 +622,14 @@ private fun <K> BreakdownSection(
     }
 }
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun CurrencyPreferenceCard(
     currentSource: app.tcg.core.domain.model.PriceSource,
     onSelectSource: (app.tcg.core.domain.model.PriceSource) -> Unit,
+    refreshingPrices: Boolean = false,
+    refreshPricesMessage: String? = null,
+    onRefreshPrices: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -647,14 +655,20 @@ private fun CurrencyPreferenceCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 androidx.compose.material3.FilterChip(
                     selected = currentSource == app.tcg.core.domain.model.PriceSource.LIGAPOKEMON,
                     onClick = { onSelectSource(app.tcg.core.domain.model.PriceSource.LIGAPOKEMON) },
                     label = { Text("R$ (Liga)") },
+                )
+                androidx.compose.material3.FilterChip(
+                    selected = currentSource == app.tcg.core.domain.model.PriceSource.JORANDA,
+                    onClick = { onSelectSource(app.tcg.core.domain.model.PriceSource.JORANDA) },
+                    label = { Text("R$ (Jornada)") },
                 )
                 androidx.compose.material3.FilterChip(
                     selected = currentSource == app.tcg.core.domain.model.PriceSource.TCGPLAYER,
@@ -665,6 +679,20 @@ private fun CurrencyPreferenceCard(
                     selected = currentSource == app.tcg.core.domain.model.PriceSource.CARDMARKET,
                     onClick = { onSelectSource(app.tcg.core.domain.model.PriceSource.CARDMARKET) },
                     label = { Text("€") },
+                )
+            }
+            androidx.compose.material3.OutlinedButton(
+                onClick = onRefreshPrices,
+                enabled = !refreshingPrices,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (refreshingPrices) "Atualizando preços…" else "Atualizar preços agora")
+            }
+            refreshPricesMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

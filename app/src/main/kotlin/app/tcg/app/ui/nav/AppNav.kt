@@ -45,6 +45,7 @@ import app.tcg.app.BuildConfig
 import app.tcg.app.R
 import app.tcg.app.auth.AuthController
 import app.tcg.app.data.preferences.AppPreferences
+import app.tcg.app.data.prices.PriceRefresher
 import app.tcg.app.data.sync.SyncLinkCoordinator
 import app.tcg.app.data.sync.SyncLifecycle
 import app.tcg.app.data.sync.SyncLinkRepository
@@ -250,7 +251,14 @@ fun AppNav(
             }
             composable(Routes.PROFILE) {
                 val viewModel: ProfileViewModel = viewModel(
-                    factory = viewModelFactory { initializer { ProfileViewModel(collectionRepository, collectionBackup, appPreferences) } },
+                    factory = viewModelFactory { initializer {
+                        ProfileViewModel(
+                            collectionRepository,
+                            collectionBackup,
+                            appPreferences,
+                            PriceRefresher(collectionRepository, cardRepository),
+                        )
+                    } },
                 )
                 ProfileScreen(
                     viewModel = viewModel,

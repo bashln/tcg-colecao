@@ -4,6 +4,7 @@ import app.tcg.app.data.local.CardDao
 import app.tcg.app.data.local.CardPriceEntity
 import app.tcg.app.data.local.toCard
 import app.tcg.app.data.local.toEntity
+import app.tcg.app.data.local.toPrice
 import app.tcg.core.data.jornada.DEFAULT_MAX_AGE_HOURS
 import app.tcg.core.data.jornada.JornadaCardRequest
 import app.tcg.core.data.jornada.JornadaQuoteSource
@@ -28,7 +29,7 @@ class RoomCardRepository(
         val remote = fetchOrNull { source.searchByName(name) }
         if (remote != null) {
             remote.forEach { cardDao.cacheCard(it) }
-            return remote
+            return remote.map { it.withCachedQuotes() }
         }
         return cardDao.searchByName(name).map { it.toCard(cardDao.pricesFor(it.id)) }
     }
@@ -37,7 +38,7 @@ class RoomCardRepository(
         val remote = fetchOrNull { source.searchByNumber(setId, collectorNumber) }
         if (remote != null) {
             remote.forEach { cardDao.cacheCard(it) }
-            return remote
+            return remote.map { it.withCachedQuotes() }
         }
         return cardDao.searchByNumber(collectorNumber, setId).map { it.toCard(cardDao.pricesFor(it.id)) }
     }
@@ -46,7 +47,7 @@ class RoomCardRepository(
         val remote = fetchOrNull { source.searchByNumbers(collectorNumbers) }
         if (remote != null) {
             remote.forEach { cardDao.cacheCard(it) }
-            return remote
+            return remote.map { it.withCachedQuotes() }
         }
         return collectorNumbers.flatMap { number ->
             val stripped = number.trimStart('0').ifEmpty { "0" }
@@ -56,6 +57,18 @@ class RoomCardRepository(
         }.distinctBy { it.id }.map { it.toCard(cardDao.pricesFor(it.id)) }
     }
 
+    /**
+     * The catalog answer carries only the market feeds. Local quotes (Jornada, a manually typed
+     * Liga price) live in the cache and must ride along, or the detail screen shows them empty.
+     */
+    private suspend fun Card.withCachedQuotes(): Card {
+        val extra = cardDao.pricesFor(id)
+            .filter { it.source != PriceSource.TCGPLAYER && it.source != PriceSource.CARDMARKET }
+            .map { it.toPrice() }
+        if (extra.isEmpty()) return this
+        return copy(prices = (prices + extra).distinctBy { it.source to it.variant })
+    }
+
     override suspend fun getCard(id: String): Card? {
         val cached = cardDao.getById(id)?.toCard(cardDao.pricesFor(id))
         // Search results cache a brief (no attacks, no prices), so always refresh from the full
@@ -63,7 +76,7 @@ class RoomCardRepository(
         val remote = fetchOrNull { source.getCard(id) }
         if (remote == null) return cached
         cardDao.captureCardPrices(remote, System.currentTimeMillis())
-        return remote
+        return remote.withCachedQuotes()
     }
 
     override suspend fun getSetCatalog(setId: String): SetCatalogResult {

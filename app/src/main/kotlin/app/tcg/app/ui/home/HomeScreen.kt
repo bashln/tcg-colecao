@@ -242,6 +242,11 @@ private fun PriceHistoryCard(
                     label = { Text(stringResource(R.string.common_price_ligapokemon), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
                 FilterChip(
+                    selected = source == PriceSource.JORANDA,
+                    onClick = { onSourceSelected(PriceSource.JORANDA) },
+                    label = { Text(stringResource(R.string.common_price_jornada), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+                FilterChip(
                     selected = source == PriceSource.TCGPLAYER,
                     onClick = { onSourceSelected(PriceSource.TCGPLAYER) },
                     label = { Text(stringResource(R.string.common_price_tcgplayer), maxLines = 1, overflow = TextOverflow.Ellipsis) },

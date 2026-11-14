@@ -49,6 +49,7 @@
     <string name="scan_next_card">Próxima carta</string>
     <string name="scan_grid_hint">Posicione 4 cartas nos quadrantes da tela</string>
     <string name="common_price_ligapokemon">LigaPokemon</string>
+    <string name="common_price_jornada">Jornada Games</string>
     <string name="currency_preference_title">Moeda e Cotação Padrão</string>
     <string name="currency_preference_subtitle">Valores exibidos em toda a coleção e perfil</string>
     <string name="currency_source_ligapokemon">LigaPokémon (R$)</string>
