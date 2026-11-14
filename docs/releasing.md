@@ -19,6 +19,22 @@ git push origin v1.0.0
 A release aparece em `https://github.com/<owner>/<repo>/releases`, com o
 arquivo `tcg-colecao-v1.0.0.apk`.
 
+## Se o Actions não puder publicar
+
+O passo de publicação precisa de `contents: write`. Quando o `GITHUB_TOKEN` do
+repositório está restrito, o run falha com 403 e a release não é criada, mas o
+APK assinado continua guardado como artefato do run. Publique manualmente:
+
+```bash
+gh run download <run-id> -n tcg-colecao-vX.Y.Z -D out
+gh release create vX.Y.Z out/tcg-colecao-vX.Y.Z.apk --generate-notes
+```
+
+Para automatizar de vez, cadastre um token com `contents: write` como
+`RELEASE_TOKEN` e passe `token: ${{ secrets.RELEASE_TOKEN }}` ao passo de
+publicação. O guard de assinatura continua valendo: o APK só é aceito com o
+certificado fixado em `EXPECTED_SIGNING_CERT_SHA256`.
+
 ## Alpha
 
 Alphas são GitHub pre-releases, instalados manualmente pelo arquivo APK. O app
