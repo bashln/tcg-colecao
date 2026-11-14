@@ -119,6 +119,16 @@ jobs:
           mkdir -p out
           cp app/build/outputs/apk/release/app-release.apk "out/tcg-colecao-${RELEASE_TAG}.apk"
 
+      # O APK assinado não pode sumir se o passo de publicação falhar. O artefato fica
+      # disponível mesmo quando a release não é criada.
+      - name: Guardar APK como artefato
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tcg-colecao-${{ env.RELEASE_TAG }}
+          path: out/*.apk
+          if-no-files-found: error
+
       - name: Registrar digest SHA-256 do APK
         run: |
           digest="$(sha256sum "out/tcg-colecao-${RELEASE_TAG}.apk" | cut -d' ' -f1)"
