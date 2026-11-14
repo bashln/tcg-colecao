@@ -328,7 +328,7 @@ object AppModule {
         downloadApk = { release, progress ->
             downloader.download(
                 url = release.apkUrl,
-                expectedSizeBytes = release.apkSizeBytes,
+                expectedSizeBytes = release.apkSizeBytes.takeIf { it > 0 },
                 expectedSha256 = release.apkSha256,
                 onProgress = progress,
             )

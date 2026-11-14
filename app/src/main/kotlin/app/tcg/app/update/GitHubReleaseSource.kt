@@ -2,6 +2,7 @@ package app.tcg.app.update
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import io.ktor.client.request.head
 import io.ktor.client.request.header
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -28,6 +29,7 @@ class GitHubReleaseSource(
     private val lock = Any()
     private var lastEtag: String? = null
     private var lastBody: String? = null
+    private val webBase = "https://github.com"
 
     suspend fun fetchLatestStable(): ReleaseFetch {
         // Only send a conditional header when we already hold the matching body.
@@ -52,8 +54,10 @@ class GitHubReleaseSource(
                 ReleaseFetch.NotModified(cached)
             }
 
-            response.status == HttpStatusCode.TooManyRequests || isRateLimited(response) ->
-                ReleaseFetch.RateLimited(response.headerLong(RATE_LIMIT_RESET))
+            response.status == HttpStatusCode.TooManyRequests || isRateLimited(response) -> {
+                fetchLatestAfterQuotaExhausted()
+                    ?: ReleaseFetch.RateLimited(response.headerLong(RATE_LIMIT_RESET))
+            }
 
             response.status == HttpStatusCode.OK -> {
                 val body = response.bodyAsText()
@@ -73,6 +77,34 @@ class GitHubReleaseSource(
 
     private fun isRateLimited(response: HttpResponse): Boolean =
         response.status == HttpStatusCode.Forbidden && response.headers[RATE_LIMIT_REMAINING] == "0"
+
+    private suspend fun fetchLatestAfterQuotaExhausted(): ReleaseFetch.FetchedRelease? {
+        val redirect = try {
+            httpClient.get("$webBase/$repoSlug/releases/latest") {
+                header(HttpHeaders.UserAgent, userAgent)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return null
+        }
+        val tag = if (redirect.status.value in 300..399) {
+            redirect.headers[HttpHeaders.Location]
+        } else {
+            redirect.call.request.url.encodedPath
+        }?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: return null
+        val apkUrl = "$webBase/$repoSlug/releases/download/$tag/tcg-colecao-$tag.apk"
+        val release = ReleaseParser.releaseForTag(tag, apkUrl, apkSize(apkUrl)) ?: return null
+        return ReleaseFetch.FetchedRelease(release)
+    }
+
+    private suspend fun apkSize(apkUrl: String): Long = try {
+        httpClient.head(apkUrl).headers[HttpHeaders.ContentLength]?.toLongOrNull() ?: 0L
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        0L
+    }
 
     private fun HttpResponse.headerLong(name: String): Long? = headers[name]?.toLongOrNull()
 

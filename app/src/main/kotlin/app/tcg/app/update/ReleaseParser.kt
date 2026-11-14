@@ -55,19 +55,9 @@ object ReleaseParser {
 
     private fun buildRelease(obj: JsonObject): Built {
         val tag = obj.string("tag_name") ?: return Built.Error(OtaError.MalformedTag)
-        val match = STABLE_TAG.matchEntire(tag) ?: return Built.Error(OtaError.MalformedTag)
-        val (majorText, minorText, patchText) = match.destructured
-
-        val major = BigInteger(majorText)
-        val minor = BigInteger(minorText)
-        val patch = BigInteger(patchText)
-        if (minor > MAX_MINOR_OR_PATCH || patch > MAX_MINOR_OR_PATCH) {
-            return Built.Error(OtaError.MalformedTag)
-        }
-        val code = major.multiply(BigInteger.valueOf(10_000))
-            .add(minor.multiply(BigInteger.valueOf(100)))
-            .add(patch)
-        if (code > MAX_VERSION_CODE) return Built.Error(OtaError.VersionOverflow)
+        val version = versionOf(tag)
+        if (version is Version.Error) return Built.Error(version.error)
+        version as Version.Ok
 
         val apk = resolveApkAsset(obj) ?: return Built.Error(assetError(obj))
 
@@ -75,8 +65,8 @@ object ReleaseParser {
         return Built.Ok(
             GitHubRelease(
                 tagName = tag,
-                versionName = "$majorText.$minorText.$patchText",
-                versionCode = code.toLong(),
+                versionName = version.name,
+                versionCode = version.code,
                 releaseNotes = obj.string("body").orEmpty(),
                 apkUrl = url,
                 apkSizeBytes = apk.longOrNull("size") ?: 0L,
@@ -84,6 +74,42 @@ object ReleaseParser {
                 publishedAt = obj.string("published_at"),
             ),
         )
+    }
+
+    fun releaseForTag(tag: String, apkUrl: String, apkSizeBytes: Long): GitHubRelease? {
+        val version = versionOf(tag) as? Version.Ok ?: return null
+        return GitHubRelease(
+            tagName = tag,
+            versionName = version.name,
+            versionCode = version.code,
+            releaseNotes = "",
+            apkUrl = apkUrl,
+            apkSizeBytes = apkSizeBytes,
+            apkSha256 = null,
+            publishedAt = null,
+        )
+    }
+
+    private sealed interface Version {
+        data class Ok(val name: String, val code: Long) : Version
+        data class Error(val error: OtaError) : Version
+    }
+
+    private fun versionOf(tag: String): Version {
+        val match = STABLE_TAG.matchEntire(tag) ?: return Version.Error(OtaError.MalformedTag)
+        val (majorText, minorText, patchText) = match.destructured
+
+        val major = BigInteger(majorText)
+        val minor = BigInteger(minorText)
+        val patch = BigInteger(patchText)
+        if (minor > MAX_MINOR_OR_PATCH || patch > MAX_MINOR_OR_PATCH) {
+            return Version.Error(OtaError.MalformedTag)
+        }
+        val code = major.multiply(BigInteger.valueOf(10_000))
+            .add(minor.multiply(BigInteger.valueOf(100)))
+            .add(patch)
+        if (code > MAX_VERSION_CODE) return Version.Error(OtaError.VersionOverflow)
+        return Version.Ok("$majorText.$minorText.$patchText", code.toLong())
     }
 
     private fun resolveApkAsset(obj: JsonObject): JsonObject? {
