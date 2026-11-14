@@ -128,10 +128,9 @@ test('a set coverage that matches the official count is complete', async () => {
   const result = await getSetCoverage({ id: 'swsh3', name: 'Darkness Ablaze', expectedCount: 2 })
 
   assert.equal(result.kind, 'complete')
-  assert.deepEqual(
-    (result as { cards: { id: string }[] }).cards.map((entry) => entry.id),
-    ['swsh3-136', 'swsh3-137'],
-  )
+  const cards = (result as { cards: { id: string; setName: string }[] }).cards
+  assert.deepEqual(cards.map((entry) => entry.id), ['swsh3-136', 'swsh3-137'])
+  assert.deepEqual(cards.map((entry) => entry.setName), ['Darkness Ablaze', 'Darkness Ablaze'])
 })
 
 test('a payload carrying a card from another set cannot prove completeness', async () => {

@@ -190,7 +190,11 @@ export async function getSetCoverage(set: SetOption): Promise<SetCoverage> {
   try {
     const result = parseArray(await fetchJson('/cards', new URLSearchParams({ set: set.id })))
     if (result === null) return { kind: 'unavailable', setId: set.id, message: 'A lista desta expansão está indisponível.' }
-    const cards = result.cards.filter((card) => card.setId === set.id)
+    // The /cards?set= briefs omit the set object, so the coverage carries the set name from
+    // the selected set instead of showing "Expansão não informada".
+    const cards = result.cards
+      .filter((card) => card.setId === set.id)
+      .map((card) => ({ ...card, setId: set.id, setName: set.name }))
     if (set.expectedCount !== null && cards.length === set.expectedCount && result.invalidCount === 0 && cards.length === result.cards.length) {
       return { kind: 'complete', setId: set.id, cards, expectedCount: set.expectedCount }
     }
