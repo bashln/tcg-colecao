@@ -266,6 +266,41 @@ class CollectionRepositoryTest {
     }
 
     @Test
+    fun add_persists_the_catalog_record_instead_of_the_brief_the_caller_holds() = runTest {
+        val resolving = RoomCollectionRepository(db.collectionDao(), db.cardDao(), resolveCard = { sampleCard() })
+
+        resolving.add(catalogListBrief(), CardVariant.HOLOFOIL, Condition.NEAR_MINT, 1, null)
+
+        val stored = db.cardDao().getById("swsh3-136")!!
+        assertEquals("Escuridão Incandescente", stored.setName)
+        assertEquals("https://assets.tcgdex.net/pt/swsh/swsh3/136/high.webp", stored.imageUrl)
+        assertEquals(110, stored.hp)
+    }
+
+    @Test
+    fun add_keeps_working_offline_with_the_card_the_caller_holds() = runTest {
+        val offline = RoomCollectionRepository(db.collectionDao(), db.cardDao(), resolveCard = { null })
+
+        val item = offline.add(catalogListBrief(), CardVariant.HOLOFOIL, Condition.NEAR_MINT, 1, null)
+
+        val entry = offline.list().single()
+        assertEquals(item.id, entry.item.id)
+        assertEquals("Furret", entry.card.name)
+        assertEquals(1, entry.item.quantity)
+    }
+
+    @Test
+    fun get_by_id_upgrades_a_stored_brief_when_the_catalog_answers() = runTest {
+        val item = repo.add(catalogListBrief(), CardVariant.HOLOFOIL, Condition.NEAR_MINT, 1, null)
+        val resolving = RoomCollectionRepository(db.collectionDao(), db.cardDao(), resolveCard = { sampleCard() })
+
+        val details = resolving.getById(item.id)!!
+
+        assertEquals("https://assets.tcgdex.net/pt/swsh/swsh3/136/high.webp", details.card!!.imageUrl)
+        assertEquals("Escuridão Incandescente", details.card!!.setName)
+    }
+
+    @Test
     fun add_without_price_persists_null_price_paid() = runTest {
         val item = repo.add(sampleCard(), CardVariant.NORMAL, Condition.NEAR_MINT, 1, null)
         assertNull(item.pricePaid)
@@ -387,6 +422,16 @@ class CollectionRepositoryTest {
 
         assertTrue(repo.list().isEmpty())
     }
+
+    private fun catalogListBrief() = sampleCard().copy(
+        setName = "",
+        rarity = null,
+        hp = null,
+        types = emptyList(),
+        imageUrl = null,
+        variants = setOf(CardVariant.HOLOFOIL),
+        prices = emptyList(),
+    )
 
     private fun sampleCard() = Card(
         id = "swsh3-136",
