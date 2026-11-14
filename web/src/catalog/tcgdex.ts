@@ -76,6 +76,24 @@ function parseVariantPrices(variant: CardVariant, pricing: unknown): MarketQuote
   return quotes
 }
 
+// TCGdex omits `image` for a few printings, the whole `mep` promo set among them, but its
+// pricing block still carries the TCGplayer product id and that CDN serves the same artwork.
+function tcgplayerProductImage(variants: unknown[]): string | null {
+  for (const candidate of variants) {
+    if (!isRecord(candidate)) continue
+    const pricing = candidate.pricing
+    if (!isRecord(pricing) || !isRecord(pricing.tcgplayer)) continue
+    const tcgplayer = pricing.tcgplayer
+    for (const key of ['holofoil', 'normal', 'reverse-holofoil']) {
+      const price = tcgplayer[key]
+      if (!isRecord(price)) continue
+      const productId = positiveInteger(price.productId)
+      if (productId !== null) return `https://tcgplayer-cdn.tcgplayer.com/product/${productId}_400w.jpg`
+    }
+  }
+  return null
+}
+
 export function parseCatalogCard(raw: unknown): CardSummary | null {
   if (!isRecord(raw)) return null
   const id = parseCardId(raw.id)
@@ -100,7 +118,7 @@ export function parseCatalogCard(raw: unknown): CardSummary | null {
     setId: string(set?.id) ?? id.substring(0, id.lastIndexOf('-')),
     setName: string(set?.name) ?? string(set?.id) ?? 'Expansão não informada',
     collectorNumber: string(raw.localId) ?? '',
-    imageUrl: image !== null && image.startsWith('https://') ? `${image}/high.webp` : null,
+    imageUrl: image !== null && image.startsWith('https://') ? `${image}/high.webp` : tcgplayerProductImage(variantsRaw),
     variants,
     prices,
     setTotal: positiveInteger(count?.official),

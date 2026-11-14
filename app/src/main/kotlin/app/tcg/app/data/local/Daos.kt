@@ -88,6 +88,10 @@ abstract class CardDao {
         upsert(card.toEntity())
     }
 
+    open suspend fun cacheBrief(card: Card) {
+        insertIfAbsent(card.toEntity())
+    }
+
     @Transaction
     open suspend fun captureCardPrices(card: Card, observedAt: Long) {
         val observations = card.prices

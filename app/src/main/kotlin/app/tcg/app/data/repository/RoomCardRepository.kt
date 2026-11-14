@@ -28,7 +28,7 @@ class RoomCardRepository(
     override suspend fun searchByName(name: String): List<Card> {
         val remote = fetchOrNull { source.searchByName(name) }
         if (remote != null) {
-            remote.forEach { cardDao.cacheCard(it) }
+            remote.forEach { cardDao.cacheBrief(it) }
             return remote.map { it.withCachedQuotes() }
         }
         return cardDao.searchByName(name).map { it.toCard(cardDao.pricesFor(it.id)) }
@@ -37,7 +37,7 @@ class RoomCardRepository(
     override suspend fun searchByNumber(setId: String?, collectorNumber: String): List<Card> {
         val remote = fetchOrNull { source.searchByNumber(setId, collectorNumber) }
         if (remote != null) {
-            remote.forEach { cardDao.cacheCard(it) }
+            remote.forEach { cardDao.cacheBrief(it) }
             return remote.map { it.withCachedQuotes() }
         }
         return cardDao.searchByNumber(collectorNumber, setId).map { it.toCard(cardDao.pricesFor(it.id)) }
@@ -46,7 +46,7 @@ class RoomCardRepository(
     override suspend fun searchByNumbers(collectorNumbers: Set<String>): List<Card> {
         val remote = fetchOrNull { source.searchByNumbers(collectorNumbers) }
         if (remote != null) {
-            remote.forEach { cardDao.cacheCard(it) }
+            remote.forEach { cardDao.cacheBrief(it) }
             return remote.map { it.withCachedQuotes() }
         }
         return collectorNumbers.flatMap { number ->

@@ -124,9 +124,13 @@ object AppModule {
         @ApplicationContext context: Context,
         collectionDao: CollectionDao,
         cardDao: CardDao,
-    ): CollectionRepository = RoomCollectionRepository(collectionDao, cardDao) {
-        CollectionBackupWorker.enqueue(context)
-    }
+        cardRepository: CardRepository,
+    ): CollectionRepository = RoomCollectionRepository(
+        collectionDao = collectionDao,
+        cardDao = cardDao,
+        resolveCard = cardRepository::getCard,
+        onCollectionChanged = { CollectionBackupWorker.enqueue(context) },
+    )
 
     @Provides
     @Singleton

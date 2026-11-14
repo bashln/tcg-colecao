@@ -98,7 +98,7 @@ class CardRepositoryTest {
 
     @Test
     fun get_card_replaces_cached_brief_with_full_network_card() = runTest {
-        db.cardDao().upsert(briefCard().toEntity())
+        db.cardDao().upsert(catalogListBrief().toEntity())
         source.getResult = fullCard()
 
         val result = repo.getCard("swsh3-136")
@@ -111,8 +111,23 @@ class CardRepositoryTest {
     }
 
     @Test
+    fun searching_after_reading_the_full_card_keeps_the_record_complete() = runTest {
+        source.getResult = fullCard()
+        repo.getCard("swsh3-136")
+        source.searchResult = catalogListBrief()
+
+        repo.searchByName("Furret")
+
+        val stored = db.cardDao().getById("swsh3-136")!!
+        assertEquals("Escuridão Incandescente", stored.setName)
+        assertEquals("Pancada", stored.attacks.single().name)
+        assertEquals("https://assets.tcgdex.net/pt/swsh/swsh3/136/high.webp", stored.imageUrl)
+        assertEquals("Incomum", stored.rarity)
+    }
+
+    @Test
     fun get_card_falls_back_to_cached_brief_when_network_fails() = runTest {
-        db.cardDao().upsert(briefCard().toEntity())
+        db.cardDao().upsert(catalogListBrief().toEntity())
         source.getError = RuntimeException("offline")
 
         val result = repo.getCard("swsh3-136")
@@ -314,7 +329,15 @@ class CardRepositoryTest {
     }
 
     private companion object {
-        fun briefCard() = sampleCard().copy(attacks = emptyList(), prices = emptyList())
+        fun catalogListBrief() = sampleCard().copy(
+            setName = "",
+            rarity = null,
+            hp = null,
+            types = emptyList(),
+            attacks = emptyList(),
+            imageUrl = null,
+            prices = emptyList(),
+        )
 
         fun pricedCard(id: String, market: Double) = sampleCard().copy(
             id = id,
