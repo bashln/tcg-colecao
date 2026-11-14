@@ -28,6 +28,14 @@ val missingKeystoreMessage =
         "TCG_KEYSTORE_PASSWORD, TCG_KEY_ALIAS e TCG_KEY_PASSWORD, ou use " +
         "TCG_ALLOW_DEBUG_SIGNING=1 para um APK de teste assinado com debug."
 
+// BuildConfig carrega valores de ambiente (Supabase). O build cache não trata variável de
+// ambiente como entrada e já devolveu um BuildConfig vazio com os secrets certos no CI. Gerar
+// de novo custa milissegundos e evita publicar um APK sem conta.
+tasks.matching { it.name.startsWith("generate") && it.name.endsWith("BuildConfig") }.configureEach {
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+}
+
 if (releasePackagingRequested && releaseKeystore == null && !allowDebugSigning) {
     throw GradleException(missingKeystoreMessage)
 }

@@ -89,3 +89,5 @@ O que esta execução não cobriu:
 ## Driver
 
 `scripts/verify-android.test.sh` prova o driver sem aparelho em 16 casos, incluindo ausência de aparelho, aparelho não autorizado, dois aparelhos, falta de consentimento e leitura de nós por texto e por `content-desc`. Rode antes de confiar no driver depois de mudá-lo.
+
+A suíte instrumentada completa roda com `-Pandroid.testInstrumentationRunnerArguments.notClass=app.tcg.app.scan.EndToEndRecognitionTest`. Essa classe de acurácia de OCR roda isolada, porque na suíte ela derruba o processo do runner ao terminar.
