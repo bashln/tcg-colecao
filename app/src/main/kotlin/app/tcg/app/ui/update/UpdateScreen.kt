@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.tcg.app.R
+import app.tcg.app.ui.components.BackTitle
 import app.tcg.app.update.UpdateErrorKind
 import app.tcg.app.update.UpdateState
 
@@ -40,6 +41,7 @@ fun UpdateScreen(
     onCancel: () -> Unit,
     onInstall: () -> Unit,
     onDismissError: () -> Unit,
+    onBack: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -49,7 +51,7 @@ fun UpdateScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(stringResource(R.string.update_title), style = MaterialTheme.typography.headlineSmall)
+        BackTitle(stringResource(R.string.update_title), onBack)
         Text(
             stringResource(R.string.update_intro),
             style = MaterialTheme.typography.bodyMedium,
@@ -100,18 +102,19 @@ fun UpdateScreen(
 
             is UpdateState.Downloading -> {
                 val total = state.total
+                val progressLabel = stringResource(R.string.update_downloading)
                 if (total != null && total > 0) {
                     LinearProgressIndicator(
                         progress = { (state.received.toFloat() / total).coerceIn(0f, 1f) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .semantics { contentDescription = "update_progress_label" },
+                            .semantics { contentDescription = progressLabel },
                     )
                 } else {
                     LinearProgressIndicator(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .semantics { contentDescription = "update_progress_label" },
+                            .semantics { contentDescription = progressLabel },
                     )
                 }
                 Text(stringResource(R.string.update_downloading), style = MaterialTheme.typography.bodyMedium)

@@ -296,6 +296,7 @@ fun AppNav(
                     onResolveConflict = viewModel::resolveConflict,
                     onSignOut = viewModel::signOut,
                     onDismissError = viewModel::dismissError,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(Routes.UPDATE) {
@@ -320,6 +321,7 @@ fun AppNav(
                     onCancel = viewModel::cancelDownload,
                     onInstall = viewModel::install,
                     onDismissError = viewModel::dismissError,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(

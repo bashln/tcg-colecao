@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -36,6 +38,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import app.tcg.app.R
+import app.tcg.app.ui.components.BackTitle
 import app.tcg.app.data.sync.LinkPreviewSummary
 import app.tcg.app.data.sync.SyncConflictResolution
 
@@ -56,6 +59,7 @@ fun AccountScreen(
     onResolveConflict: (String, SyncConflictResolution) -> Unit = { _, _ -> },
     onSignOut: () -> Unit,
     onDismissError: () -> Unit,
+    onBack: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (state.signedIn) {
@@ -67,6 +71,7 @@ fun AccountScreen(
             onSyncNow = onSyncNow,
             onResolveConflict = onResolveConflict,
             onSignOut = onSignOut,
+            onBack = onBack,
             modifier = modifier,
         )
     } else {
@@ -75,6 +80,7 @@ fun AccountScreen(
             onSignIn = onSignIn,
             onSignUp = onSignUp,
             onDismissError = onDismissError,
+            onBack = onBack,
             modifier = modifier,
         )
     }
@@ -86,6 +92,7 @@ private fun SignedOutAccount(
     onSignIn: (String, String) -> Unit,
     onSignUp: (String, String) -> Unit,
     onDismissError: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier,
 ) {
     var email by rememberSaveable { mutableStateOf("") }
@@ -96,13 +103,11 @@ private fun SignedOutAccount(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .imePadding()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = stringResource(R.string.account_title),
-            style = MaterialTheme.typography.headlineSmall,
-        )
+        BackTitle(stringResource(R.string.account_title), onBack)
         Text(
             text = stringResource(R.string.account_intro),
             style = MaterialTheme.typography.bodyMedium,
@@ -150,8 +155,9 @@ private fun SignedOutAccount(
         ) {
             if (state.submitting) {
                 CircularProgressIndicator(
-                    modifier = Modifier.height(20.dp),
+                    modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary,
                 )
             } else {
                 Text(
@@ -185,22 +191,29 @@ private fun SignedInAccount(
     onSyncNow: () -> Unit,
     onResolveConflict: (String, SyncConflictResolution) -> Unit,
     onSignOut: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier,
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = stringResource(R.string.account_title),
-            style = MaterialTheme.typography.headlineSmall,
-        )
+        BackTitle(stringResource(R.string.account_title), onBack)
         Text(
             text = state.email.orEmpty(),
             style = MaterialTheme.typography.bodyLarge,
         )
+
+        if (state.error != null || state.errorMessage != null) {
+            ErrorText(
+                text = state.errorMessage ?: stringResource(state.error!!.toReadableStringRes()),
+                onDismiss = {},
+            )
+        }
 
         when (val link = state.linkState) {
             LinkState.LocalOnly -> {
@@ -430,7 +443,11 @@ private fun LinkPreviewSection(
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (confirming) {
-                CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
             } else {
                 Text(stringResource(R.string.account_link_confirm))
             }
