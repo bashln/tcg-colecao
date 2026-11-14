@@ -31,6 +31,7 @@ import java.time.temporal.ChronoUnit
 class RoomCollectionRepository(
     private val collectionDao: CollectionDao,
     private val cardDao: CardDao,
+    private val resolveCard: (suspend (String) -> Card?)? = null,
     private val onCollectionChanged: () -> Unit = {},
 ) : CollectionRepository {
 
