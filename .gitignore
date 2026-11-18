@@ -37,3 +37,26 @@ AGENTS.md
 CLAUDE.md
 GEMINI.md
 .aider*
+
+## Artefatos locais de desenvolvimento e agentes (nao publicar)
+.audit/
+.superpowers/
+progress.json
+errors.json
+trash/
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.log
+*.tmp
+*.swp
+.DS_Store
+
+## Arquivos de ambiente (manter apenas .env.example)
+.env
+.env.*
+!.env.example
+web/.env
+web/.env.*
+!web/.env.example
