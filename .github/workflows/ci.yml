@@ -1,0 +1,94 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android (unit tests + debug build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -n1)"
+          if [ -z "$sdkmanager" ]; then
+            echo "::error::sdkmanager not found in Android SDK."
+            exit 1
+          fi
+          yes | "$sdkmanager" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+
+      - name: Run domain and unit tests
+        run: ./gradlew :core:test :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+  web:
+    name: Web (unit tests + production build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Build production app
+        run: npm run build
+
+  supabase:
+    name: Supabase (PostgreSQL harness)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: supabase/tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: supabase/tests/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Jornada price function tests
+        working-directory: .
+        run: node --test supabase/functions/jornada-prices/core.test.mjs
+
+      - name: Run PostgreSQL harness
+        run: npm test

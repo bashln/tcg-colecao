@@ -6,7 +6,7 @@ Registro do que está instalado e do que o build precisa. Verificado em
 ## Presente
 
 - Java 17 via mise em `JAVA_HOME`. Compatível com AGP 8.13.
-- Android SDK em `/home/leonamduarte/Android/Sdk`.
+- Android SDK em `<ANDROID_SDK_ROOT>`.
   - `platforms/android-35`.
   - `build-tools/34.0.0` e `35.0.0`.
   - `platform-tools` com `adb` no PATH.
