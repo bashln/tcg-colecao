@@ -10,6 +10,15 @@
 
 Aplicativo Android e versão web para organizar uma coleção de cartas Pokémon: escanear uma carta com a câmera, confirmar o resultado, registrar quantidade, condição, variante e preço pago, e acompanhar o valor do acervo. A coleção fica no aparelho por padrão e funciona sem conta e sem internet. A conta é opcional e sincroniza a mesma coleção entre Android e navegador.
 
+<p align="center">
+  <img src="docs/screenshots/inicio.jpg" width="240" alt="Tela inicial do TCG Coleção com valor da coleção e cartas mais valiosas" />
+  <img src="docs/screenshots/colecao.jpg" width="240" alt="Coleção com filtros de variante, condição e busca" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/cartas.jpg" width="240" alt="Grade de cartas com variante, condição e preço pago" />
+  <img src="docs/screenshots/perfil.jpg" width="240" alt="Ajustes de backup local, criptografia e cotação" />
+</p>
+
 ## Visão Geral e Problema Resolvido
 
 Coletores de cartas costumam controlar o acervo em planilhas ou em aplicativos com anúncios, limites de leitura e assinatura. TCG Coleção resolve isso com um fluxo local-first. A leitura da carta roda no próprio aparelho, a coleção não é enviada a nenhum servidor sem conta, e não há rastreamento, anúncio ou relatório automático de erro. O projeto inclui escaneamento, busca e filtros, lista de faltantes, listas secundárias, backup JSON e sincronização opcional entre Android e web.
