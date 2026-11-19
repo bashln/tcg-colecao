@@ -12,19 +12,19 @@ Aplicativo Android e versão web para organizar uma coleção de cartas Pokémon
 
 ## Visão Geral e Problema Resolvido
 
-Coletores de cartas costumam controlar o acervo em planilhas ou em aplicativos com anúncios, limites de leitura e assinatura. TCG Coleção resolve isso com um fluxo local-first. A leitura da carta roda no próprio aparelho, a coleção não é enviada a nenhum servidor sem conta, e não há rastreamento, anúncio ou relatório automático de erro. O projeto cobre o ciclo completo de manutenção da coleção: escaneamento, busca e filtros, lista de faltantes, listas secundárias, backup JSON e sincronização opcional entre Android e web.
+Coletores de cartas costumam controlar o acervo em planilhas ou em aplicativos com anúncios, limites de leitura e assinatura. TCG Coleção resolve isso com um fluxo local-first. A leitura da carta roda no próprio aparelho, a coleção não é enviada a nenhum servidor sem conta, e não há rastreamento, anúncio ou relatório automático de erro. O projeto inclui escaneamento, busca e filtros, lista de faltantes, listas secundárias, backup JSON e sincronização opcional entre Android e web.
 
 ## Arquitetura e Decisões Técnicas
 
-- `:core` é um módulo Kotlin JVM puro, sem dependência do Android. Ele contém o domínio compartilhado e é testado na JVM. `:app` depende de `:core` e concentra a interface Compose, a injeção com Hilt, o armazenamento Room, a câmera CameraX e o OCR com ML Kit.
-- A interface Android usa Jetpack Compose com Material 3, Navigation Compose e Hilt. O estado de tela fica em ViewModels; a navegação e os estados de carregamento/erro são tratados explicitamente.
+- `:core` é um módulo Kotlin JVM puro, sem dependência do Android. Ele contém o domínio compartilhado, e os testes de domínio rodam na JVM. `:app` depende de `:core` e concentra a interface Compose, a injeção com Hilt, o armazenamento Room, a câmera CameraX e o OCR com ML Kit.
+- A interface Android usa Jetpack Compose com Material 3, Navigation Compose e Hilt. ViewModels mantêm o estado da tela. A navegação e os estados de carregamento e erro têm tratamento explícito.
 - O armazenamento local usa Room para a coleção, preços e snapshots. Migrações e consultas ficam no módulo de dados, separadas da UI.
 - O OCR roda localmente com ML Kit no Android e com Tesseract.js na web. A foto não é enviada a nenhum servidor; apenas o texto reconhecido segue para a busca no catálogo TCGdex.
 - A versão web fica em `web/` e usa React 19, TypeScript e Vite. A coleção é persistida no IndexedDB, com busca manual no TCGdex, edição exata, remoção confirmada, filtros e lista de faltantes.
-- A sincronização é opcional e baseada em Supabase. O cliente usa apenas a chave publishable, protegida por Row Level Security. As migrações e o harness de PostgreSQL ficam em `supabase/`, com RPCs para push, conflito e vínculo entre dispositivos.
+- A sincronização é opcional e usa Supabase. O cliente usa apenas a chave publishable. Row Level Security protege o acesso aos dados. As migrações e o harness de PostgreSQL ficam em `supabase/`, com RPCs para push, conflito e vínculo entre dispositivos.
 - O backup é um arquivo JSON versionado, com importação validada, mesclagem por quantidade, recusa de conflito e limite de 50 MB. A importação não substitui a coleção sem confirmação.
-- A segurança de release é fail-closed. O APK de release exige keystore e secrets do Supabase, valida a assinatura com um certificado fixado e não publica quando os testes de unidade falham.
-- A privacidade é tratada como requisito de produto. Sem conta, a coleção não sai do aparelho. Não há rastreamento, anúncio ou relatório automático de erro. A política completa está em `docs/privacy.md`.
+- O workflow de release falha antes de publicar quando falta keystore ou configuração do Supabase. Ele valida a assinatura do APK com um certificado fixado e não publica quando os testes de unidade falham.
+- O app não envia a coleção sem conta e não inclui rastreamento, anúncio ou relatório automático de erro. A política completa está em `docs/privacy.md`.
 
 ## Pré-requisitos e Instalação Rápida
 
@@ -32,10 +32,10 @@ Requisitos:
 
 - JDK 17.
 - Android SDK com `platforms;android-35` e `build-tools;35.0.0`.
-- Node 26 ou mais recente, apenas para a versão web.
-- Supabase CLI e PostgreSQL, apenas para alterar ou validar o schema.
+- Node 26 ou mais recente, para a versão web e os testes do Supabase.
+- Supabase CLI, apenas para aplicar o schema no projeto remoto.
 
-Clone e configure:
+Clone o repositório e configure o ambiente:
 
 ```sh
 git clone https://github.com/bashln/tcg-colecao.git
@@ -76,7 +76,7 @@ npm ci
 npm test
 ```
 
-CI local recomendado:
+Verificação local completa:
 
 ```sh
 ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug
@@ -108,7 +108,7 @@ export TCG_SUPABASE_PUBLISHABLE_KEY=sb_publishable_replace-me
 ./gradlew :app:assembleDebug
 ```
 
-Exemplo de execução do verificador de sincronização hospedada:
+Exemplo de verificação da sincronização hospedada:
 
 ```sh
 export TCG_SUPABASE_URL=https://your-project.supabase.co
